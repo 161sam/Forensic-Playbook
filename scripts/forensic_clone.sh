@@ -21,12 +21,38 @@ LOGDIR="/mnt/forensic_workdir"
 MOUNT_RO="false"          # true/false
 YES="false"               # Zerstörerische Schritte ohne Rückfrage erlauben
 DDRESCUE_BIN="ddrescue"
+DDRESCUE_FLAGS=( -f )
 
 # ---------- Helpers ----------
 err()   { echo "ERROR: $*" >&2; exit 1; }
 note()  { echo "[*] $*"; }
 ok()    { echo "[✓] $*"; }
 ts()    { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
+
+# ---- Robust partition detection (supports NVMe, mmcblk, sd/hd) ----
+is_partition() {
+  # Accepts /dev/xxx
+  local dev="$1"
+  local base
+  base="$(basename "$dev")"
+
+  # NVMe: whole disk = nvmeXnY, partition = nvmeXnYpZ
+  if [[ "$base" =~ ^nvme[0-9]+n[0-9]+p[0-9]+$ ]]; then
+    return 0  # is a partition
+  fi
+
+  # mmcblk: whole disk = mmcblkN, partition = mmcblkNpM
+  if [[ "$base" =~ ^mmcblk[0-9]+p[0-9]+$ ]]; then
+    return 0
+  fi
+
+  # sd/hd/vd: whole disk = sda, partition = sda1
+  if [[ "$base" =~ ^[shv]d[a-z][0-9]+$ ]]; then
+    return 0
+  fi
+
+  return 1  # not a partition (treat as whole disk)
+}
 
 # ---------- Usage ----------
 usage() {
@@ -82,9 +108,13 @@ done
 [[ -b "$TARGET" ]] || err "TARGET ist kein Blockdevice: $TARGET"
 [[ "$SOURCE" != "$TARGET" ]] || err "SOURCE und TARGET dürfen nicht identisch sein."
 
-# Nur ganze Disks erlauben (keine Partitionen wie ...p1, sda1 etc.)
-case "$SOURCE" in *[0-9]) err "SOURCE wirkt wie eine Partition ($SOURCE). Bitte ganze Disk angeben.";; esac
-case "$TARGET" in *[0-9]) err "TARGET wirkt wie eine Partition ($TARGET). Bitte ganze Disk angeben.";; esac
+# Nur ganze Disks erlauben (keine Partitionen wie nvmeXnYpZ, mmcblkNpM, sda1 etc.)
+if is_partition "$SOURCE"; then
+  err "SOURCE sieht wie eine Partition aus ($SOURCE). Bitte ganze Disk angeben (z. B. /dev/nvme1n1)."
+fi
+if is_partition "$TARGET"; then
+  err "TARGET sieht wie eine Partition aus ($TARGET). Bitte ganze Disk angeben (z. B. /dev/nvme0n1)."
+fi
 
 # Root erforderlich
 [[ "$(id -u)" -eq 0 ]] || err "Bitte mit sudo/root ausführen."
@@ -189,11 +219,11 @@ esac
 
 # ---------- ddrescue Clone ----------
 note "Starte ddrescue Phase 1 (schnelle Kopie, -n)…"
-"$DDRESCUE_BIN" -v -n "$SOURCE" "$TARGET" "$DDRESCUE_LOG"
+"$DDRESCUE_BIN" -v ${DDRESCUE_FLAGS[@]} -n "$SOURCE" "$TARGET" "$DDRESCUE_LOG"
 ok "Phase 1 abgeschlossen."
 
 note "Starte ddrescue Phase 2 (Retries -r$RETRIES)…"
-"$DDRESCUE_BIN" -v -r"$RETRIES" "$SOURCE" "$TARGET" "$DDRESCUE_LOG"
+"$DDRESCUE_BIN" -v ${DDRESCUE_FLAGS[@]} -r"$RETRIES" "$SOURCE" "$TARGET" "$DDRESCUE_LOG"
 ok "Phase 2 abgeschlossen."
 
 echo "$(ts) - CLONE SOURCE=$SOURCE -> TARGET=$TARGET ddrescue_log=$(basename "$DDRESCUE_LOG")" | tee -a "$COC" >/dev/null
