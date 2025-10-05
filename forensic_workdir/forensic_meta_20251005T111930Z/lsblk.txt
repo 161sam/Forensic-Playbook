@@ -1,0 +1,29 @@
+NAME                         TRAN   MODEL       SERIAL          SIZE FSTYPE      MOUNTPOINT
+loop0                                                           3.9G squashfs    /run/live/rootfs/filesystem.squashfs
+sda                          usb    ProductCode FC03109D03E25 117.2G             
+└─sda1                                                        117.2G vfat        /run/live/medium
+nvme0n1                      nvme   NE-1TB 2280 0009042005724 953.9G             
+├─nvme0n1p1                  nvme                              1007K             
+├─nvme0n1p2                  nvme                                 1G vfat        
+└─nvme0n1p3                  nvme                             952.9G LVM2_member 
+  ├─pve-swap                                                      8G swap        
+  ├─pve-root                                                     96G ext4        
+  ├─pve-data_tmeta                                              8.3G             
+  │ └─pve-data-tpool                                          816.2G             
+  │   ├─pve-data                                              816.2G             
+  │   ├─pve-vm--100--disk--0                                     32G             
+  │   ├─pve-vm--101--disk--0                                     32G             
+  │   ├─pve-vm--102--disk--0                                    128G             
+  │   ├─pve-vm--106--disk--0                                    120G             
+  │   └─pve-vm--108--disk--0                                    120G             
+  └─pve-data_tdata                                            816.2G             
+    └─pve-data-tpool                                          816.2G             
+      ├─pve-data                                              816.2G             
+      ├─pve-vm--100--disk--0                                     32G             
+      ├─pve-vm--101--disk--0                                     32G             
+      ├─pve-vm--102--disk--0                                    128G             
+      ├─pve-vm--106--disk--0                                    120G             
+      └─pve-vm--108--disk--0                                    120G             
+nvme1n1                      nvme   NE-1TB 2280 0009042003419 953.9G             
+├─nvme1n1p1                  nvme                                 1G vfat        
+└─nvme1n1p2                  nvme                             952.8G ext4        

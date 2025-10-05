@@ -1,0 +1,11 @@
+======== /dev/sda ========
+Disk /dev/sda: 117.19 GiB, 125829120000 bytes, 245760000 sectors
+Disk model: ProductCode     
+Units: sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+Disklabel type: dos
+Disk identifier: 0x09008d16
+
+Device     Boot Start       End   Sectors   Size Id Type
+/dev/sda1  *     2048 245759935 245757888 117.2G  c W95 FAT32 (LBA)

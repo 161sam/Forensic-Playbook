@@ -1,0 +1,8 @@
+smartctl 7.4 2023-08-01 r5530 [x86_64-linux-6.12.38+kali-amd64] (local build)
+Copyright (C) 2002-23, Bruce Allen, Christian Franke, www.smartmontools.org
+
+/dev/sda: Unknown USB bridge [0x346d:0x5678 (0x320)]
+Please specify device type with the -d option.
+
+Use smartctl -h to get a usage summary
+
