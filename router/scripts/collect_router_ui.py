@@ -175,9 +175,12 @@ for name, q in PAGES:
             curl_lines.append(f"  -H '{hk}: {hv}' \\")
         if req.body:
             try:
-                b = req.body.decode("utf-8","ignore")
-                curl_lines.append(f"  --data $'{b.replace(\"'\",\"\\\\'\")}' \\")
-            except:
+                b = req.body.decode('utf-8','ignore')
+                # sichere Quote-Erzeugung für reproduzierbare curl-Calls
+                import shlex
+                body_quoted = shlex.quote(b)
+                curl_lines.append("  --data %s \\" % body_quoted)
+            except Exception:
                 pass
         curl_lines.append("  -o /dev/null")
         (CONF / f"curl_replay_{name}_{ts}.sh").write_text("\n".join(curl_lines), encoding="utf-8")
