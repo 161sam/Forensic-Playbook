@@ -1,18 +1,10 @@
 #!/usr/bin/env python3
-# collect_router_ui.py — robust forensic web-ui collector
-# usage: python collect_router_ui.py [--no-headless] [--timeout 10]
-import os, sys, time, getpass, argparse, hashlib
+# collect_router_ui.py — forensic web UI collector (wire-capable or selenium-only fallback)
 from pathlib import Path
+import os, sys, time, getpass, hashlib, shlex, subprocess
 from urllib.parse import urljoin
 from dotenv import dotenv_values
 
-# selenium imports (run inside venv)
-from seleniumwire import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.firefox.options import Options
-from selenium.webdriver.firefox.service import Service
-
-# --- config ---
 OUTDIR = Path("/mnt/FORNSIC_20251006")
 CONF = OUTDIR / "conf"
 SCREEN = OUTDIR / "screenshots"
@@ -23,7 +15,6 @@ LOGS = OUTDIR / "logs"
 for p in (CONF, SCREEN, PCAP, HASHES, LOGS):
     p.mkdir(parents=True, exist_ok=True)
 
-# pages to collect (extendable)
 PAGES = [
     ("root", ""),
     ("port_mapping", "?page=net_port_mapping"),
@@ -35,13 +26,14 @@ PAGES = [
     ("event_log", "?page=status_event_log"),
 ]
 
-# --- CLI args
-parser = argparse.ArgumentParser(description="Collect router UI pages for forensics")
-parser.add_argument("--no-headless", action="store_true", help="run visible browser")
-parser.add_argument("--timeout", type=int, default=8, help="wait time after page load (seconds)")
-args = parser.parse_args()
+def ts(): return time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+def sha256_file(path: Path):
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
-# load optional env
 envfile = CONF / "router.env"
 env = {}
 if envfile.exists():
@@ -50,60 +42,68 @@ if envfile.exists():
 BASE_URL = env.get("ROUTER_URL") or "https://192.168.0.1/"
 USERNAME = env.get("ROUTER_USER") or ""
 PASSWORD = env.get("ROUTER_PASS") or ""
-
 if not USERNAME:
     USERNAME = input("Router username (e.g. admin): ")
 if PASSWORD is None or PASSWORD == "":
     PASSWORD = getpass.getpass("Router password: ")
 
 # detect geckodriver path
-gecko_env = CONF / "gecko_path.env"
+gp = CONF / "gecko_path.env"
 GECKO_PATH = None
-if gecko_env.exists():
-    for line in gecko_env.read_text().splitlines():
-        if line.startswith("GECKO_PATH="):
+if gp.exists():
+    for line in gp.read_text().splitlines():
+        if line.strip().startswith("GECKO_PATH="):
             GECKO_PATH = line.split("=",1)[1].strip()
             break
 
-# selenium setup
-opts = Options()
-if not args.no_headless:
-    opts.headless = True
+# try to import selenium-wire; fallback gracefully
+use_wire = True
+try:
+    from seleniumwire import webdriver as wire_webdriver  # type: ignore
+except Exception:
+    use_wire = False
+
+try:
+    from selenium import webdriver
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.firefox.options import Options
+    from selenium.webdriver.firefox.service import Service
+except Exception as e:
+    print("ERROR: selenium not installed in venv. Activate venv and pip install selenium. Exiting.")
+    raise
+
+# prepare driver service
 svc = Service(GECKO_PATH) if GECKO_PATH else Service()
+opts = Options()
+opts.headless = True
 
-driver = webdriver.Firefox(service=svc, options=opts)
-# restrict captured host to router host (reduce memory)
+if use_wire:
+    driver = wire_webdriver.Firefox(service=svc, options=opts)
+    print("selenium-wire available — using wire for request/response capture.")
+    host = BASE_URL.replace("https://","").replace("http://","").split("/")[0]
+    driver.scopes = [r'.*' + host + r'.*']
+else:
+    driver = webdriver.Firefox(service=svc, options=opts)
+    print("selenium-wire not present — using selenium-only fallback (will create curl replays with cookies).")
+
 router_host = BASE_URL.replace("https://","").replace("http://","").split("/")[0]
-driver.scopes = [r'.*' + router_host + r'.*']
 
-def timestamp():
-    return time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-
-def sha256_file(p: Path):
-    h = hashlib.sha256()
-    with p.open("rb") as f:
-        for chunk in iter(lambda: f.read(65536), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-# chain-of-custody start
-coc = LOGS / f"chain_of_custody_collect_{timestamp()}.txt"
+# chain-of-custody log
+coc = HASHES / f"chain_of_custody_collect_{ts()}.txt"
 with coc.open("a") as f:
     f.write(f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} | COLLECT_START | user={os.getlogin()} | host={os.uname().nodename}\n")
 
-# attempt login (heuristic)
+# attempt login heuristically
 def attempt_login():
     driver.get(BASE_URL)
     time.sleep(1.5)
     try:
         pwd = driver.find_element(By.CSS_SELECTOR, 'input[type="password"]')
-        # pick a reasonable username input
         inputs = driver.find_elements(By.CSS_SELECTOR, 'input[type="text"], input:not([type])')
         user = inputs[0] if inputs else None
         if user:
             user.clear(); user.send_keys(USERNAME)
         pwd.clear(); pwd.send_keys(PASSWORD)
-        # try submit
         try:
             btn = driver.find_element(By.CSS_SELECTOR, 'button[type="submit"], input[type="submit"]')
             btn.click()
@@ -111,102 +111,124 @@ def attempt_login():
             pwd.send_keys("\n")
         time.sleep(2.5)
         return True
-    except Exception as e:
-        print("Automatischer Login nicht möglich, bitte manuell im Browser einloggen und Script erneut starten.")
+    except Exception:
+        print("Automated login not detected. Please login manually in a browser session and restart script.")
         return False
 
 ok = attempt_login()
 if not ok:
-    driver.quit()
-    sys.exit(2)
+    driver.quit(); sys.exit(2)
 
 collected = []
-# iterate pages and collect artifacts
-for name, q in PAGES:
-    url = urljoin(BASE_URL, q)
+for name, query in PAGES:
+    url = urljoin(BASE_URL, query)
     print("Loading", url)
     driver.get(url)
-    time.sleep(args.timeout)
-    ts = timestamp()
-    htmlp = CONF / f"page_{name}_{ts}.html"
-    shotp = SCREEN / f"page_{name}_{ts}.png"
-    driver.save_screenshot(str(shotp))
+    time.sleep(3)
+    t = ts()
+    htmlp = CONF / f"page_{name}_{t}.html"
+    shotp = SCREEN / f"page_{name}_{t}.png"
     htmlp.write_text(driver.page_source, encoding="utf-8")
-    # pick matching request (best-effort)
-    req = None
-    for r in reversed(driver.requests):
-        if r.host and router_host in r.host:
-            if q.strip("?") in r.path or q == "":
-                req = r; break
-    if not req and driver.requests:
-        req = driver.requests[-1]
-    metafile = CONF / f"reqmeta_{name}_{ts}.txt"
-    meta = []
-    if req:
-        meta.append(f"=== REQUEST ===\n{req.method} {req.path}\n")
-        for k,v in req.headers.items(): meta.append(f"{k}: {v}\n")
-        if req.body:
-            try:
-                mb = req.body.decode("utf-8","ignore")
-            except:
-                mb = str(req.body)
-            meta.append("\n--- REQUEST BODY ---\n")
-            meta.append(mb + "\n")
-        if req.response:
-            meta.append("\n=== RESPONSE ===\n")
-            for k,v in req.response.headers.items(): meta.append(f"{k}: {v}\n")
-            try:
-                rb = req.response.body
-                if rb:
-                    meta.append("\n--- RESPONSE BODY (first 8192 bytes) ---\n")
-                    meta.append(rb[:8192].decode("utf-8","ignore") + "\n")
-            except Exception as e:
-                meta.append(f"\n--- response body capture failed: {e}\n")
+    driver.save_screenshot(str(shotp))
+
+    metafile = CONF / f"reqmeta_{name}_{t}.txt"
+    curlfile = CONF / f"curl_replay_{name}_{t}.sh"
+    meta_lines = []
+
+    if use_wire:
+        # pick most relevant request
+        req = None
+        for r in reversed(driver.requests):
+            if r.host and router_host in r.host:
+                if query.strip("?") in r.path or query == "":
+                    req = r; break
+        if not req and driver.requests:
+            req = driver.requests[-1]
+        if req:
+            meta_lines.append(f"=== REQUEST ===\n{req.method} {req.path}\n")
+            for k,v in req.headers.items(): meta_lines.append(f"{k}: {v}\n")
+            if req.body:
+                try:
+                    mb = req.body.decode('utf-8','ignore')
+                except:
+                    mb = str(req.body)
+                meta_lines.append("\n--- REQUEST BODY ---\n")
+                meta_lines.append(mb + "\n")
+            if req.response:
+                meta_lines.append("\n=== RESPONSE ===\n")
+                for k,v in req.response.headers.items(): meta_lines.append(f"{k}: {v}\n")
+                try:
+                    rb = req.response.body
+                    if rb:
+                        meta_lines.append("\n--- RESPONSE BODY (first 8192 bytes) ---\n")
+                        meta_lines.append(rb[:8192].decode('utf-8','ignore') + "\n")
+                except Exception as e:
+                    meta_lines.append(f"\n--- RESPONSE BODY capture error: {e}\n")
+            # build curl replay
+            curl_parts = [f"curl -k -X {req.method} '{BASE_URL.rstrip('/')}{req.path}' \\"]
+            for hk,hv in req.headers.items():
+                if hk.lower() in ['host','content-length','connection','accept-encoding']:
+                    continue
+                curl_parts.append(f"  -H '{hk}: {hv}' \\")
+            if req.body:
+                try:
+                    b = req.body.decode('utf-8','ignore')
+                    curl_parts.append("  --data " + shlex.quote(b) + " \\")
+                except:
+                    pass
+            curl_parts.append("  -o /dev/null")
+            curlfile.write_text("\n".join(curl_parts), encoding="utf-8")
+        else:
+            meta_lines.append("NO REQUEST FOUND IN WIRE BUFFER\n")
     else:
-        meta.append("NO REQUEST FOUND IN BROWSER BUFFER\n")
-    metafile.write_text("".join(meta), encoding="utf-8")
-    # build curl replay
-    if req:
-        curl_lines = []
-        curl_lines.append(f"curl -k -X {req.method} '{BASE_URL.rstrip('/')}{req.path}' \\")
-        for hk,hv in req.headers.items():
-            if hk.lower() in ['host','content-length','connection','accept-encoding']:
-                continue
-            curl_lines.append(f"  -H '{hk}: {hv}' \\")
-        if req.body:
-            try:
-                b = req.body.decode('utf-8','ignore')
-                # sichere Quote-Erzeugung für reproduzierbare curl-Calls
-                import shlex
-                body_quoted = shlex.quote(b)
-                curl_lines.append("  --data %s \\" % body_quoted)
-            except Exception:
-                pass
-        curl_lines.append("  -o /dev/null")
-        (CONF / f"curl_replay_{name}_{ts}.sh").write_text("\n".join(curl_lines), encoding="utf-8")
-    # compute hashes
-    for p in (htmlp, shotp, metafile, CONF / f"curl_replay_{name}_{ts}.sh"):
+        # selenium-only: extract cookies and perform curl to capture headers/body (read-only)
+        cookies = driver.get_cookies()
+        cookie_header = "; ".join([f"{c['name']}={c['value']}" for c in cookies])
+        safe_url = BASE_URL.rstrip("/") + query
+        headers_out = CONF / f"headers_{name}_{t}.txt"
+        body_out = CONF / f"pagebody_{name}_{t}.html"
+        curl_cmd = [
+            "curl", "-k", "-sS", "-D", str(headers_out), "-o", str(body_out),
+            "-H", f"Cookie: {cookie_header}", safe_url
+        ]
+        try:
+            subprocess.run(curl_cmd, check=True)
+            # reproducible replay file
+            curl_replay = ["#!/usr/bin/env bash",
+                           "# curl replay using extracted cookies (read-only)",
+                           "curl -k -sS -D '{}' -o '{}' -H 'Cookie: {}' '{}'".format(
+                                headers_out.name, body_out.name, cookie_header, safe_url)]
+            curlfile.write_text("\n".join(curl_replay), encoding="utf-8")
+            meta_lines.append(f"=== CURL REPLAY GENERATED: {curlfile.name} ===\n")
+        except subprocess.CalledProcessError as e:
+            meta_lines.append(f"CURL FAILED: {e}\n")
+
+    metafile.write_text("".join(meta_lines), encoding="utf-8")
+
+    # write hashes
+    for p in (htmlp, shotp, metafile, curlfile):
         if p.exists():
             h = sha256_file(p)
             (HASHES / f"{p.name}.sha256").write_text(f"{h}  {p.name}\n", encoding="utf-8")
-    collected.append((name, htmlp, shotp, metafile))
-    print("Saved:", htmlp.name, shotp.name, metafile.name)
+
+    collected.append((name, htmlp, shotp, metafile, curlfile))
+    print("Saved:", htmlp.name, shotp.name, metafile.name, curlfile.name)
 
 # final manifest
-manifest = LOGS / f"collect_manifest_{timestamp()}.txt"
+manifest = LOGS / f"collect_manifest_{ts()}.txt"
 with manifest.open("w") as m:
-    m.write(f"collect manifest\nstarted: {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}\n")
+    m.write("collect manifest\n")
+    m.write(f"started: {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}\n")
     m.write(f"user: {os.getlogin()}\nhost: {os.uname().nodename}\nbase_url: {BASE_URL}\n\nfiles:\n")
-    for n,htmlp,shotp,metafile in collected:
-        if htmlp.exists():
-            m.write(f"{htmlp}\n")
-        if shotp.exists():
-            m.write(f"{shotp}\n")
-        if metafile.exists():
-            m.write(f"{metafile}\n")
-    m.write("\nhashes directory: " + str(HASHES) + "\n")
-print("Collection complete. Manifest:", manifest)
-with coc.open("a") as f:
+    for n,htmlp,shotp,meta,curl in collected:
+        if htmlp.exists(): m.write(f"{htmlp}\n")
+        if shotp.exists(): m.write(f"{shotp}\n")
+        if meta.exists(): m.write(f"{meta}\n")
+        if curl.exists(): m.write(f"{curl}\n")
+    m.write("\nhashes dir: " + str(HASHES) + "\n")
+print("Collection finished. Manifest:", manifest)
+
+with (HASHES / f"chain_of_custody_collect_{ts()}.txt").open("a") as f:
     f.write(f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} | COLLECT_END | files={len(collected)}\n")
 
 driver.quit()
