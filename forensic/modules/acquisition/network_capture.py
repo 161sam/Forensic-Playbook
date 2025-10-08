@@ -68,7 +68,9 @@ class NetworkCaptureModule(AcquisitionModule):
                 timestamp=timestamp,
                 findings=[],
                 metadata={},
-                errors=["Invalid duration specified. Duration must be a positive integer."],
+                errors=[
+                    "Invalid duration specified. Duration must be a positive integer."
+                ],
             )
 
         count_param = params.get("count")
@@ -128,7 +130,13 @@ class NetworkCaptureModule(AcquisitionModule):
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         command = self._build_command(
-            tool_name, tool_path, interface, bpf_filter, duration, packet_count, output_path
+            tool_name,
+            tool_path,
+            interface,
+            bpf_filter,
+            duration,
+            packet_count,
+            output_path,
         )
 
         metadata = {
@@ -181,7 +189,9 @@ class NetworkCaptureModule(AcquisitionModule):
             )
 
         try:
-            stdout, stderr, returncode = self._execute_capture(command, tool_name, duration)
+            stdout, stderr, returncode = self._execute_capture(
+                command, tool_name, duration
+            )
         except Exception as exc:  # pragma: no cover - subprocess failures handled here
             return ModuleResult(
                 result_id=result_id,
@@ -196,9 +206,7 @@ class NetworkCaptureModule(AcquisitionModule):
         metadata.update({"returncode": returncode, "stdout": stdout, "stderr": stderr})
 
         if returncode != 0 or not output_path.exists():
-            error_message = (
-                f"{tool_name} did not complete successfully. Review stdout/stderr for details."
-            )
+            error_message = f"{tool_name} did not complete successfully. Review stdout/stderr for details."
             return ModuleResult(
                 result_id=result_id,
                 module_name=self.name,
@@ -215,7 +223,9 @@ class NetworkCaptureModule(AcquisitionModule):
         meta_path = self._ensure_unique_meta(meta_path)
         meta_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
-        self._log_chain_of_custody(metadata["sha256"], output_path, meta_path, tool_name)
+        self._log_chain_of_custody(
+            metadata["sha256"], output_path, meta_path, tool_name
+        )
 
         findings = [
             {
@@ -239,7 +249,9 @@ class NetworkCaptureModule(AcquisitionModule):
             errors=[],
         )
 
-    def _select_capture_tool(self, requested: Optional[str]) -> Optional[tuple[str, str]]:
+    def _select_capture_tool(
+        self, requested: Optional[str]
+    ) -> Optional[tuple[str, str]]:
         candidates: list[str] = []
         if requested:
             candidates.append(str(requested))
@@ -266,7 +278,9 @@ class NetworkCaptureModule(AcquisitionModule):
         command = [tool_path]
 
         if tool_name == "dumpcap":
-            command.extend(["-i", interface, "-a", f"duration:{duration}", "-w", str(output_path)])
+            command.extend(
+                ["-i", interface, "-a", f"duration:{duration}", "-w", str(output_path)]
+            )
             if packet_count is not None:
                 command.extend(["-c", str(packet_count)])
             if bpf_filter:
@@ -287,11 +301,13 @@ class NetworkCaptureModule(AcquisitionModule):
 
         self.logger.debug("Executing capture command: %s", " ".join(command))
 
-        process = subprocess.Popen(  # noqa: S603 - command constructed from validated input
-            list(command),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
+        process = (
+            subprocess.Popen(  # noqa: S603 - command constructed from validated input
+                list(command),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
         )
 
         try:

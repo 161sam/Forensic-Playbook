@@ -396,7 +396,9 @@ class ReportGenerator(ReportingModule):
                 or record.get("type")
                 or "Timeline event"
             )
-            source = record.get("source") or record.get("module") or record.get("parser")
+            source = (
+                record.get("source") or record.get("module") or record.get("parser")
+            )
             event_type = record.get("type") or record.get("event_type")
 
             normalised.append(
@@ -444,13 +446,17 @@ class ReportGenerator(ReportingModule):
             dns_payload = payload.get("dns") or {}
             if isinstance(dns_payload, dict):
                 summary["dns_findings"].extend(
-                    self._collect_dns_findings(dns_payload.get("suspicious", []), network_file)
+                    self._collect_dns_findings(
+                        dns_payload.get("suspicious", []), network_file
+                    )
                 )
 
             http_payload = payload.get("http") or {}
             if isinstance(http_payload, dict):
                 summary["http_findings"].extend(
-                    self._collect_http_findings(http_payload.get("requests", []), network_file)
+                    self._collect_http_findings(
+                        http_payload.get("requests", []), network_file
+                    )
                 )
 
         summary["top_talkers"] = self._finalise_top_talkers(flow_accumulator)

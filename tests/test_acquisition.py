@@ -23,13 +23,28 @@ def _fake_completed(stdout="", stderr="", returncode=0):
 
 def test_memory_dump_success_creates_artifacts_and_coc(monkeypatch, workspace_case):
     workspace, case_dir = workspace_case
-    module = MemoryDumpModule(case_dir=case_dir, config={"enable_coc": True, "coc_actor": "UnitTest"})
+    module = MemoryDumpModule(
+        case_dir=case_dir, config={"enable_coc": True, "coc_actor": "UnitTest"}
+    )
 
-    monkeypatch.setattr("forensic.modules.acquisition.memory_dump.platform.system", lambda: "Linux")
-    monkeypatch.setattr("forensic.modules.acquisition.memory_dump.socket.gethostname", lambda: "test-host")
-    monkeypatch.setattr("forensic.modules.acquisition.memory_dump.utc_slug", lambda: "20230101T000000Z")
-    monkeypatch.setattr("forensic.modules.acquisition.memory_dump.utc_isoformat", lambda: "2023-01-01T00:00:00Z")
-    monkeypatch.setattr("forensic.modules.acquisition.memory_dump.shutil.which", lambda tool: "/usr/bin/avml" if tool == "avml" else None)
+    monkeypatch.setattr(
+        "forensic.modules.acquisition.memory_dump.platform.system", lambda: "Linux"
+    )
+    monkeypatch.setattr(
+        "forensic.modules.acquisition.memory_dump.socket.gethostname",
+        lambda: "test-host",
+    )
+    monkeypatch.setattr(
+        "forensic.modules.acquisition.memory_dump.utc_slug", lambda: "20230101T000000Z"
+    )
+    monkeypatch.setattr(
+        "forensic.modules.acquisition.memory_dump.utc_isoformat",
+        lambda: "2023-01-01T00:00:00Z",
+    )
+    monkeypatch.setattr(
+        "forensic.modules.acquisition.memory_dump.shutil.which",
+        lambda tool: "/usr/bin/avml" if tool == "avml" else None,
+    )
 
     def fake_run(cmd, capture_output, text, timeout, check):
         output_file = Path(cmd[1])
@@ -71,11 +86,24 @@ def test_memory_dump_dry_run_creates_no_files(monkeypatch, workspace_case):
     _, case_dir = workspace_case
     module = MemoryDumpModule(case_dir=case_dir, config={})
 
-    monkeypatch.setattr("forensic.modules.acquisition.memory_dump.platform.system", lambda: "Linux")
-    monkeypatch.setattr("forensic.modules.acquisition.memory_dump.socket.gethostname", lambda: "dry-run-host")
-    monkeypatch.setattr("forensic.modules.acquisition.memory_dump.utc_slug", lambda: "20230101T000000Z")
-    monkeypatch.setattr("forensic.modules.acquisition.memory_dump.utc_isoformat", lambda: "2023-01-01T00:00:00Z")
-    monkeypatch.setattr("forensic.modules.acquisition.memory_dump.shutil.which", lambda tool: "/usr/bin/avml")
+    monkeypatch.setattr(
+        "forensic.modules.acquisition.memory_dump.platform.system", lambda: "Linux"
+    )
+    monkeypatch.setattr(
+        "forensic.modules.acquisition.memory_dump.socket.gethostname",
+        lambda: "dry-run-host",
+    )
+    monkeypatch.setattr(
+        "forensic.modules.acquisition.memory_dump.utc_slug", lambda: "20230101T000000Z"
+    )
+    monkeypatch.setattr(
+        "forensic.modules.acquisition.memory_dump.utc_isoformat",
+        lambda: "2023-01-01T00:00:00Z",
+    )
+    monkeypatch.setattr(
+        "forensic.modules.acquisition.memory_dump.shutil.which",
+        lambda tool: "/usr/bin/avml",
+    )
 
     result = module.run(None, {"dry_run": True, "enable_live_capture": True})
 
@@ -87,11 +115,22 @@ def test_memory_dump_dry_run_creates_no_files(monkeypatch, workspace_case):
 
 def test_network_capture_success_creates_artifacts_and_coc(monkeypatch, workspace_case):
     workspace, case_dir = workspace_case
-    module = NetworkCaptureModule(case_dir=case_dir, config={"enable_coc": True, "coc_actor": "NetTester"})
+    module = NetworkCaptureModule(
+        case_dir=case_dir, config={"enable_coc": True, "coc_actor": "NetTester"}
+    )
 
-    monkeypatch.setattr("forensic.modules.acquisition.network_capture.utc_slug", lambda: "20230101T000000Z")
-    monkeypatch.setattr("forensic.modules.acquisition.network_capture.utc_isoformat", lambda: "2023-01-01T00:00:00Z")
-    monkeypatch.setattr("forensic.modules.acquisition.network_capture.socket.gethostname", lambda: "net-host")
+    monkeypatch.setattr(
+        "forensic.modules.acquisition.network_capture.utc_slug",
+        lambda: "20230101T000000Z",
+    )
+    monkeypatch.setattr(
+        "forensic.modules.acquisition.network_capture.utc_isoformat",
+        lambda: "2023-01-01T00:00:00Z",
+    )
+    monkeypatch.setattr(
+        "forensic.modules.acquisition.network_capture.socket.gethostname",
+        lambda: "net-host",
+    )
 
     def fake_which(tool):
         return {
@@ -99,7 +138,9 @@ def test_network_capture_success_creates_artifacts_and_coc(monkeypatch, workspac
             "tcpdump": "/usr/sbin/tcpdump",
         }.get(tool)
 
-    monkeypatch.setattr("forensic.modules.acquisition.network_capture.shutil.which", fake_which)
+    monkeypatch.setattr(
+        "forensic.modules.acquisition.network_capture.shutil.which", fake_which
+    )
 
     def fake_execute(self, command, tool_name, duration):
         if "-w" in command:
@@ -155,9 +196,18 @@ def test_network_capture_dry_run_creates_no_artifacts(monkeypatch, workspace_cas
     _, case_dir = workspace_case
     module = NetworkCaptureModule(case_dir=case_dir, config={})
 
-    monkeypatch.setattr("forensic.modules.acquisition.network_capture.utc_slug", lambda: "20230101T000000Z")
-    monkeypatch.setattr("forensic.modules.acquisition.network_capture.utc_isoformat", lambda: "2023-01-01T00:00:00Z")
-    monkeypatch.setattr("forensic.modules.acquisition.network_capture.socket.gethostname", lambda: "net-host")
+    monkeypatch.setattr(
+        "forensic.modules.acquisition.network_capture.utc_slug",
+        lambda: "20230101T000000Z",
+    )
+    monkeypatch.setattr(
+        "forensic.modules.acquisition.network_capture.utc_isoformat",
+        lambda: "2023-01-01T00:00:00Z",
+    )
+    monkeypatch.setattr(
+        "forensic.modules.acquisition.network_capture.socket.gethostname",
+        lambda: "net-host",
+    )
     monkeypatch.setattr(
         "forensic.modules.acquisition.network_capture.shutil.which",
         lambda tool: "/usr/bin/dumpcap",

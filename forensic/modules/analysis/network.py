@@ -139,9 +139,9 @@ class NetworkAnalysisModule(AnalysisModule):
 
         metadata["pcap_extra_available"] = True
 
-        flows: Dict[Tuple[str, str, Optional[int], Optional[int], str], FlowAccumulator] = (
-            defaultdict(FlowAccumulator)
-        )
+        flows: Dict[
+            Tuple[str, str, Optional[int], Optional[int], str], FlowAccumulator
+        ] = defaultdict(FlowAccumulator)
         dns_queries: List[Dict[str, object]] = []
         http_requests: List[Dict[str, object]] = []
 
@@ -149,7 +149,9 @@ class NetworkAnalysisModule(AnalysisModule):
             packets = rdpcap(str(pcap_file))
             self._process_scapy_packets(packets, flows, dns_queries, http_requests)
         else:
-            self._process_pyshark_capture(str(pcap_file), flows, dns_queries, http_requests)
+            self._process_pyshark_capture(
+                str(pcap_file), flows, dns_queries, http_requests
+            )
 
         flows_list = self._serialise_flows(flows)
         dns_summary = self._summarise_dns(dns_queries)
@@ -194,7 +196,9 @@ class NetworkAnalysisModule(AnalysisModule):
     def _process_scapy_packets(
         self,
         packets: Iterable[object],
-        flows: Dict[Tuple[str, str, Optional[int], Optional[int], str], FlowAccumulator],
+        flows: Dict[
+            Tuple[str, str, Optional[int], Optional[int], str], FlowAccumulator
+        ],
         dns_queries: List[Dict[str, object]],
         http_requests: List[Dict[str, object]],
     ) -> None:
@@ -209,7 +213,11 @@ class NetworkAnalysisModule(AnalysisModule):
                 dns_layer = packet[DNS]
                 if getattr(dns_layer, "qr", 1) == 0 and hasattr(dns_layer, "qd"):
                     query = dns_layer.qd
-                    query_name = getattr(query, "qname", b"").rstrip(b".").decode("utf-8", "ignore")
+                    query_name = (
+                        getattr(query, "qname", b"")
+                        .rstrip(b".")
+                        .decode("utf-8", "ignore")
+                    )
                     dns_queries.append(
                         self._build_dns_record(
                             query_name,
@@ -230,7 +238,9 @@ class NetworkAnalysisModule(AnalysisModule):
     def _process_pyshark_capture(
         self,
         pcap_path: str,
-        flows: Dict[Tuple[str, str, Optional[int], Optional[int], str], FlowAccumulator],
+        flows: Dict[
+            Tuple[str, str, Optional[int], Optional[int], str], FlowAccumulator
+        ],
         dns_queries: List[Dict[str, object]],
         http_requests: List[Dict[str, object]],
     ) -> None:
@@ -255,7 +265,9 @@ class NetworkAnalysisModule(AnalysisModule):
                     packet.http, "request_method", None
                 ):
                     http_requests.append(
-                        self._build_http_record_pyshark(packet.http, timestamp, flow_key)
+                        self._build_http_record_pyshark(
+                            packet.http, timestamp, flow_key
+                        )
                     )
         finally:
             capture.close()
@@ -265,7 +277,9 @@ class NetworkAnalysisModule(AnalysisModule):
     # ------------------------------------------------------------------
     def _serialise_flows(
         self,
-        flows: Dict[Tuple[str, str, Optional[int], Optional[int], str], FlowAccumulator],
+        flows: Dict[
+            Tuple[str, str, Optional[int], Optional[int], str], FlowAccumulator
+        ],
     ) -> List[Dict[str, object]]:
         result: List[Dict[str, object]] = []
         for (src, dst, sport, dport, proto), accumulator in flows.items():
@@ -313,8 +327,7 @@ class NetworkAnalysisModule(AnalysisModule):
         encoded_uris = [
             req["uri"]
             for req in requests
-            if req.get("uri")
-            and req.get("indicators", {}).get("encoded_uri")
+            if req.get("uri") and req.get("indicators", {}).get("encoded_uri")
         ]
         return {
             "requests": requests,
@@ -367,7 +380,9 @@ class NetworkAnalysisModule(AnalysisModule):
     ) -> Optional[Tuple[str, str, Optional[int], Optional[int], str]]:
         src = dst = None
         sport = dport = None
-        protocol = getattr(packet.highest_layer, "lower", lambda: packet.highest_layer)()
+        protocol = getattr(
+            packet.highest_layer, "lower", lambda: packet.highest_layer
+        )()
 
         if hasattr(packet, "ip"):
             src = getattr(packet.ip, "src", None)
@@ -538,7 +553,9 @@ class NetworkAnalysisModule(AnalysisModule):
 
     def _protocol_name(self, proto_number: Optional[int]) -> str:
         proto_map = {6: "TCP", 17: "UDP", 1: "ICMP"}
-        return proto_map.get(proto_number, str(proto_number) if proto_number is not None else "unknown")
+        return proto_map.get(
+            proto_number, str(proto_number) if proto_number is not None else "unknown"
+        )
 
     def _format_timestamp(self, timestamp: float) -> str:
         if timestamp in (float("inf"), float("-inf")):
@@ -555,4 +572,3 @@ class NetworkAnalysisModule(AnalysisModule):
             probability = count / total
             entropy -= probability * math.log2(probability)
         return entropy
-

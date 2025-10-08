@@ -623,9 +623,7 @@ class TimelineModule(AnalysisModule):
                         }
                     )
         except Exception as exc:
-            self.logger.debug(
-                "Failed to parse CSV timeline %s: %s", timeline_file, exc
-            )
+            self.logger.debug("Failed to parse CSV timeline %s: %s", timeline_file, exc)
 
         return events
 
@@ -637,14 +635,10 @@ class TimelineModule(AnalysisModule):
             if timeline_file.suffix.lower() == ".jsonl":
                 with timeline_file.open(encoding="utf-8") as handle:
                     records: Iterable[Any] = (
-                        json.loads(line)
-                        for line in handle
-                        if line.strip()
+                        json.loads(line) for line in handle if line.strip()
                     )
                     events.extend(
-                        self._events_from_records(
-                            records, source_label, timeline_file
-                        )
+                        self._events_from_records(records, source_label, timeline_file)
                     )
             else:
                 with timeline_file.open(encoding="utf-8") as handle:
@@ -694,9 +688,7 @@ class TimelineModule(AnalysisModule):
             event_type = self._first_non_empty(record, type_fields) or "event"
             summary = self._first_non_empty(record, summary_fields)
             if not summary:
-                summary = self._fallback_summary(
-                    record, timestamp_fields + type_fields
-                )
+                summary = self._fallback_summary(record, timestamp_fields + type_fields)
 
             events.append(
                 {
@@ -728,14 +720,14 @@ class TimelineModule(AnalysisModule):
                 )
                 continue
 
-            events.extend(self._network_flow_events(payload.get("flows", []), network_file))
+            events.extend(
+                self._network_flow_events(payload.get("flows", []), network_file)
+            )
             dns_payload = {}
             if isinstance(payload.get("dns"), dict):
                 dns_payload = payload.get("dns", {})
             events.extend(
-                self._network_dns_events(
-                    dns_payload.get("queries", []), network_file
-                )
+                self._network_dns_events(dns_payload.get("queries", []), network_file)
             )
             http_payload = {}
             if isinstance(payload.get("http"), dict):
