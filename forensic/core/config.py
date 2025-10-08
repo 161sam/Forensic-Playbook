@@ -18,12 +18,20 @@ configuration being used.
 from __future__ import annotations
 
 import os
+import warnings
 from collections.abc import Iterable, Mapping, MutableMapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
-import yaml
+# ``PyYAML`` is an optional dependency during testing.  The framework degrades
+# gracefully when it is not installed as long as no YAML configuration files are
+# parsed.  The import is therefore guarded and the loader will surface a clear
+# error message when YAML support is required.
+try:  # pragma: no cover - exercise through behaviour instead
+    import yaml  # type: ignore[import-not-found]
+except ModuleNotFoundError:  # pragma: no cover - environment dependent
+    yaml = None  # type: ignore[assignment]
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "log_level": "INFO",
@@ -45,6 +53,14 @@ def load_yaml(path: Path) -> dict[str, Any]:
     """
 
     if not path or not path.exists():
+        return {}
+
+    if yaml is None:
+        warnings.warn(
+            f"PyYAML not installed; skipping configuration file {path}.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
         return {}
 
     with path.open("r", encoding="utf-8") as handle:

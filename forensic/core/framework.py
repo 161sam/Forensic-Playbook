@@ -12,7 +12,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Type
 
-import yaml
+# ``PyYAML`` is optional at runtime. Import lazily and provide a helpful
+# message if pipeline definitions rely on it while the dependency is missing.
+try:  # pragma: no cover - behaviour depends on environment
+    import yaml  # type: ignore[import-not-found]
+except ModuleNotFoundError:  # pragma: no cover - environment dependent
+    yaml = None  # type: ignore[assignment]
 
 from .chain_of_custody import ChainOfCustody
 from .config import FrameworkConfig, get_config, load_yaml
@@ -462,6 +467,12 @@ class ForensicFramework:
         """
         if not self.current_case:
             raise RuntimeError("No active case")
+
+        if yaml is None:
+            raise RuntimeError(
+                "PyYAML is required to load pipeline definitions. Install it via "
+                "'pip install pyyaml'."
+            )
 
         with open(pipeline_file) as f:
             pipeline = yaml.safe_load(f)
