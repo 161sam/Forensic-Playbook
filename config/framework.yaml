@@ -1,0 +1,10 @@
+log_level: INFO
+parallel_execution: true
+max_workers: 4
+output_formats:
+  - json
+  - html
+enable_coc: true
+hash_algorithm: sha256
+timezone: UTC
+workspace_name: forensic_workspace

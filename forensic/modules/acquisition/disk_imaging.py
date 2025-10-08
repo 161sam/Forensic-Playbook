@@ -8,7 +8,7 @@ import os
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from ...core.evidence import Evidence
 from ...core.module import AcquisitionModule, ModuleResult

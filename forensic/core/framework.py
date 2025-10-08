@@ -5,10 +5,9 @@ Central orchestrator for forensic investigations
 """
 
 import json
-import logging
 import sqlite3
 import sys
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Type
@@ -16,6 +15,7 @@ from typing import Any, Dict, List, Optional, Type
 import yaml
 
 from .chain_of_custody import ChainOfCustody
+from .config import FrameworkConfig, get_config, load_yaml
 from .evidence import Evidence, EvidenceType
 from .logger import setup_logging
 from .module import ForensicModule, ModuleResult
@@ -24,6 +24,7 @@ from .module import ForensicModule, ModuleResult
 @dataclass
 class Case:
     """Forensic case representation"""
+
     case_id: str
     name: str
     description: str
@@ -37,7 +38,7 @@ class Case:
 class ForensicFramework:
     """
     Main forensic framework orchestrator
-    
+
     Features:
     - Case management
     - Module registration and execution
@@ -46,69 +47,73 @@ class ForensicFramework:
     - Evidence management
     - Reporting
     """
-    
-    def __init__(self, config_file: Optional[Path] = None, workspace: Optional[Path] = None):
+
+    def __init__(
+        self, config_file: Optional[Path] = None, workspace: Optional[Path] = None
+    ):
         """
         Initialize framework
-        
+
         Args:
             config_file: Path to configuration file
             workspace: Workspace directory
         """
         self.workspace = workspace or Path.cwd() / "forensic_workspace"
         self.workspace.mkdir(parents=True, exist_ok=True)
-        
+
         # Load configuration
-        self.config = self._load_config(config_file)
-        
+        self.config_obj: FrameworkConfig = self._load_config(config_file)
+        self.config = self.config_obj.as_dict()
+
         # Setup logging
         self.logger = setup_logging(
-            self.workspace / "logs",
-            level=self.config.get("log_level", "INFO")
+            self.workspace / "logs", level=self.config.get("log_level", "INFO")
         )
-        
+
         # Initialize database
         self.db_path = self.workspace / "cases.db"
         self._init_database()
-        
+
         # Module registry
         self._modules: Dict[str, Type[ForensicModule]] = {}
-        
+
         # Chain of custody
         self.coc = ChainOfCustody(self.workspace / "chain_of_custody.db")
-        
+
         # Current case
         self.current_case: Optional[Case] = None
-        
+
         self.logger.info(f"Forensic Framework initialized. Workspace: {self.workspace}")
-    
-    def _load_config(self, config_file: Optional[Path]) -> Dict:
-        """Load configuration from YAML file"""
-        default_config = {
-            "log_level": "INFO",
-            "parallel_execution": True,
-            "max_workers": 4,
-            "output_formats": ["json", "html"],
-            "enable_coc": True,
-            "hash_algorithm": "sha256"
-        }
-        
-        if config_file and config_file.exists():
-            try:
-                with open(config_file) as f:
-                    user_config = yaml.safe_load(f)
-                    default_config.update(user_config)
-            except Exception as e:
-                print(f"Warning: Failed to load config: {e}", file=sys.stderr)
-        
-        return default_config
-    
+
+    def _load_config(self, config_file: Optional[Path]) -> FrameworkConfig:
+        """Load configuration via :mod:`forensic.core.config`."""
+
+        overrides: Dict[str, Any] = {}
+        config_root: Optional[Path] = None
+
+        if config_file:
+            config_file = config_file.expanduser()
+            if config_file.is_file():
+                try:
+                    overrides = load_yaml(config_file)
+                except Exception as exc:  # pragma: no cover - rare path
+                    print(
+                        f"Warning: Failed to load config {config_file}: {exc}",
+                        file=sys.stderr,
+                    )
+                config_root = config_file.parent
+            elif config_file.is_dir():
+                config_root = config_file
+
+        return get_config(config_root=config_root, overrides=overrides)
+
     def _init_database(self):
         """Initialize SQLite database for case management"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        
-        cursor.execute("""
+
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS cases (
                 case_id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -118,9 +123,11 @@ class ForensicFramework:
                 case_dir TEXT,
                 metadata TEXT
             )
-        """)
-        
-        cursor.execute("""
+        """
+        )
+
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS evidence (
                 evidence_id TEXT PRIMARY KEY,
                 case_id TEXT,
@@ -132,9 +139,11 @@ class ForensicFramework:
                 metadata TEXT,
                 FOREIGN KEY (case_id) REFERENCES cases(case_id)
             )
-        """)
-        
-        cursor.execute("""
+        """
+        )
+
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS module_results (
                 result_id TEXT PRIMARY KEY,
                 case_id TEXT,
@@ -145,65 +154,66 @@ class ForensicFramework:
                 metadata TEXT,
                 FOREIGN KEY (case_id) REFERENCES cases(case_id)
             )
-        """)
-        
+        """
+        )
+
         conn.commit()
         conn.close()
-    
+
     def register_module(self, name: str, module_class: Type[ForensicModule]):
         """
         Register a forensic module
-        
+
         Args:
             name: Module name
             module_class: Module class (subclass of ForensicModule)
         """
         if not issubclass(module_class, ForensicModule):
             raise TypeError(f"{module_class} must be subclass of ForensicModule")
-        
+
         self._modules[name] = module_class
         self.logger.info(f"Registered module: {name}")
-    
+
     def create_case(
         self,
         name: str,
         description: str,
         investigator: str,
-        case_id: Optional[str] = None
+        case_id: Optional[str] = None,
     ) -> Case:
         """
         Create new forensic case
-        
+
         Args:
             name: Case name
             description: Case description
             investigator: Investigator name
             case_id: Optional case ID (auto-generated if not provided)
-        
+
         Returns:
             Case object
         """
         if case_id is None:
             case_id = f"CASE_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
-        
+
         case_dir = self.workspace / "cases" / case_id
         case_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Create case subdirectories
         (case_dir / "evidence").mkdir(exist_ok=True)
         (case_dir / "analysis").mkdir(exist_ok=True)
         (case_dir / "reports").mkdir(exist_ok=True)
         (case_dir / "logs").mkdir(exist_ok=True)
-        
+
         case = Case(
             case_id=case_id,
             name=name,
             description=description,
             investigator=investigator,
             created_at=datetime.utcnow().isoformat() + "Z",
-            case_dir=case_dir
+            case_dir=case_dir,
         )
-        
+
         # Save to database
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
@@ -219,26 +229,26 @@ class ForensicFramework:
                 case.investigator,
                 case.created_at,
                 str(case.case_dir),
-                json.dumps(case.metadata)
-            )
+                json.dumps(case.metadata),
+            ),
         )
         conn.commit()
         conn.close()
-        
+
         # Log to CoC
         if self.config.get("enable_coc"):
             self.coc.log_event(
                 event_type="CASE_CREATED",
                 case_id=case_id,
                 description=f"Case created: {name}",
-                actor=investigator
+                actor=investigator,
             )
-        
+
         self.current_case = case
         self.logger.info(f"Created case: {case_id} - {name}")
-        
+
         return case
-    
+
     def load_case(self, case_id: str) -> Case:
         """Load existing case from database"""
         conn = sqlite3.connect(self.db_path)
@@ -246,10 +256,10 @@ class ForensicFramework:
         cursor.execute("SELECT * FROM cases WHERE case_id = ?", (case_id,))
         row = cursor.fetchone()
         conn.close()
-        
+
         if not row:
             raise ValueError(f"Case not found: {case_id}")
-        
+
         case = Case(
             case_id=row[0],
             name=row[1],
@@ -257,50 +267,51 @@ class ForensicFramework:
             investigator=row[3],
             created_at=row[4],
             case_dir=Path(row[5]),
-            metadata=json.loads(row[6]) if row[6] else {}
+            metadata=json.loads(row[6]) if row[6] else {},
         )
-        
+
         self.current_case = case
         self.logger.info(f"Loaded case: {case_id}")
-        
+
         return case
-    
+
     def add_evidence(
         self,
         evidence_type: EvidenceType,
         source_path: Path,
         description: str,
-        metadata: Optional[Dict] = None
+        metadata: Optional[Dict] = None,
     ) -> Evidence:
         """
         Add evidence to current case
-        
+
         Args:
             evidence_type: Type of evidence
             source_path: Path to evidence
             description: Description
             metadata: Additional metadata
-        
+
         Returns:
             Evidence object
         """
         if not self.current_case:
             raise RuntimeError("No active case. Create or load a case first.")
-        
+
         evidence = Evidence(
             evidence_type=evidence_type,
             source_path=source_path,
             description=description,
-            metadata=metadata or {}
+            metadata=metadata or {},
         )
-        
+
         # Copy to case evidence directory
         dest_path = self.current_case.case_dir / "evidence" / source_path.name
         if source_path.is_file():
             import shutil
+
             shutil.copy2(source_path, dest_path)
             evidence.hash_sha256 = self._compute_hash(dest_path)
-        
+
         # Save to database
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
@@ -319,12 +330,12 @@ class ForensicFramework:
                 description,
                 evidence.collected_at,
                 evidence.hash_sha256,
-                json.dumps(evidence.metadata)
-            )
+                json.dumps(evidence.metadata),
+            ),
         )
         conn.commit()
         conn.close()
-        
+
         # Log to CoC
         if self.config.get("enable_coc"):
             self.coc.log_event(
@@ -333,59 +344,56 @@ class ForensicFramework:
                 evidence_id=evidence.evidence_id,
                 description=f"Evidence added: {description}",
                 actor=self.current_case.investigator,
-                metadata={"hash": evidence.hash_sha256}
+                metadata={"hash": evidence.hash_sha256},
             )
-        
+
         self.current_case.evidence.append(evidence)
         self.logger.info(f"Added evidence: {evidence.evidence_id}")
-        
+
         return evidence
-    
+
     def execute_module(
         self,
         module_name: str,
         evidence: Optional[Evidence] = None,
-        params: Optional[Dict] = None
+        params: Optional[Dict] = None,
     ) -> ModuleResult:
         """
         Execute a forensic module
-        
+
         Args:
             module_name: Name of registered module
             evidence: Evidence to analyze
             params: Module parameters
-        
+
         Returns:
             ModuleResult
         """
         if not self.current_case:
             raise RuntimeError("No active case")
-        
+
         if module_name not in self._modules:
             raise ValueError(f"Module not registered: {module_name}")
-        
+
         # Instantiate module
         module_class = self._modules[module_name]
-        module = module_class(
-            case_dir=self.current_case.case_dir,
-            config=self.config
-        )
-        
+        module = module_class(case_dir=self.current_case.case_dir, config=self.config)
+
         self.logger.info(f"Executing module: {module_name}")
-        
+
         # Log to CoC
         if self.config.get("enable_coc"):
             self.coc.log_event(
                 event_type="MODULE_EXECUTION_START",
                 case_id=self.current_case.case_id,
                 description=f"Module execution started: {module_name}",
-                actor=self.current_case.investigator
+                actor=self.current_case.investigator,
             )
-        
+
         # Execute
         try:
             result = module.execute(evidence=evidence, params=params or {})
-            
+
             # Save result to database
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
@@ -403,12 +411,12 @@ class ForensicFramework:
                     result.timestamp,
                     result.status,
                     str(result.output_path) if result.output_path else None,
-                    json.dumps(result.metadata)
-                )
+                    json.dumps(result.metadata),
+                ),
             )
             conn.commit()
             conn.close()
-            
+
             # Log to CoC
             if self.config.get("enable_coc"):
                 self.coc.log_event(
@@ -416,30 +424,30 @@ class ForensicFramework:
                     case_id=self.current_case.case_id,
                     description=f"Module execution completed: {module_name} - {result.status}",
                     actor=self.current_case.investigator,
-                    metadata={"result_id": result.result_id}
+                    metadata={"result_id": result.result_id},
                 )
-            
+
             self.logger.info(f"Module executed: {module_name} - {result.status}")
-            
+
             return result
-            
+
         except Exception as e:
             self.logger.error(f"Module execution failed: {module_name} - {e}")
-            
+
             if self.config.get("enable_coc"):
                 self.coc.log_event(
                     event_type="MODULE_EXECUTION_FAILED",
                     case_id=self.current_case.case_id,
                     description=f"Module execution failed: {module_name} - {str(e)}",
-                    actor=self.current_case.investigator
+                    actor=self.current_case.investigator,
                 )
-            
+
             raise
-    
+
     def execute_pipeline(self, pipeline_file: Path):
         """
         Execute a forensic pipeline
-        
+
         Pipeline YAML format:
             name: "Incident Response Pipeline"
             description: "Full IR workflow"
@@ -454,17 +462,17 @@ class ForensicFramework:
         """
         if not self.current_case:
             raise RuntimeError("No active case")
-        
+
         with open(pipeline_file) as f:
             pipeline = yaml.safe_load(f)
-        
+
         self.logger.info(f"Executing pipeline: {pipeline.get('name', 'Unnamed')}")
-        
+
         results = []
         for step in pipeline.get("modules", []):
             module_name = step.get("name")
             params = step.get("params", {})
-            
+
             try:
                 result = self.execute_module(module_name, params=params)
                 results.append(result)
@@ -472,50 +480,57 @@ class ForensicFramework:
                 self.logger.error(f"Pipeline step failed: {module_name} - {e}")
                 if not step.get("continue_on_error", False):
                     raise
-        
+
         return results
-    
+
     def generate_report(self, output_path: Optional[Path] = None, format: str = "html"):
         """Generate case report"""
         if not self.current_case:
             raise RuntimeError("No active case")
-        
+
         if output_path is None:
-            output_path = self.current_case.case_dir / "reports" / f"report_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.{format}"
-        
+            output_path = (
+                self.current_case.case_dir
+                / "reports"
+                / f"report_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.{format}"
+            )
+
         # TODO: Implement report generation with Jinja2 templates
         self.logger.info(f"Generating report: {output_path}")
-    
+
     def _compute_hash(self, file_path: Path, algorithm: str = "sha256") -> str:
         """Compute file hash"""
         import hashlib
+
         h = hashlib.sha256() if algorithm == "sha256" else hashlib.md5()
-        
+
         with open(file_path, "rb") as f:
             for chunk in iter(lambda: f.read(65536), b""):
                 h.update(chunk)
-        
+
         return h.hexdigest()
-    
+
     def list_cases(self) -> List[Dict]:
         """List all cases"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        cursor.execute("SELECT case_id, name, description, investigator, created_at FROM cases")
+        cursor.execute(
+            "SELECT case_id, name, description, investigator, created_at FROM cases"
+        )
         rows = cursor.fetchall()
         conn.close()
-        
+
         return [
             {
                 "case_id": row[0],
                 "name": row[1],
                 "description": row[2],
                 "investigator": row[3],
-                "created_at": row[4]
+                "created_at": row[4],
             }
             for row in rows
         ]
-    
+
     def list_modules(self) -> List[str]:
         """List registered modules"""
         return list(self._modules.keys())
