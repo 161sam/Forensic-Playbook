@@ -94,7 +94,9 @@ def test_persistence_handles_missing_paths(temp_case, monkeypatch):
     module = PersistenceModule(case_dir=temp_case, config={})
     monkeypatch.setattr(pathlib.Path, "is_file", lambda self: False)
     monkeypatch.setattr(pathlib.Path, "is_dir", lambda self: False)
-    monkeypatch.setattr(pathlib.Path, "mkdir", lambda self, parents=False, exist_ok=False: None)
+    monkeypatch.setattr(
+        pathlib.Path, "mkdir", lambda self, parents=False, exist_ok=False: None
+    )
     result = module.run(None, {})
     assert result.status == "partial"
 

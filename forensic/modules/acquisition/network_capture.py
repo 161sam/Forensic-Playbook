@@ -54,9 +54,7 @@ class NetworkCaptureModule(AcquisitionModule):
             )
 
         if not self._verify_tool(tool):
-            guidance = (
-                f"Missing required tool(s): {tool}. Install tcpdump or dumpcap to use network capture."
-            )
+            guidance = f"Missing required tool(s): {tool}. Install tcpdump or dumpcap to use network capture."
             return self._missing_tool_result(
                 result_id,
                 tool,

@@ -77,7 +77,9 @@ def _register_default_modules(ctx: click.Context) -> None:
 
 
 @click.group()
-@click.option("--workspace", type=click.Path(), default=None, help="Workspace directory")
+@click.option(
+    "--workspace", type=click.Path(), default=None, help="Workspace directory"
+)
 @click.option(
     "--config", type=click.Path(exists=True), default=None, help="Config file"
 )
@@ -303,9 +305,13 @@ def report() -> None:
     show_default=True,
     help="Report output format.",
 )
-@click.option("--out", "out_path", type=click.Path(), default=None, help="Output file path")
+@click.option(
+    "--out", "out_path", type=click.Path(), default=None, help="Output file path"
+)
 @click.option("--case", "case_id", required=True, help="Case identifier")
-@click.option("--dry-run", is_flag=True, help="Prepare report data without writing files")
+@click.option(
+    "--dry-run", is_flag=True, help="Prepare report data without writing files"
+)
 @click.pass_context
 def generate_report(
     ctx: click.Context,
@@ -404,6 +410,8 @@ def diagnostics(ctx: click.Context) -> None:
         click.echo(f"  - {label}: {status}")
 
     click.echo("\nDiagnostics complete.")
+
+
 def _ensure_legacy_enabled(ctx: click.Context) -> None:
     if not ctx.obj.get("legacy_enabled"):
         click.echo(

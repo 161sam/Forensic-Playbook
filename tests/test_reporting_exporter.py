@@ -36,6 +36,8 @@ def test_export_report_markdown_round_trip(tmp_path: Path, sample_report: dict) 
         assert key in content
 
 
-def test_export_report_rejects_unknown_format(tmp_path: Path, sample_report: dict) -> None:
+def test_export_report_rejects_unknown_format(
+    tmp_path: Path, sample_report: dict
+) -> None:
     with pytest.raises(ValueError):
         export_report(sample_report, "pdf", tmp_path / "report.pdf")

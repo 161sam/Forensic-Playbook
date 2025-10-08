@@ -61,13 +61,20 @@ def extract_static_tools(module_path: Path) -> List[str]:
     for node in ast.walk(tree):
         if isinstance(node, ast.Assign):
             for target in node.targets:
-                if isinstance(target, ast.Name) and target.id in {"TOOLS", "REQUIRED_TOOLS"}:
+                if isinstance(target, ast.Name) and target.id in {
+                    "TOOLS",
+                    "REQUIRED_TOOLS",
+                }:
                     value = ast.literal_eval(node.value)
                     if isinstance(value, list | tuple):
                         tools.extend(str(item) for item in value)
         elif isinstance(node, ast.Call):
             func = node.func
-            if isinstance(func, ast.Attribute) and func.attr == "_verify_tool" and node.args:
+            if (
+                isinstance(func, ast.Attribute)
+                and func.attr == "_verify_tool"
+                and node.args
+            ):
                 arg = node.args[0]
                 if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
                     tools.append(arg.value)
@@ -78,7 +85,9 @@ def extract_static_tools(module_path: Path) -> List[str]:
     return sorted(set(tools))
 
 
-def format_notes(status: str, tools: Sequence[str], import_error: Exception | None) -> str:
+def format_notes(
+    status: str, tools: Sequence[str], import_error: Exception | None
+) -> str:
     if import_error is not None:
         return f"Import error: {import_error}"
 
@@ -131,9 +140,7 @@ def render_table(rows: Sequence[ModuleRow]) -> str:
     lines = ["| Kategorie | Modul | Status | Notizen |", "| --- | --- | --- | --- |"]
     for row in rows:
         notes = row.notes if row.notes else "—"
-        lines.append(
-            f"| {row.category} | `{row.module}` | {row.status} | {notes} |"
-        )
+        lines.append(f"| {row.category} | `{row.module}` | {row.status} | {notes} |")
     return "\n".join(lines)
 
 
