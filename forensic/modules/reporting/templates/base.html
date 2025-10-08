@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}Forensic Investigation Report{% endblock %}</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --primary: #1f4b99;
+        --accent: #d4d9e6;
+        --muted: #4b5563;
+        --bg: #f3f4f6;
+      }
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+        line-height: 1.5;
+        color: #111827;
+        background: var(--bg);
+      }
+
+      .page {
+        max-width: 920px;
+        margin: 1.5rem auto;
+        padding: 2.5rem 2.75rem;
+        background: #ffffff;
+        border: 1px solid rgba(17, 24, 39, 0.08);
+        box-shadow: 0 12px 30px rgba(17, 24, 39, 0.08);
+      }
+
+      header {
+        margin-bottom: 2.5rem;
+      }
+
+      header h1 {
+        margin: 0 0 0.35rem 0;
+        font-size: 2rem;
+        letter-spacing: -0.015em;
+      }
+
+      header p {
+        margin: 0;
+        color: var(--muted);
+      }
+
+      .section + .section {
+        margin-top: 2.5rem;
+        padding-top: 2.5rem;
+        border-top: 1px solid rgba(17, 24, 39, 0.1);
+      }
+
+      .section h2 {
+        margin: 0 0 1rem 0;
+        font-size: 1.35rem;
+        color: var(--primary);
+        letter-spacing: 0.01em;
+      }
+
+      .muted {
+        color: var(--muted);
+      }
+
+      .grid {
+        display: grid;
+        gap: 1rem;
+      }
+
+      .grid.two {
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      }
+
+      .card {
+        padding: 1rem;
+        border: 1px solid rgba(17, 24, 39, 0.12);
+        border-radius: 0.5rem;
+        background: #f9fafb;
+      }
+
+      .card strong {
+        display: block;
+        font-size: 1.1rem;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.95rem;
+      }
+
+      th,
+      td {
+        padding: 0.65rem 0.75rem;
+        text-align: left;
+        border-bottom: 1px solid rgba(17, 24, 39, 0.12);
+      }
+
+      th {
+        background: #f3f4f6;
+        font-weight: 600;
+        color: var(--primary);
+      }
+
+      code {
+        font-family: "JetBrains Mono", "Fira Code", Consolas, monospace;
+        font-size: 0.85rem;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.15rem 0.5rem;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+
+      .badge-critical {
+        background: #fee2e2;
+        color: #991b1b;
+      }
+
+      .badge-high {
+        background: #fef3c7;
+        color: #b45309;
+      }
+
+      .badge-medium {
+        background: #e0f2fe;
+        color: #075985;
+      }
+
+      .badge-low {
+        background: #ecfdf5;
+        color: #047857;
+      }
+
+      .badge-info {
+        background: #eef2ff;
+        color: #3730a3;
+      }
+
+      .empty-state {
+        padding: 1.25rem;
+        border-radius: 0.5rem;
+        background: #f9fafb;
+        border: 1px dashed rgba(17, 24, 39, 0.18);
+        color: var(--muted);
+        font-style: italic;
+      }
+
+      .timeline {
+        display: grid;
+        gap: 1rem;
+      }
+
+      .timeline-entry {
+        padding-left: 1rem;
+        border-left: 3px solid var(--primary);
+      }
+
+      .timeline-entry time {
+        display: block;
+        font-family: "JetBrains Mono", "Fira Code", Consolas, monospace;
+        font-size: 0.85rem;
+        color: var(--muted);
+        margin-bottom: 0.25rem;
+      }
+
+      footer {
+        margin-top: 3rem;
+        padding-top: 1.5rem;
+        font-size: 0.85rem;
+        color: var(--muted);
+        border-top: 1px solid rgba(17, 24, 39, 0.1);
+      }
+
+      @media print {
+        body {
+          background: #ffffff;
+        }
+
+        .page {
+          margin: 0;
+          max-width: 100%;
+          padding: 1.75rem 1.5rem;
+          box-shadow: none;
+          border: none;
+        }
+
+        a::after {
+          content: " (" attr(href) ")";
+          font-size: 0.8em;
+        }
+      }
+    </style>
+    {% block head %}{% endblock %}
+  </head>
+  <body>
+    <main class="page">
+      {% block content %}{% endblock %}
+      <footer>
+        <p>Generated on {{ statistics.report_time or "n/a" }}.</p>
+        <p class="muted">Forensic-Playbook Reporting Module</p>
+      </footer>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,275 @@
+{% extends "base.html" %}
+
+{% block title %}Forensic Report — {{ case.name or case.case_id or "Unknown Case" }}{% endblock %}
+
+{% block content %}
+  <header>
+    <h1>Forensic Investigation Report</h1>
+    <p>
+      {% if case.case_id %}Case {{ case.case_id }}{% endif %}
+      {% if case.name %}{% if case.case_id %} · {% endif %}{{ case.name }}{% endif %}
+      {% if not case.case_id and not case.name %}Case Overview{% endif %}
+    </p>
+  </header>
+
+  <section class="section">
+    <h2>Case Details</h2>
+    <div class="grid two">
+      <div class="card">
+        <strong>Investigator</strong>
+        <span>{{ case.investigator or "n/a" }}</span>
+      </div>
+      <div class="card">
+        <strong>Created</strong>
+        <span>{{ case.created_at or "n/a" }}</span>
+      </div>
+      <div class="card">
+        <strong>Report Generated</strong>
+        <span>{{ statistics.report_time }}</span>
+      </div>
+      <div class="card">
+        <strong>Evidence Items</strong>
+        <span>{{ evidence|length }}</span>
+      </div>
+    </div>
+    {% if case.description %}
+      <p style="margin-top: 1.25rem" class="muted">{{ case.description }}</p>
+    {% endif %}
+  </section>
+
+  {% if executive_summary %}
+    <section class="section">
+      <h2>Executive Summary</h2>
+      <div class="grid two">
+        <div class="card">
+          <strong>Total Findings</strong>
+          <span>{{ executive_summary.total_findings or findings|length }}</span>
+        </div>
+        <div class="card">
+          <strong>Critical / High Severity</strong>
+          <span>
+            {{
+              (executive_summary.severity_breakdown.get("critical", 0)
+              + executive_summary.severity_breakdown.get("high", 0))
+              if executive_summary.severity_breakdown
+              else 0
+            }}
+          </span>
+        </div>
+        <div class="card">
+          <strong>Evidence Analysed</strong>
+          <span>{{ executive_summary.total_evidence or evidence|length }}</span>
+        </div>
+      </div>
+      {% if executive_summary.key_findings %}
+        <div style="margin-top: 1.5rem">
+          <h3 style="margin: 0 0 0.75rem 0">Key Findings</h3>
+          <div class="grid">
+            {% for item in executive_summary.key_findings %}
+              <div class="card">
+                <strong>{{ item.description or item.type }}</strong>
+                {% set sev = (item.severity or "info") | lower %}
+                <span class="badge badge-{{ sev }}">{{ sev }}</span>
+                {% if item.context %}
+                  <p class="muted" style="margin: 0.5rem 0 0 0">
+                    {{ item.context | truncate(200, True, "…") }}
+                  </p>
+                {% endif %}
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+    </section>
+  {% endif %}
+
+  {% if evidence %}
+    <section class="section">
+      <h2>Evidence Inventory</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Type</th>
+            <th>Description</th>
+            <th>Collected</th>
+            <th>Hash</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in evidence %}
+            <tr>
+              <td><code>{{ item.evidence_id }}</code></td>
+              <td>{{ item.type or "n/a" }}</td>
+              <td>{{ item.description or item.source_path }}</td>
+              <td>{{ item.collected_at or "n/a" }}</td>
+              <td>
+                {% if item.hash_sha256 %}
+                  <code>{{ item.hash_sha256[:32] }}{% if item.hash_sha256|length > 32 %}…{% endif %}</code>
+                {% else %}
+                  n/a
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  {% endif %}
+
+  {% if findings %}
+    <section class="section">
+      <h2>Analysis Findings</h2>
+      <div class="grid">
+        {% for finding in findings %}
+          {% set severity = (finding.severity or "info") | lower %}
+          <div class="card">
+            <div style="display: flex; justify-content: space-between; gap: 0.75rem">
+              <strong>{{ finding.description or finding.type }}</strong>
+              <span class="badge badge-{{ severity }}">{{ severity }}</span>
+            </div>
+            {% if finding.module %}
+              <p class="muted" style="margin: 0.25rem 0 0 0">Module: {{ finding.module }}</p>
+            {% endif %}
+            {% if finding.file_path %}
+              <p class="muted" style="margin: 0.25rem 0 0 0">File: <code>{{ finding.file_path }}</code></p>
+            {% endif %}
+            {% if finding.context %}
+              <p style="margin: 0.75rem 0 0 0">{{ finding.context }}</p>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
+
+  {% if timeline.events %}
+    <section class="section">
+      <h2>Timeline Overview</h2>
+      <div class="timeline">
+        {% for event in timeline.events[:50] %}
+          <div class="timeline-entry">
+            <time>{{ event.timestamp }}</time>
+            <strong>{{ event.summary }}</strong>
+            {% if event.source %}
+              <p class="muted" style="margin: 0.25rem 0 0 0">Source: {{ event.source }}</p>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+      {% if timeline.events|length > 50 %}
+        <p class="muted" style="margin-top: 0.75rem">
+          Showing first 50 of {{ timeline.events|length }} events.
+        </p>
+      {% endif %}
+      {% if timeline.sources %}
+        <p class="muted" style="margin-top: 0.75rem">
+          Sources: {{ timeline.sources | join(", ") }}
+        </p>
+      {% endif %}
+      {% if timeline.errors %}
+        <p class="muted" style="margin-top: 0.75rem">Warnings: {{ timeline.errors | join("; ") }}</p>
+      {% endif %}
+    </section>
+  {% elif timeline.errors %}
+    <section class="section">
+      <h2>Timeline Overview</h2>
+      <div class="empty-state">No timeline events available.</div>
+      <p class="muted" style="margin-top: 0.75rem">Warnings: {{ timeline.errors | join("; ") }}</p>
+    </section>
+  {% endif %}
+
+  {% if network.available %}
+    <section class="section">
+      <h2>Network Insights</h2>
+      {% if network.top_talkers %}
+        <h3 style="margin: 0 0 0.5rem 0">Top Talkers</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Source</th>
+              <th>Destination</th>
+              <th>Protocol</th>
+              <th>Bytes</th>
+              <th>Packets</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for talker in network.top_talkers %}
+              <tr>
+                <td>{{ talker.src }}</td>
+                <td>{{ talker.dst }}</td>
+                <td>{{ talker.protocol }}</td>
+                <td>{{ talker.bytes }}</td>
+                <td>{{ talker.packets }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% endif %}
+      {% if network.dns_findings %}
+        <h3 style="margin: 1.5rem 0 0.5rem 0">DNS Findings</h3>
+        <div class="grid">
+          {% for entry in network.dns_findings %}
+            <div class="card">
+              <strong>{{ entry.domain or entry.query }}</strong>
+              {% if entry.reason %}
+                <p class="muted" style="margin: 0.35rem 0 0 0">{{ entry.reason }}</p>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+      {% if network.http_findings %}
+        <h3 style="margin: 1.5rem 0 0.5rem 0">HTTP Findings</h3>
+        <div class="grid">
+          {% for entry in network.http_findings %}
+            <div class="card">
+              <strong>{{ entry.host or entry.url }}</strong>
+              {% if entry.method or entry.status %}
+                <p class="muted" style="margin: 0.35rem 0 0 0">
+                  {% if entry.method %}{{ entry.method }}{% endif %}
+                  {% if entry.status %} · Status {{ entry.status }}{% endif %}
+                </p>
+              {% endif %}
+              {% if entry.reason %}
+                <p style="margin: 0.5rem 0 0 0">{{ entry.reason }}</p>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+      {% if not network.top_talkers and not network.dns_findings and not network.http_findings %}
+        <div class="empty-state">No notable network activity recorded.</div>
+      {% endif %}
+    </section>
+  {% endif %}
+
+  {% if chain_of_custody %}
+    <section class="section">
+      <h2>Chain of Custody</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Timestamp</th>
+            <th>Event Type</th>
+            <th>Actor</th>
+            <th>Action</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for event in chain_of_custody %}
+            <tr>
+              <td>{{ event.timestamp }}</td>
+              <td>{{ event.event_type or event.type }}</td>
+              <td>{{ event.actor or "n/a" }}</td>
+              <td>{{ event.action or "" }}</td>
+              <td>{{ event.description or "" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  {% endif %}
+{% endblock %}
