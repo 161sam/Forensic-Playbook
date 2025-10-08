@@ -18,7 +18,7 @@ import json
 import sqlite3
 import subprocess
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from ...core.evidence import Evidence
 from ...core.module import ModuleResult, ReportingModule
@@ -196,6 +196,9 @@ class ReportGenerator(ReportingModule):
         if include_timeline:
             data["timeline"] = self._get_timeline_data()
 
+        # Network analysis summary
+        data["network"] = self._get_network_report_data()
+
         # Chain of Custody
         if include_coc:
             data["chain_of_custody"] = self._get_coc_events()
@@ -314,36 +317,276 @@ class ReportGenerator(ReportingModule):
 
         return findings
 
-    def _get_timeline_data(self) -> List[Dict]:
-        """Get timeline events"""
-        timeline_events = []
+    def _get_timeline_data(self) -> Dict[str, Any]:
+        """Get timeline events with graceful fallbacks."""
+        events: List[Dict[str, Any]] = []
+        sources: List[str] = []
+        errors: List[str] = []
 
-        # Look for timeline files
-        timeline_dirs = [
-            self.case_dir / "analysis" / "timeline",
-            self.case_dir / "analysis" / "ioc_scan",
-        ]
+        # Prefer unified timeline artefacts from the timeline module
+        timeline_root = self.case_dir / "timeline"
+        if timeline_root.exists():
+            for events_file in sorted(timeline_root.glob("**/events.json")):
+                try:
+                    with events_file.open(encoding="utf-8") as handle:
+                        payload = json.load(handle)
+                except Exception as exc:
+                    errors.append(f"Failed to load {events_file}: {exc}")
+                    continue
 
-        for timeline_dir in timeline_dirs:
-            if not timeline_dir.exists():
+                if isinstance(payload, list):
+                    events.extend(self._normalise_timeline_events(payload))
+                    sources.append(str(events_file))
+
+        # Fallback to legacy CSV timelines if no unified events available
+        if not events:
+            timeline_dirs = [
+                self.case_dir / "analysis" / "timeline",
+                self.case_dir / "analysis" / "ioc_scan",
+            ]
+
+            for timeline_dir in timeline_dirs:
+                if not timeline_dir.exists():
+                    continue
+
+                for timeline_file in timeline_dir.glob("*.csv"):
+                    try:
+                        import csv
+
+                        with timeline_file.open(encoding="utf-8") as handle:
+                            reader = csv.DictReader(handle)
+                            raw_events = [row for row in reader]
+                    except Exception as exc:  # pragma: no cover - legacy fallback
+                        errors.append(f"Failed to parse {timeline_file}: {exc}")
+                        continue
+
+                    if raw_events:
+                        events.extend(self._normalise_timeline_events(raw_events))
+                        sources.append(str(timeline_file))
+
+        # Sort and limit the number of events exposed to the report
+        events.sort(key=lambda e: e.get("timestamp", ""))
+
+        return {
+            "events": events[:1000],
+            "sources": sources,
+            "errors": errors,
+        }
+
+    def _normalise_timeline_events(
+        self, records: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        normalised: List[Dict[str, Any]] = []
+        for record in records:
+            if not isinstance(record, dict):
                 continue
 
-            for timeline_file in timeline_dir.glob("*.csv"):
-                try:
-                    import csv
+            timestamp = (
+                record.get("timestamp")
+                or record.get("datetime")
+                or record.get("time")
+                or record.get("date")
+                or ""
+            )
+            summary = (
+                record.get("summary")
+                or record.get("message")
+                or record.get("description")
+                or record.get("event_description")
+                or record.get("type")
+                or "Timeline event"
+            )
+            source = record.get("source") or record.get("module") or record.get("parser")
+            event_type = record.get("type") or record.get("event_type")
 
-                    with open(timeline_file) as f:
-                        reader = csv.DictReader(f)
-                        for row in reader:
-                            if "timestamp" in row:
-                                timeline_events.append(row)
-                except Exception:
-                    pass
+            normalised.append(
+                {
+                    "timestamp": timestamp,
+                    "summary": summary,
+                    "source": source,
+                    "type": event_type,
+                    "raw": record,
+                }
+            )
 
-        # Sort by timestamp
-        timeline_events.sort(key=lambda e: e.get("timestamp", ""))
+        return normalised
 
-        return timeline_events[:1000]  # Limit to 1000 events
+    def _get_network_report_data(self) -> Dict[str, Any]:
+        """Aggregate network analysis artefacts for reporting."""
+        network_root = self.case_dir / "analysis" / "network"
+        summary: Dict[str, Any] = {
+            "artifacts": [],
+            "top_talkers": [],
+            "dns_findings": [],
+            "http_findings": [],
+            "errors": [],
+        }
+
+        if not network_root.exists():
+            summary["available"] = False
+            return summary
+
+        flow_accumulator: Dict[tuple, Dict[str, Any]] = {}
+        for network_file in sorted(network_root.glob("**/network.json")):
+            try:
+                with network_file.open(encoding="utf-8") as handle:
+                    payload = json.load(handle)
+            except Exception as exc:
+                summary["errors"].append(f"Failed to load {network_file}: {exc}")
+                continue
+
+            summary["artifacts"].append(str(network_file))
+
+            flows = payload.get("flows") or []
+            if isinstance(flows, list):
+                self._collect_top_talkers(flow_accumulator, flows)
+
+            dns_payload = payload.get("dns") or {}
+            if isinstance(dns_payload, dict):
+                summary["dns_findings"].extend(
+                    self._collect_dns_findings(dns_payload.get("suspicious", []), network_file)
+                )
+
+            http_payload = payload.get("http") or {}
+            if isinstance(http_payload, dict):
+                summary["http_findings"].extend(
+                    self._collect_http_findings(http_payload.get("requests", []), network_file)
+                )
+
+        summary["top_talkers"] = self._finalise_top_talkers(flow_accumulator)
+        summary["available"] = bool(summary["artifacts"])
+
+        return summary
+
+    def _collect_top_talkers(
+        self,
+        accumulator: Dict[tuple, Dict[str, Any]],
+        flows: List[Dict[str, Any]],
+    ) -> None:
+        for flow in flows:
+            if not isinstance(flow, dict):
+                continue
+
+            src = flow.get("src") or "unknown"
+            dst = flow.get("dst") or "unknown"
+            protocol = flow.get("protocol") or "unknown"
+            key = (src, dst, protocol)
+
+            entry = accumulator.setdefault(
+                key,
+                {
+                    "src": src,
+                    "dst": dst,
+                    "protocol": protocol,
+                    "bytes": 0,
+                    "packets": 0,
+                    "flow_count": 0,
+                    "first_seen": None,
+                    "last_seen": None,
+                },
+            )
+
+            entry["bytes"] += int(flow.get("bytes", 0) or 0)
+            entry["packets"] += int(flow.get("packets", 0) or 0)
+            entry["flow_count"] += 1
+
+            start_ts = flow.get("start_ts")
+            end_ts = flow.get("end_ts")
+
+            if start_ts and (
+                entry["first_seen"] is None or start_ts < entry["first_seen"]
+            ):
+                entry["first_seen"] = start_ts
+            if end_ts and (entry["last_seen"] is None or end_ts > entry["last_seen"]):
+                entry["last_seen"] = end_ts
+
+    def _finalise_top_talkers(
+        self, accumulator: Dict[tuple, Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        talkers = list(accumulator.values())
+        talkers.sort(
+            key=lambda item: (item.get("bytes", 0), item.get("packets", 0)),
+            reverse=True,
+        )
+        return talkers[:10]
+
+    def _collect_dns_findings(
+        self, queries: Any, network_file: Path
+    ) -> List[Dict[str, Any]]:
+        findings: List[Dict[str, Any]] = []
+        if not isinstance(queries, list):
+            return findings
+
+        for query in queries:
+            if not isinstance(query, dict):
+                continue
+
+            heuristics = query.get("heuristics") or {}
+            reasons = [
+                name.replace("_", " ").title()
+                for name, flagged in heuristics.items()
+                if flagged
+            ]
+            findings.append(
+                {
+                    "query": query.get("query") or "(unknown)",
+                    "src": query.get("src") or "unknown",
+                    "timestamp": query.get("timestamp") or "",
+                    "reason": ", ".join(reasons) if reasons else "Suspicious query",
+                    "source_file": str(network_file),
+                }
+            )
+
+        findings.sort(key=lambda item: item.get("timestamp", ""))
+        return findings[:20]
+
+    def _collect_http_findings(
+        self, requests: Any, network_file: Path
+    ) -> List[Dict[str, Any]]:
+        findings: List[Dict[str, Any]] = []
+        if not isinstance(requests, list):
+            return findings
+
+        indicator_labels = {
+            "suspicious_user_agent": "Suspicious user agent",
+            "encoded_uri": "Encoded URI",
+            "uncommon_method": "Uncommon method",
+        }
+
+        for request in requests:
+            if not isinstance(request, dict):
+                continue
+
+            indicators = request.get("indicators") or {}
+            flagged = [
+                indicator_labels.get(name, name)
+                for name, value in indicators.items()
+                if value
+            ]
+
+            if not flagged:
+                continue
+
+            host = request.get("host") or ""
+            uri = request.get("uri") or ""
+            if host and uri:
+                destination = f"{host}{uri}"
+            else:
+                destination = host or uri or "(unknown)"
+
+            findings.append(
+                {
+                    "timestamp": request.get("timestamp") or "",
+                    "method": (request.get("method") or "").upper(),
+                    "destination": destination,
+                    "src": request.get("src") or "unknown",
+                    "indicators": ", ".join(flagged),
+                    "source_file": str(network_file),
+                }
+            )
+
+        findings.sort(key=lambda item: item.get("timestamp", ""))
+        return findings[:20]
 
     def _get_coc_events(self) -> List[Dict]:
         """Get Chain of Custody events"""
@@ -434,8 +677,15 @@ class ReportGenerator(ReportingModule):
         if "evidence" in data:
             stats["total_evidence"] = len(data["evidence"])
 
-        if "timeline" in data:
-            stats["timeline_events"] = len(data["timeline"])
+        if "timeline" in data and isinstance(data["timeline"], dict):
+            stats["timeline_events"] = len(data["timeline"].get("events", []))
+
+        if "network" in data and isinstance(data["network"], dict):
+            network = data["network"]
+            stats["network_artifacts"] = len(network.get("artifacts", []))
+            stats["network_top_talkers"] = len(network.get("top_talkers", []))
+            stats["network_dns_findings"] = len(network.get("dns_findings", []))
+            stats["network_http_findings"] = len(network.get("http_findings", []))
 
         if "chain_of_custody" in data:
             stats["coc_events"] = len(data["chain_of_custody"])
@@ -575,12 +825,25 @@ class ReportGenerator(ReportingModule):
             padding: 30px;
             text-align: center;
         }
-        .warning { 
-            background: #fff3cd; 
-            border: 1px solid #ffc107; 
-            padding: 15px; 
-            margin: 15px 0; 
-            border-radius: 4px; 
+        .warning {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        .empty-state {
+            background: #eef2ff;
+            border: 1px dashed #667eea;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+            color: #4c51bf;
+        }
+        .source-note {
+            font-size: 0.9em;
+            color: #555;
+            margin-top: 10px;
         }
         @media print {
             .container { box-shadow: none; }
@@ -712,23 +975,153 @@ class ReportGenerator(ReportingModule):
         </div>
         {% endif %}
 
-        {% if timeline and timeline|length > 0 %}
+        {% if timeline %}
         <div class="section">
             <h2>📅 Timeline</h2>
-            <p>Showing {{ timeline|length }} events</p>
-            {% for event in timeline[:100] %}
+            {% if timeline.events %}
+            <p>Showing {{ timeline.events|length }} events</p>
+            {% for event in timeline.events[:100] %}
             <div class="timeline-event">
                 <div class="timestamp">{{ event.timestamp }}</div>
-                <div>{{ event.description or event.type or 'Event' }}</div>
-                {% if event.file_path %}
-                <div style="font-size: 0.9em; color: #666;">{{ event.file_path }}</div>
+                <div>{{ event.summary or event.type or 'Event' }}</div>
+                {% if event.source %}
+                <div style="font-size: 0.9em; color: #666;">Source: {{ event.source }}</div>
                 {% endif %}
             </div>
             {% endfor %}
-            {% if timeline|length > 100 %}
+            {% if timeline.events|length > 100 %}
             <p style="margin-top: 15px; font-style: italic; color: #666;">
-                Showing first 100 of {{ timeline|length }} events. See full timeline in analysis files.
+                Showing first 100 of {{ timeline.events|length }} events. See full timeline in analysis files.
             </p>
+            {% endif %}
+            {% else %}
+            <div class="empty-state">No timeline events available.</div>
+            {% endif %}
+
+            {% if timeline.sources %}
+            <p class="source-note">Sources: {{ timeline.sources|join(', ') }}</p>
+            {% endif %}
+            {% if timeline.errors %}
+            <div class="warning">
+                <strong>Timeline warnings:</strong>
+                <ul>
+                {% for error in timeline.errors %}
+                    <li>{{ error }}</li>
+                {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {% if network %}
+        <div class="section">
+            <h2>🌐 Network Analysis</h2>
+            {% if network.available %}
+                {% if network.artifacts %}
+                <p class="source-note">Analysed artefacts: {{ network.artifacts|join(', ') }}</p>
+                {% endif %}
+
+                <h3>Top Talkers</h3>
+                {% if network.top_talkers %}
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Source</th>
+                            <th>Destination</th>
+                            <th>Protocol</th>
+                            <th>Bytes</th>
+                            <th>Packets</th>
+                            <th>Flows</th>
+                            <th>First Seen</th>
+                            <th>Last Seen</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for talker in network.top_talkers %}
+                        <tr>
+                            <td>{{ talker.src }}</td>
+                            <td>{{ talker.dst }}</td>
+                            <td>{{ talker.protocol }}</td>
+                            <td>{{ talker.bytes }}</td>
+                            <td>{{ talker.packets }}</td>
+                            <td>{{ talker.flow_count }}</td>
+                            <td>{{ talker.first_seen or 'unknown' }}</td>
+                            <td>{{ talker.last_seen or 'unknown' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="empty-state">No network flow data available.</div>
+                {% endif %}
+
+                <h3>DNS Findings</h3>
+                {% if network.dns_findings %}
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Query</th>
+                            <th>Source</th>
+                            <th>Reason</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for finding in network.dns_findings %}
+                        <tr>
+                            <td>{{ finding.timestamp }}</td>
+                            <td>{{ finding.query }}</td>
+                            <td>{{ finding.src }}</td>
+                            <td>{{ finding.reason }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="empty-state">No suspicious DNS activity detected.</div>
+                {% endif %}
+
+                <h3>HTTP Findings</h3>
+                {% if network.http_findings %}
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Method</th>
+                            <th>Destination</th>
+                            <th>Source</th>
+                            <th>Indicators</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for finding in network.http_findings %}
+                        <tr>
+                            <td>{{ finding.timestamp }}</td>
+                            <td>{{ finding.method }}</td>
+                            <td>{{ finding.destination }}</td>
+                            <td>{{ finding.src }}</td>
+                            <td>{{ finding.indicators }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="empty-state">No suspicious HTTP activity detected.</div>
+                {% endif %}
+            {% else %}
+            <div class="empty-state">No network analysis artefacts were found for this case.</div>
+            {% endif %}
+
+            {% if network.errors %}
+            <div class="warning">
+                <strong>Network parsing warnings:</strong>
+                <ul>
+                {% for error in network.errors %}
+                    <li>{{ error }}</li>
+                {% endfor %}
+                </ul>
+            </div>
             {% endif %}
         </div>
         {% endif %}
