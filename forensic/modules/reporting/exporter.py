@@ -11,16 +11,40 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict
 
-from jinja2 import Environment, PackageLoader, select_autoescape
+try:  # pragma: no cover - optional dependency
+    from jinja2 import Environment, PackageLoader, select_autoescape
+except ImportError as exc:  # pragma: no cover - optional dependency
+    Environment = None  # type: ignore[assignment]
+    PackageLoader = None  # type: ignore[assignment]
+    select_autoescape = None  # type: ignore[assignment]
+    _JINJA2_IMPORT_ERROR = exc
+else:
+    _JINJA2_IMPORT_ERROR = None
 
 from ...core.time_utils import utc_display
 
 _TEMPLATE_PACKAGE = "forensic.modules.reporting"
 
 
+def _ensure_jinja2() -> None:
+    """Ensure that the optional Jinja2 dependency is available."""
+
+    if (
+        _JINJA2_IMPORT_ERROR is not None
+        or Environment is None
+        or PackageLoader is None
+        or select_autoescape is None
+    ):
+        raise RuntimeError(
+            "HTML report rendering requires the 'jinja2' package to be installed"
+        ) from _JINJA2_IMPORT_ERROR
+
+
 @lru_cache(maxsize=1)
-def _get_environment() -> Environment:
+def _get_environment() -> "Environment":
     """Return a cached Jinja environment for report templates."""
+
+    _ensure_jinja2()
 
     return Environment(
         loader=PackageLoader(_TEMPLATE_PACKAGE, "templates"),
@@ -63,6 +87,7 @@ def export_report(data: Dict[str, Any], fmt: str, outpath: Path) -> Path:
     elif fmt in {"md", "markdown"}:
         outpath.write_text(_to_markdown(data), encoding="utf-8")
     elif fmt == "html":
+        _ensure_jinja2()
         outpath.write_text(_to_html(data), encoding="utf-8")
     else:
         raise ValueError(f"Unsupported export format: {fmt}")
