@@ -100,12 +100,12 @@ black --check .
 | --- | --- | --- | --- |
 | Acquisition | `disk_imaging` | Guarded | Requires ddrescue, ewfacquire (missing locally) |
 | Acquisition | `live_response` | MVP | MVP baseline implementation |
-| Acquisition | `memory_dump` | Guarded | Requires avml, lime, winpmem (missing locally) |
+| Acquisition | `memory_dump` | Guarded | Requires avml (missing locally) |
 | Acquisition | `network_capture` | MVP | MVP baseline implementation |
 | Analysis | `filesystem` | Guarded | Requires fls (missing locally) |
 | Analysis | `malware` | Guarded | Requires yara (missing locally) |
 | Analysis | `memory` | Guarded | Requires vol, vol.py, vol3, volatility (missing locally) |
-| Analysis | `network` | Guarded | Requires tshark (missing locally) |
+| Analysis | `network` | MVP | MVP baseline implementation |
 | Analysis | `registry` | Guarded | Requires reglookup, rip.pl (missing locally) |
 | Analysis | `timeline` | Guarded | Requires fls, log2timeline.py, mactime (missing locally) |
 | Reporting | `exporter` | MVP | MVP baseline implementation |
