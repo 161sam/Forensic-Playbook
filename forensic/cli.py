@@ -28,7 +28,6 @@ from .modules.triage.persistence import PersistenceModule
 from .modules.triage.quick_triage import QuickTriageModule
 from .modules.triage.system_info import SystemInfoModule
 
-
 REPORT_FORMAT_CHOICES = ["html", "json", "md", "markdown"]
 if get_pdf_renderer() is not None:
     REPORT_FORMAT_CHOICES.insert(1, "pdf")
