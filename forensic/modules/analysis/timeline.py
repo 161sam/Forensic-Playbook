@@ -905,7 +905,7 @@ class TimelineModule(AnalysisModule):
     def _normalise_timestamp(self, value: Any) -> Optional[str]:
         if value is None:
             return None
-        if isinstance(value, (int, float)):
+        if isinstance(value, int | float):
             try:
                 return datetime.fromtimestamp(float(value), tz=timezone.utc).isoformat()
             except Exception:

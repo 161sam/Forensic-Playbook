@@ -12,7 +12,6 @@ from jinja2 import Environment, PackageLoader, select_autoescape
 
 from ...core.time_utils import utc_display
 
-
 _TEMPLATE_PACKAGE = "forensic.modules.reporting"
 
 

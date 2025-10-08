@@ -34,9 +34,9 @@ try:  # pragma: no cover - optional dependency
     from scapy.all import (  # type: ignore
         DNS,
         IP,
-        IPv6,
         TCP,
         UDP,
+        IPv6,
         rdpcap,
     )
 except ImportError:  # pragma: no cover - optional dependency
