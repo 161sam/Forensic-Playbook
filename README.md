@@ -12,12 +12,12 @@ operations and offer clear guidance when external tooling is missing.
 | Core framework (cases, evidence, chain of custody) | ✅ Stable |
 | Configuration loader | ✅ Implemented (YAML + environment overrides) |
 | Utilities package | ✅ Implemented |
-| Acquisition modules | 🟡 Disk imaging (legacy), memory dump/network capture/live response stubs |
-| Analysis modules | 🟡 Filesystem/IoC/Timeline ready, malware module provides hash + optional YARA |
+| Acquisition modules | 🟡 Guarded disk imaging + memory/network/live-response with consistent tool checks |
+| Analysis modules | 🟡 Filesystem/memory/network/timeline with guard helpers; malware module hashes + optional YARA |
 | Triage modules | 🟡 Quick triage legacy, system info & persistence snapshots implemented |
-| Reporting | 🟡 HTML generator legacy, exporter for JSON/Markdown ready |
-| Tests | ✅ `pytest -q` |
-| Linting | ✅ `ruff`, `black` via `tox` |
+| Reporting | 🟡 HTML/PDF legacy, JSON/Markdown exporter with CLI integration |
+| Tests | ✅ `pytest -q --cov` (exporter + smoke tests) |
+| Linting & CI | ✅ `ruff`, `black` + GitHub Actions workflow |
 
 > **Note:** Many modules depend on external forensic tools. The framework never
 > executes destructive commands automatically. When tools are missing the CLI
@@ -47,18 +47,25 @@ modules.
 
 ## CLI usage
 
-The CLI is distributed as `forensic-cli.py` in the `scripts/` directory. Run the
-command below to see the currently available modules and which ones are skipped
-because of missing tools:
+After installing the package (`pip install -e .`) the CLI is available as
+`forensic-cli`.
+
+List available modules and see which ones are skipped because of missing tools:
 
 ```bash
-python scripts/forensic-cli.py module list
+forensic-cli modules list
+```
+
+Run diagnostics to inspect environment guards:
+
+```bash
+forensic-cli diagnostics
 ```
 
 Create a workspace and case:
 
 ```bash
-python scripts/forensic-cli.py --workspace /tmp/forensic case create \
+forensic-cli --workspace /tmp/forensic case create \
     --name "Example" --description "Smoke test" --investigator "Analyst"
 ```
 
@@ -66,7 +73,13 @@ Modules with heavy external dependencies expose `--dry-run` parameters so they
 can be exercised safely. For example:
 
 ```bash
-python scripts/forensic-cli.py module run network_capture --param dry_run=true
+forensic-cli modules run network_capture --param dry_run=true
+```
+
+Generate a report preview without writing files:
+
+```bash
+forensic-cli report generate --case CASE123 --fmt md --dry-run
 ```
 
 ## Testing and linting
@@ -80,11 +93,34 @@ black --check .
 
 `tox` provides composite environments (`tox -e lint`, `tox -e tests`).
 
-## Legacy scripts
+## Module Matrix
 
-Shell scripts inside `scripts/` are retained for backwards compatibility. They
-are considered deprecated in favour of the Python CLI. See the "Legacy" section
-in `REPORT.md` for migration notes.
+<!-- MODULE_MATRIX:BEGIN -->
+| Kategorie | Modul | Status | Notizen |
+| --- | --- | --- | --- |
+| Acquisition | `disk_imaging` | Guarded | Requires ddrescue, ewfacquire (missing locally) |
+| Acquisition | `live_response` | MVP | MVP baseline implementation |
+| Acquisition | `memory_dump` | Guarded | Requires avml, lime, winpmem (missing locally) |
+| Acquisition | `network_capture` | MVP | MVP baseline implementation |
+| Analysis | `filesystem` | Guarded | Requires fls (missing locally) |
+| Analysis | `malware` | Guarded | Requires yara (missing locally) |
+| Analysis | `memory` | Guarded | Requires vol, vol.py, vol3, volatility (missing locally) |
+| Analysis | `network` | Guarded | Requires tshark (missing locally) |
+| Analysis | `registry` | Guarded | Requires reglookup, rip.pl (missing locally) |
+| Analysis | `timeline` | Guarded | Requires fls, log2timeline.py, mactime (missing locally) |
+| Reporting | `exporter` | MVP | MVP baseline implementation |
+| Reporting | `generator` | Guarded | Requires wkhtmltopdf (missing locally) |
+| Triage | `persistence` | MVP | MVP baseline implementation |
+| Triage | `quick_triage` | MVP | MVP baseline implementation |
+| Triage | `system_info` | MVP | MVP baseline implementation |
+<!-- MODULE_MATRIX:END -->
+
+## Legacy / Kompatibilität
+
+Shell scripts inside `scripts/` are retained for backwards compatibility and are
+disabled by default. See [`LEGACY.md`](./LEGACY.md) for a complete overview and
+how to invoke wrappers via `forensic-cli --legacy legacy <tool>`. New work
+should rely on the module commands exposed by `forensic-cli`.
 
 ## Contributing
 

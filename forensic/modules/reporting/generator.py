@@ -17,7 +17,6 @@ Features:
 import base64
 import json
 import sqlite3
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -25,6 +24,8 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from ...core.evidence import Evidence
 from ...core.module import ModuleResult, ReportingModule
+from ...core.time_utils import utc_display, utc_isoformat, utc_slug
+from .exporter import export_report
 
 
 class ReportGenerator(ReportingModule):
@@ -55,10 +56,11 @@ class ReportGenerator(ReportingModule):
     def run(self, evidence: Optional[Evidence], params: Dict) -> ModuleResult:
         """Generate report"""
         result_id = self._generate_result_id()
-        timestamp = datetime.utcnow().isoformat() + "Z"
+        timestamp = utc_isoformat()
         
-        report_format = params.get('format', 'html').lower()
-        output_file = params.get('output_file')
+        report_format = params.get("format", "html").lower()
+        output_file = params.get("output_file")
+        dry_run = bool(params.get("dry_run", False))
         
         # Report sections to include
         include_executive_summary = params.get('executive_summary', 'true').lower() == 'true'
@@ -86,17 +88,40 @@ class ReportGenerator(ReportingModule):
                 include_coc
             )
             
-            metadata['sections'] = list(report_data.keys())
-            
-            # Generate report based on format
-            if report_format == 'html':
-                output_path = self._generate_html_report(report_data, output_file)
-            elif report_format == 'pdf':
-                output_path = self._generate_pdf_report(report_data, output_file)
-            elif report_format == 'json':
-                output_path = self._generate_json_report(report_data, output_file)
-            elif report_format == 'markdown':
-                output_path = self._generate_markdown_report(report_data, output_file)
+            metadata["sections"] = list(report_data.keys())
+            metadata["output_format"] = report_format
+
+            default_ext = {
+                "html": "html",
+                "pdf": "pdf",
+                "json": "json",
+                "md": "md",
+                "markdown": "md",
+            }.get(report_format, "html")
+            target_path = (
+                Path(output_file)
+                if output_file
+                else self.output_dir / f"report.{default_ext}"
+            )
+            metadata["output_path"] = str(target_path)
+
+            if dry_run:
+                metadata["dry_run"] = True
+                findings.append(
+                    {
+                        "type": "dry_run",
+                        "description": f"Prepared {report_format.upper()} report",
+                        "output_file": str(target_path),
+                    }
+                )
+                output_path = None
+            elif report_format in {"json", "md", "markdown"}:
+                fmt = "json" if report_format == "json" else "md"
+                output_path = export_report(report_data, fmt, target_path)
+            elif report_format == "html":
+                output_path = self._generate_html_report(report_data, str(target_path))
+            elif report_format == "pdf":
+                output_path = self._generate_pdf_report(report_data, str(target_path))
             else:
                 errors.append(f"Unsupported report format: {report_format}")
                 return ModuleResult(
@@ -106,15 +131,16 @@ class ReportGenerator(ReportingModule):
                     timestamp=timestamp,
                     findings=findings,
                     metadata=metadata,
-                    errors=errors
+                    errors=errors,
                 )
-            
-            findings.append({
-                'type': 'report_generated',
-                'description': f'{report_format.upper()} report generated successfully',
-                'output_file': str(output_path)
-            })
-            
+
+            if not dry_run:
+                findings.append({
+                    'type': 'report_generated',
+                    'description': f'{report_format.upper()} report generated successfully',
+                    'output_file': str(output_path),
+                })
+
         except Exception as e:
             self.logger.error(f"Report generation failed: {e}")
             errors.append(f"Report generation failed: {e}")
@@ -128,12 +154,12 @@ class ReportGenerator(ReportingModule):
                 errors=errors
             )
         
-        metadata['generation_end'] = datetime.utcnow().isoformat() + "Z"
+        metadata['generation_end'] = utc_isoformat()
         
         return ModuleResult(
             result_id=result_id,
             module_name=self.name,
-            status="success",
+            status="success" if not errors else "partial",
             timestamp=timestamp,
             output_path=output_path,
             findings=findings,
@@ -407,7 +433,7 @@ class ReportGenerator(ReportingModule):
     def _generate_html_report(self, data: Dict, output_file: Optional[str]) -> Path:
         """Generate HTML report"""
         if not output_file:
-            output_file = self.output_dir / f"report_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.html"
+            output_file = self.output_dir / f"report_{utc_slug()}.html"
         else:
             output_file = Path(output_file)
         
@@ -727,7 +753,7 @@ class ReportGenerator(ReportingModule):
             <p><strong>Forensic-Playbook v2.0</strong></p>
             <p>Digital Forensics Investigation Framework</p>
             <p style="margin-top: 10px; font-size: 0.9em; opacity: 0.8;">
-                Generated on {{ statistics.report_time or datetime.utcnow().isoformat() }}
+                Generated on {{ statistics.report_time or 'N/A' }}
             </p>
         </footer>
     </div>
@@ -740,7 +766,7 @@ class ReportGenerator(ReportingModule):
         template = Template(html_template)
         
         # Add current datetime if not present
-        data['statistics']['report_time'] = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
+        data['statistics']['report_time'] = utc_display()
         
         html_content = template.render(**data)
         
@@ -758,7 +784,7 @@ class ReportGenerator(ReportingModule):
         html_file = self._generate_html_report(data, None)
         
         if not output_file:
-            output_file = self.output_dir / f"report_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf"
+            output_file = self.output_dir / f"report_{utc_slug()}.pdf"
         else:
             output_file = Path(output_file)
         
@@ -788,7 +814,7 @@ class ReportGenerator(ReportingModule):
     def _generate_json_report(self, data: Dict, output_file: Optional[str]) -> Path:
         """Generate JSON report"""
         if not output_file:
-            output_file = self.output_dir / f"report_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json"
+            output_file = self.output_dir / f"report_{utc_slug()}.json"
         else:
             output_file = Path(output_file)
         
@@ -802,7 +828,7 @@ class ReportGenerator(ReportingModule):
     def _generate_markdown_report(self, data: Dict, output_file: Optional[str]) -> Path:
         """Generate Markdown report"""
         if not output_file:
-            output_file = self.output_dir / f"report_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.md"
+            output_file = self.output_dir / f"report_{utc_slug()}.md"
         else:
             output_file = Path(output_file)
         

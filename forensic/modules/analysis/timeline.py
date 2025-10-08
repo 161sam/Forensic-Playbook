@@ -16,12 +16,12 @@ import csv
 import json
 import subprocess
 import tempfile
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from ...core.evidence import Evidence, EvidenceType
 from ...core.module import AnalysisModule, ModuleResult
+from ...core.time_utils import utc_isoformat
 
 
 class TimelineModule(AnalysisModule):
@@ -64,7 +64,7 @@ class TimelineModule(AnalysisModule):
     def run(self, evidence: Optional[Evidence], params: Dict) -> ModuleResult:
         """Execute timeline generation"""
         result_id = self._generate_result_id()
-        timestamp = datetime.utcnow().isoformat() + "Z"
+        timestamp = utc_isoformat()
         
         source = Path(params['source'])
         output_format = params.get('format', 'csv').lower()
@@ -95,7 +95,24 @@ class TimelineModule(AnalysisModule):
         if timeline_type == 'auto':
             timeline_type = self._detect_timeline_type(source)
             self.logger.info(f"Auto-detected timeline type: {timeline_type}")
-        
+        metadata['timeline_type'] = timeline_type
+
+        requirements = {
+            'plaso': ['log2timeline.py'],
+            'mactime': ['fls', 'mactime'],
+        }
+        required_tools = requirements.get(timeline_type, [])
+        missing_tools = [tool for tool in required_tools if not self._verify_tool(tool)]
+        if missing_tools:
+            guidance = "Install the required timeline tooling to enable this mode."
+            return self._missing_tool_result(
+                result_id,
+                missing_tools,
+                metadata=metadata,
+                guidance=guidance,
+                timestamp=timestamp,
+            )
+
         # Generate timeline
         try:
             if timeline_type == 'plaso':
@@ -164,7 +181,7 @@ class TimelineModule(AnalysisModule):
                 errors=errors
             )
         
-        metadata['end'] = datetime.utcnow().isoformat() + "Z"
+        metadata['end'] = utc_isoformat()
         
         status = "success" if not errors else "partial"
         

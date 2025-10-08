@@ -8,12 +8,12 @@ Migrated from triage_offline.sh with enhancements
 import os
 import re
 import subprocess
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
 from ...core.evidence import Evidence
 from ...core.module import ModuleResult, TriageModule
+from ...core.time_utils import utc_isoformat
 
 
 class QuickTriageModule(TriageModule):
@@ -59,7 +59,7 @@ class QuickTriageModule(TriageModule):
     def run(self, evidence: Optional[Evidence], params: Dict) -> ModuleResult:
         """Execute quick triage"""
         result_id = self._generate_result_id()
-        timestamp = datetime.utcnow().isoformat() + "Z"
+        timestamp = utc_isoformat()
         
         target = Path(params['target'])
         findings = []
@@ -143,7 +143,7 @@ class QuickTriageModule(TriageModule):
                 errors=errors
             )
         
-        metadata['triage_end'] = datetime.utcnow().isoformat() + "Z"
+        metadata['triage_end'] = utc_isoformat()
         metadata['total_findings'] = len(findings)
         
         # Generate summary report
@@ -536,7 +536,7 @@ class QuickTriageModule(TriageModule):
             f.write("=" * 80 + "\n")
             f.write("QUICK TRIAGE SUMMARY REPORT\n")
             f.write("=" * 80 + "\n\n")
-            f.write(f"Generated: {datetime.utcnow().isoformat()}Z\n")
+            f.write(f"Generated: {utc_isoformat()}\n")
             f.write(f"Total Findings: {len(findings)}\n\n")
             
             for finding in findings:

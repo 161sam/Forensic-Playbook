@@ -19,12 +19,12 @@ import json
 import re
 import struct
 import subprocess
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from ...core.evidence import Evidence, EvidenceType
 from ...core.module import AnalysisModule, ModuleResult
+from ...core.time_utils import utc_isoformat
 
 
 class RegistryAnalysisModule(AnalysisModule):
@@ -78,7 +78,7 @@ class RegistryAnalysisModule(AnalysisModule):
     def run(self, evidence: Optional[Evidence], params: Dict) -> ModuleResult:
         """Execute registry analysis"""
         result_id = self._generate_result_id()
-        timestamp = datetime.utcnow().isoformat() + "Z"
+        timestamp = utc_isoformat()
         
         target = Path(params['target'])
         use_regripper = params.get('regripper', 'false').lower() == 'true'
@@ -219,7 +219,7 @@ class RegistryAnalysisModule(AnalysisModule):
                 errors=errors
             )
         
-        metadata['analysis_end'] = datetime.utcnow().isoformat() + "Z"
+        metadata['analysis_end'] = utc_isoformat()
         metadata['total_findings'] = len(findings)
         
         status = "success" if not errors else "partial"

@@ -6,9 +6,10 @@ Tracks all evidence handling and maintains audit trail
 
 import json
 import sqlite3
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+from forensic.core.time_utils import utc_isoformat
 
 
 class ChainOfCustody:
@@ -103,7 +104,7 @@ class ChainOfCustody:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
-        timestamp = datetime.utcnow().isoformat() + "Z"
+        timestamp = utc_isoformat()
         
         # Get previous event ID for this evidence (if any)
         previous_event_id = None
@@ -344,7 +345,7 @@ class ChainOfCustody:
 </head>
 <body>
     <h1>Chain of Custody Report</h1>
-    <p>Generated: """ + datetime.utcnow().isoformat() + """Z</p>
+    <p>Generated: """ + utc_isoformat() + """</p>
     <p>Total Events: """ + str(len(events)) + """</p>
     
     <table>

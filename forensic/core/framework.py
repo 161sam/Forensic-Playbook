@@ -8,7 +8,6 @@ import json
 import sqlite3
 import sys
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Type
 
@@ -24,6 +23,7 @@ from .config import FrameworkConfig, get_config, load_yaml
 from .evidence import Evidence, EvidenceType
 from .logger import setup_logging
 from .module import ForensicModule, ModuleResult
+from .time_utils import utc_isoformat, utc_slug
 
 
 @dataclass
@@ -199,7 +199,7 @@ class ForensicFramework:
             Case object
         """
         if case_id is None:
-            case_id = f"CASE_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+            case_id = f"CASE_{utc_slug()}"
 
         case_dir = self.workspace / "cases" / case_id
         case_dir.mkdir(parents=True, exist_ok=True)
@@ -215,7 +215,7 @@ class ForensicFramework:
             name=name,
             description=description,
             investigator=investigator,
-            created_at=datetime.utcnow().isoformat() + "Z",
+            created_at=utc_isoformat(),
             case_dir=case_dir,
         )
 
@@ -503,7 +503,7 @@ class ForensicFramework:
             output_path = (
                 self.current_case.case_dir
                 / "reports"
-                / f"report_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.{format}"
+                / f"report_{utc_slug()}.{format}"
             )
 
         # TODO: Implement report generation with Jinja2 templates

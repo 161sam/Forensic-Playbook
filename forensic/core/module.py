@@ -7,11 +7,11 @@ All forensic modules inherit from this base
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 from .evidence import Evidence
+from .time_utils import utc_isoformat, utc_slug
 
 
 @dataclass
@@ -134,7 +134,7 @@ class ForensicModule(ABC):
                 result_id=self._generate_result_id(),
                 module_name=self.name,
                 status="failed",
-                timestamp=datetime.utcnow().isoformat() + "Z",
+                timestamp=utc_isoformat(),
                 errors=["Parameter validation failed"]
             )
         
@@ -144,7 +144,7 @@ class ForensicModule(ABC):
                 result_id=self._generate_result_id(),
                 module_name=self.name,
                 status="failed",
-                timestamp=datetime.utcnow().isoformat() + "Z",
+                timestamp=utc_isoformat(),
                 errors=["Module requires root privileges"]
             )
         
@@ -162,7 +162,7 @@ class ForensicModule(ABC):
                 result_id=self._generate_result_id(),
                 module_name=self.name,
                 status="failed",
-                timestamp=datetime.utcnow().isoformat() + "Z",
+                timestamp=utc_isoformat(),
                 errors=[str(e)]
             )
         
@@ -181,7 +181,7 @@ class ForensicModule(ABC):
     
     def _generate_result_id(self) -> str:
         """Generate unique result ID"""
-        return f"{self.name}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+        return f"{self.name}_{utc_slug()}"
     
     def _is_root(self) -> bool:
         """Check if running as root"""
@@ -235,6 +235,32 @@ class ForensicModule(ABC):
         """Verify that required tool is installed"""
         import shutil
         return shutil.which(tool_name) is not None
+
+    def _missing_tool_result(
+        self,
+        result_id: str,
+        tools: str | Sequence[str],
+        *,
+        metadata: Optional[Dict[str, Any]] = None,
+        guidance: Optional[str] = None,
+        status: str = "skipped",
+        timestamp: Optional[str] = None,
+    ) -> ModuleResult:
+        """Return a consistent result when required tooling is unavailable."""
+
+        tool_list = [tools] if isinstance(tools, str) else list(tools)
+        message = guidance or f"Missing required tool(s): {', '.join(tool_list)}"
+        meta = dict(metadata or {})
+        meta.setdefault("missing_tools", tool_list)
+        return ModuleResult(
+            result_id=result_id,
+            module_name=self.name,
+            status=status,
+            timestamp=timestamp or utc_isoformat(),
+            findings=[],
+            metadata=meta,
+            errors=[message],
+        )
     
     def save_result(self, result: ModuleResult, filename: str = "result.json"):
         """

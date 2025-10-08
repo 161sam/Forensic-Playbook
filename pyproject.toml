@@ -1,6 +1,57 @@
 [build-system]
-requires = ["setuptools>=61", "wheel"]
+requires = ["setuptools>=67", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "forensic-playbook"
+version = "0.2.0-dev"
+description = "Modern digital forensics investigation framework"
+readme = "README.md"
+authors = [{ name = "Forensic-Playbook Contributors" }]
+license = { text = "MIT" }
+requires-python = ">=3.10"
+dependencies = [
+    "click>=8.1",
+    "pyyaml>=6.0",
+    "jinja2>=3.1",
+]
+keywords = ["dfir", "forensics", "incident-response"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Topic :: Security",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+    "pytest-mock>=3.11",
+    "ruff>=0.1.9",
+    "black>=23.12",
+]
+memory = [
+    "volatility3>=2.4.0",
+]
+yara = [
+    "yara-python>=4.2",
+]
+pcap = [
+    "scapy>=2.5",
+    "pyshark>=0.5.3",
+]
+
+[project.scripts]
+forensic-cli = "forensic.cli:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["forensic", "forensic.*"]
 
 [tool.black]
 line-length = 88

@@ -31,7 +31,7 @@ import re
 import sys
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
@@ -739,8 +739,8 @@ Examples:
     
     # Create result object
     result = ScanResult(
-        scan_id=f"scan_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}",
-        timestamp=datetime.utcnow().isoformat() + 'Z',
+        scan_id=f"scan_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}",
+        timestamp=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         scan_path=str(args.path),
         ioc_file=str(args.ioc_file),
         matches=matches,

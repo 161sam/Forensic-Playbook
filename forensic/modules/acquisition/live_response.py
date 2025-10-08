@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import platform
 import subprocess
-from datetime import datetime
 from typing import Dict, List, Optional
 
 from ...core.evidence import Evidence
 from ...core.module import AcquisitionModule, ModuleResult
+from ...core.time_utils import utc_isoformat
 from ...utils import io
 
 COMMANDS = {
@@ -40,7 +40,7 @@ class LiveResponseModule(AcquisitionModule):
 
     def run(self, evidence: Optional[Evidence], params: Dict) -> ModuleResult:
         result_id = self._generate_result_id()
-        timestamp = datetime.utcnow().isoformat() + "Z"
+        timestamp = utc_isoformat()
         commands = params.get("commands", list(COMMANDS.keys()))
         output_dir = self.output_dir
         output_dir.mkdir(parents=True, exist_ok=True)
