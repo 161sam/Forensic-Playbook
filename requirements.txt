@@ -1,0 +1,76 @@
+# Forensic-Playbook v2.0 Requirements
+# Python 3.8+
+
+# Core Framework
+click>=8.1.0              # CLI framework
+pyyaml>=6.0              # Configuration files
+jinja2>=3.1.0            # Report templates
+sqlalchemy>=2.0.0        # Database ORM (future migration)
+
+# Evidence & Hashing
+hashlib                  # Built-in, for hashing
+mmh3>=3.0.0             # MurmurHash3
+
+# Forensic Tools Integration
+pytsk3>=20220906        # The Sleuth Kit Python bindings
+libewf-python>=20201129  # E01 image support
+pyaff4>=0.31            # AFF4 image support
+
+# Timeline & Analysis
+dfvfs>=20220926         # Digital Forensics Virtual File System
+plaso>=20220918         # Log2timeline/Plaso
+python-dateutil>=2.8.2  # Date parsing
+
+# Memory Forensics
+# volatility3>=2.4.0    # Volatility 3 (optional, installed via system package)
+
+# IoC & YARA
+yara-python>=4.2.0      # YARA rules
+stix2>=3.0.0           # STIX 2.0 IoC format
+taxii2-client>=2.3.0    # TAXII client for IoC feeds
+
+# Network Analysis
+dpkt>=1.9.8            # Packet parsing
+scapy>=2.5.0           # Advanced packet manipulation
+pyshark>=0.5.3         # tshark wrapper
+
+# Registry Analysis
+python-registry>=1.3.1  # Windows Registry parsing
+regipy>=3.1.0          # Modern Registry parser
+
+# String Extraction
+chardet>=5.0.0         # Character encoding detection
+
+# Report Generation
+weasyprint>=59.0       # HTML to PDF conversion
+markdown>=3.4.0        # Markdown processing
+Pillow>=10.0.0         # Image processing for reports
+
+# Data Processing
+pandas>=2.0.0          # Data analysis
+numpy>=1.24.0          # Numerical computing
+
+# Utilities
+tqdm>=4.65.0           # Progress bars
+colorama>=0.4.6        # Colored terminal output
+psutil>=5.9.5          # System and process utilities
+requests>=2.31.0       # HTTP requests
+
+# Logging & Monitoring
+python-json-logger>=2.0.7  # JSON logging
+
+# Testing (dev)
+pytest>=7.4.0          # Testing framework
+pytest-cov>=4.1.0      # Coverage reporting
+pytest-mock>=3.11.0    # Mocking
+faker>=19.0.0          # Fake data generation
+
+# Code Quality (dev)
+black>=23.7.0          # Code formatter
+flake8>=6.1.0          # Linter
+mypy>=1.5.0            # Type checking
+pylint>=2.17.0         # Code analysis
+
+# Documentation (dev)
+sphinx>=7.1.0          # Documentation generator
+sphinx-rtd-theme>=1.3.0  # Read the Docs theme
