@@ -1,0 +1,528 @@
+# 🛑 npm Supply Chain Attack — IoCs, Detection & Remediation 🗿
+
+Supply chain attacks are back in the spotlight, and this time npm developers are the ones in the blast radius. Recently, multiple **popular npm packages** were compromised with backdoored versions that exfiltrate data to malicious infrastructure.
+
+👉 The root cause? A **phishing campaign against a core npm developer**, which resulted in stolen credentials. With this foothold, attackers were able to publish backdoored versions of critical libraries, escalating this into one of the **biggest npm supply chain incidents ever**.
+
+![npm_cover](https://github.com/user-attachments/assets/58b5a898-0837-4be0-92b4-0c42637825c3) <br/>
+
+This article covers:
+
+* ✅ Indicators of Compromise (IoCs)
+* ✅ A ready-to-use detection script (`IoC_Scan.py`)
+* ✅ Impacted packages with download stats
+* ✅ Static red flag patterns for manual hunting
+* ✅ Practical remediation guidance
+
+Because when dependency hell meets supply chain compromise… you don’t want to be caught unprepared. ⚔️
+
+---
+
+## 🚩 Indicators of Compromise (IoCs)
+
+During investigation, researchers uncovered several domains, IPs, Bitcoin addresses, and ETH wallets tied to this campaign. If you see traffic or references to these in your logs, **you’ve got a problem**.
+
+### Malicious Domains / Infra
+
+* `npmjs[.]help`
+* `static-mw-host.b-cdn[.]net`
+* `img-data-backup.b-cdn[.]net`
+* `websocket-api2.publicvm[.]com`
+
+### Malicious IP
+
+* `185[.]7.81.108`
+
+### Cryptocurrency Wallets (BTC & Others)
+
+A long list of addresses was embedded in the malware for **data exfiltration and monetization**. Here’s just a taste:
+
+* `1H13VnQJKtT4HjD5ZFKaaiZEetMbG7nDHx`
+* `1Li1CRPwjovnGHGPTtcKzy75j37K6n97Rd`
+* `1Dk12ey2hKWJctU3V8Akc1oZPo1ndjbnjP`
+* `1NBvJqc1GdSb5uuX8vT7sysxtT4LB8GnuY`
+* `1Mtv6GsFsbno9XgSGuG6jRXyBYv2tgVhMj`
+* `1BBAQm4DL78JtRdJGEfzDBT2PBkGyvzf4N`
+* `1KkovSeka94yC5K4fDbfbvZeTFoorPggKW`
+* `18CPyFLMdncoYccmsZPnJ5T1hxFjh6aaiV`
+* `1BijzJvYU2GaBCYHa8Hf3PnJh6mjEd92UP`
+* `1Bjvx6WXt9iFB5XKAVsU3TgktgeNbzpn5N`
+* `19fUECa9aZCQxcLeo8FZu8kh5kVWheVrg8`
+* `1DZEep7GsnmBVkbZR3ogeBQqwngo6x4XyR`
+* `1GX1FWYttd65J26JULr9HLr98K7VVUE38w`
+* `14mzwvmF2mUd6ww1gtanQm8Bxv3ZWmxDiC`
+* `1EYHCtXyKMMhUiJxXJH4arfpErNto5j87k`
+* `19D1QXVQCoCLUHUrzQ4rTumqs9jBcvXiRg`
+* `16mKiSoZNTDaYLBQ5LkunK6neZFVV14b7X`
+* `18x8S4yhFmmLUpZUZa3oSRbAeg8cpECpne`
+* `1EkdNoZJuXTqBeaFVzGwp3zHuRURJFvCV8`
+* `13oBVyPUrwbmTAbwxVDMT9i6aVUgm5AnKM`
+* `1DwsWaXLdsn4pnoMtbsmzbH7rTj5jNH6qS`
+* `13wuEH28SjgBatNppqgoUMTWwuuBi9e4tJ`
+* `154jc6v7YwozhFMppkgSg3BdgpaFPtCqYn`
+* `1AP8zLJE6nmNdkfrf1piRqTjpasw7vk5rb`
+* `19F8YKkU7z5ZDAypxQ458iRqH2ctGJFVCn`
+* `17J3wL1SapdZpT2ZVX72Jm5oMSXUgzSwKS`
+* `16z8D7y3fbJsWFs3U8RvBF3A8HLycCW5fH`
+* `1PYtCvLCmnGDNSVK2gFE37FNSf69W2wKjP`
+* `143wdqy6wgY3ez8Nm19AqyYh25AZHz3FUp`
+* `1JuYymZbeoDeH5q65KZVG3nBhYoTK9YXjm`
+* `1PNM2L1bpJQWipuAhNuB7BZbaFLB3LCuju`
+* `19onjpqdUsssaFKJjwuAQGi2eS41vE19oi`
+* `1JQ15RHehtdnLAzMcVT9kU8qq868xFEUsS`
+* `1LVpMCURyEUdE8VfsGqhMvUYVrLzbkqYwf`
+* `1KMcDbd2wecP4Acoz9PiZXsBrJXHbyPyG6`
+* `1DZiXKhBFiKa1f6PTGCNMKSU1xoW3Edb7Z`
+* `174bEk62kr8dNgiduwHgVzeLgLQ38foEgZ`
+* `17cvmxcjTPSBsF1Wi2HfcGXnpLBSzbAs6p`
+* `1NoYvnedUqNshKPZvSayfk8YTQYvoB2wBc`
+* `13694eCkAtBRkip8XdPQ8ga99KEzyRnU6a`
+* `1H13VnQJKtT4HjD5ZFKaaiZEetMbG7nDHx`
+* `1Li1CRPwjovnGHGPTtcKzy75j37K6n97Rd`
+* `1Dk12ey2hKWJctU3V8Akc1oZPo1ndjbnjP`
+* `1NBvJqc1GdSb5uuX8vT7sysxtT4LB8GnuY`
+* `1Mtv6GsFsbno9XgSGuG6jRXyBYv2tgVhMj`
+* `1BBAQm4DL78JtRdJGEfzDBT2PBkGyvzf4N`
+* `1KkovSeka94yC5K4fDbfbvZeTFoorPggKW`
+* `18CPyFLMdncoYccmsZPnJ5T1hxFjh6aaiV`
+* `1BijzJvYU2GaBCYHa8Hf3PnJh6mjEd92UP`
+* `1Bjvx6WXt9iFB5XKAVsU3TgktgeNbzpn5N`
+* `19fUECa9aZCQxcLeo8FZu8kh5kVWheVrg8`
+* `1DZEep7GsnmBVkbZR3ogeBQqwngo6x4XyR`
+* `1GX1FWYttd65J26JULr9HLr98K7VVUE38w`
+* `14mzwvmF2mUd6ww1gtanQm8Bxv3ZWmxDiC`
+* `1EYHCtXyKMMhUiJxXJH4arfpErNto5j87k`
+* `19D1QXVQCoCLUHUrzQ4rTumqs9jBcvXiRg`
+* `16mKiSoZNTDaYLBQ5LkunK6neZFVV14b7X`
+* `18x8S4yhFmmLUpZUZa3oSRbAeg8cpECpne`
+* `1EkdNoZJuXTqBeaFVzGwp3zHuRURJFvCV8`
+* `13oBVyPUrwbmTAbwxVDMT9i6aVUgm5AnKM`
+* `1DwsWaXLdsn4pnoMtbsmzbH7rTj5jNH6qS`
+* `13wuEH28SjgBatNppqgoUMTWwuuBi9e4tJ`
+* `154jc6v7YwozhFMppkgSg3BdgpaFPtCqYn`
+* `1AP8zLJE6nmNdkfrf1piRqTjpasw7vk5rb`
+* `19F8YKkU7z5ZDAypxQ458iRqH2ctGJFVCn`
+* `17J3wL1SapdZpT2ZVX72Jm5oMSXUgzSwKS`
+* `16z8D7y3fbJsWFs3U8RvBF3A8HLycCW5fH`
+* `1PYtCvLCmnGDNSVK2gFE37FNSf69W2wKjP`
+* `143wdqy6wgY3ez8Nm19AqyYh25AZHz3FUp`
+* `1JuYymZbeoDeH5q65KZVG3nBhYoTK9YXjm`
+* `1PNM2L1bpJQWipuAhNuB7BZbaFLB3LCuju`
+* `19onjpqdUsssaFKJjwuAQGi2eS41vE19oi`
+* `1JQ15RHehtdnLAzMcVT9kU8qq868xFEUsS`
+* `1LVpMCURyEUdE8VfsGqhMvUYVrLzbkqYwf`
+* `1KMcDbd2wecP4Acoz9PiZXsBrJXHbyPyG6`
+* `1DZiXKhBFiKa1f6PTGCNMKSU1xoW3Edb7Z`
+* `174bEk62kr8dNgiduwHgVzeLgLQ38foEgZ`
+* `17cvmxcjTPSBsF1Wi2HfcGXnpLBSzbAs6p`
+* `1NoYvnedUqNshKPZvSayfk8YTQYvoB2wBc`
+* `13694eCkAtBRkip8XdPQ8ga99KEzyRnU6a`
+* `TB9emsCq6fQw6wRk4HBxxNnU6Hwt1DnV67`
+* `TSfbXqswodrpw8UBthPTRRcLrqWpnWFY3y`
+* `TYVWbDbkapcKcvbMfdbbcuc3PE1kKefvDH`
+* `TNaeGxNujpgPgcfetYwCNAZF8BZjAQqutc`
+* `TJ1tNPVj7jLK2ds9JNq15Ln6GJV1xYrmWp`
+* `TGExvgwAyaqwcaJmtJzErXqfra66YjLThc`
+* `TC7K8qchM7YXZPdZrbUY7LQwZaahdTA5tG`
+* `TQuqKCAbowuQYEKB9aTnH5uK4hNvaxDCye`
+* `TFcXJysFgotDu6sJu4zZPAvr9xHCN7FAZp`
+* `TLDkM4GrUaA13PCHWhaMcGri7H8A8HR6zR`
+* `TPSLojAyTheudTRztqjhNic6rrrSLVkMAr`
+* `TY2Gs3RVwbmcUiDpxDhchPHF1CVsGxU1mo`
+* `TCYrFDXHBrQkqCPNcp6V2fETk7VoqjCNXw`
+* `TKcuWWdGYqPKe98xZCWkmhc1gKLdDYvJ2f`
+* `TP1ezNXDeyF4RsM3Bmjh4GTYfshf5hogRJ`
+* `TJcHbAGfavWSEQaTTLotG7RosS3iqV5WMb`
+* `TD5U7782gp7ceyrsKwekWFMWF9TjhC6DfP`
+* `TEu3zgthJE32jfY6bYMYGNC7BU2yEXVBgW`
+* `TK5r74dFyMwFSTaJF6dmc2pi7A1gjGTtJz`
+* `TBJH4pB4QPo96BRA7x6DghEv4iQqJBgKeW`
+* `TKBcydgFGX9q3ydaPtxht1TRAmcGybRozt`
+* `TQXoAYKPuzeD1X2c4KvQ4gXhEnya3AsYwC`
+* `TJCevwYQhzcSyPaVBTa15y4qNY2ZxkjwsZ`
+* `THpdx4MiWbXtgkPtsrsvUjHF5AB4u7mx3E`
+* `TWpCDiY8pZoY9dVknsy3U4mrAwVm8mCBh6`
+* `TK5zyFYoyAttoeaUeWGdpRof2qRBbPSV7L`
+* `TAzmtmytEibzixFSfNvqqHEKmMKiz9wUA9`
+* `TCgUwXe3VmLY81tKBrMUjFBr1qPnrEQFNK`
+* `TTPWAyW3Q8MovJvDYgysniq41gQnfRn21V`
+* `TWUJVezQta4zEX94RPmFHF2hzQBRmYiEdn`
+* `TPeKuzck7tZRXKh2GP1TyoePF4Rr1cuUAA`
+* `TJUQCnHifZMHEgJXSd8SLJdVAcRckHGnjt`
+* `TCgX32nkTwRkapNuekTdk1TByYGkkmcKhJ`
+* `TFDKvuw86wduSPZxWTHD9N1TqhXyy9nrAs`
+* `TQVpRbBzD1au3u8QZFzXMfVMpHRyrpemHL`
+* `TSE2VkcRnyiFB4xe8an9Bj1fb6ejsPxa9Z`
+* `THe32hBm9nXnzzi6YFqYo8LX77CMegX3v5`
+* `TXfcpZtbYfVtLdGPgdoLm6hDHtnrscvAFP`
+* `TXgVaHDaEyXSm1LoJEqFgKWTKQQ1jgeQr7`
+* `TD5cRTn9dxa4eodRWszGiKmU4pbpSFN87P`
+* `0xFc4a4858bafef54D1b1d7697bfb5c52F4c166976`
+* `0xa29eeFb3f21Dc8FA8bce065Db4f4354AA683c024`
+* `0x40C351B989113646bc4e9Dfe66AE66D24fE6Da7B`
+* `0x30F895a2C66030795131FB66CBaD6a1f91461731`
+* `0x57394449fE8Ee266Ead880D5588E43501cb84cC7`
+* `0xCd422cCC9f6e8f30FfD6F68C0710D3a7F24a026A`
+* `0x7C502F253124A88Bbb6a0Ad79D9BeD279d86E8f4`
+* `0xe86749d6728d8b02c1eaF12383c686A8544de26A`
+* `0xa4134741a64F882c751110D3E207C51d38f6c756`
+* `0xD4A340CeBe238F148034Bbc14478af59b1323d67`
+* `0xB00A433e1A5Fc40D825676e713E5E351416e6C26`
+* `0xd9Df4e4659B1321259182191B683acc86c577b0f`
+* `0x0a765FA154202E2105D7e37946caBB7C2475c76a`
+* `0xE291a6A58259f660E8965C2f0938097030Bf1767`
+* `0xe46e68f7856B26af1F9Ba941Bc9cd06F295eb06D`
+* `0xa7eec0c4911ff75AEd179c81258a348c40a36e53`
+* `0x3c6762469ea04c9586907F155A35f648572A0C3E`
+* `0x322FE72E1Eb64F6d16E6FCd3d45a376efD4bC6b2`
+* `0x51Bb31a441531d34210a4B35114D8EF3E57aB727`
+* `0x314d5070DB6940C8dedf1da4c03501a3AcEE21E1`
+* `0x75023D76D6cBf88ACeAA83447C466A9bBB0c5966`
+* `0x1914F36c62b381856D1F9Dc524f1B167e0798e5E`
+* `0xB9e9cfd931647192036197881A9082cD2D83589C`
+* `0xE88ae1ae3947B6646e2c0b181da75CE3601287A4`
+* `0x0D83F2770B5bDC0ccd9F09728B3eBF195cf890e2`
+* `0xe2D5C35bf44881E37d7183DA2143Ee5A84Cd4c68`
+* `0xd21E6Dd2Ef006FFAe9Be8d8b0cdf7a667B30806d`
+* `0x93Ff376B931B92aF91241aAf257d708B62D62F4C`
+* `0x5C068df7139aD2Dedb840ceC95C384F25b443275`
+* `0x70D24a9989D17a537C36f2FB6d8198CC26c1c277`
+* `0x0ae487200606DEfdbCEF1A50C003604a36C68E64`
+* `0xc5588A6DEC3889AAD85b9673621a71fFcf7E6B56`
+* `0x3c23bA2Db94E6aE11DBf9cD2DA5297A09d7EC673`
+* `0x5B5cA7d3089D3B3C6393C0B79cDF371Ec93a3fd3`
+* `0x4Cb4c0E7057829c378Eb7A9b174B004873b9D769`
+* `0xd299f05D1504D0B98B1D6D3c282412FD4Df96109`
+* `0x241689F750fCE4A974C953adBECe0673Dc4956E0`
+* `0xBc5f75053Ae3a8F2B9CF9495845038554dDFb261`
+* `0x5651dbb7838146fCF5135A65005946625A2685c8`
+* `0x5c9D146b48f664f2bB4796f2Bb0279a6438C38b1`
+* `0xd2Bf42514d35952Abf2082aAA0ddBBEf65a00BA3`
+* `0xbB1EC85a7d0aa6Cd5ad7E7832F0b4c8659c44cc9`
+* `0x013285c02ab81246F1D68699613447CE4B2B4ACC`
+* `0x97A00E100BA7bA0a006B2A9A40f6A0d80869Ac9e`
+* `0x4Bf0C0630A562eE973CE964a7d215D98ea115693`
+* `0x805aa8adb8440aEA21fDc8f2348f8Db99ea86Efb`
+* `0xae9935793835D5fCF8660e0D45bA35648e3CD463`
+* `0xB051C0b7dCc22ab6289Adf7a2DcEaA7c35eB3027`
+* `0xf7a82C48Edf9db4FBe6f10953d4D889A5bA6780D`
+* `0x06de68F310a86B10746a4e35cD50a7B7C8663b8d`
+* `0x51f3C0fCacF7d042605ABBE0ad61D6fabC4E1F54`
+* `0x49BCc441AEA6Cd7bC5989685C917DC9fb58289Cf`
+* `0x7fD999f778c1867eDa9A4026fE7D4BbB33A45272`
+* `0xe8749d2347472AD1547E1c6436F267F0EdD725Cb`
+* `0x2B471975ac4E4e29D110e43EBf9fBBc4aEBc8221`
+* `0x02004fE6c250F008981d8Fc8F9C408cEfD679Ec3`
+* `0xC4A51031A7d17bB6D02D52127D2774A942987D39`
+* `0xa1b94fC12c0153D3fb5d60ED500AcEC430259751`
+* `0xdedda1A02D79c3ba5fDf28C161382b1A7bA05223`
+* `0xE55f51991C8D01Fb5a99B508CC39B8a04dcF9D04`
+* `LNFWHeiSjb4QB4iSHMEvaZ8caPwtz4t6Ug`
+* `LQk8CEPMP4tq3mc8nQpsZ1QtBmYbhg8UGR`
+* `LMAJo7CV5F5scxJsFW67UsY2RichJFfpP6`
+* `LUvPb1VhwsriAm3ni77i3otND2aYLZ8fHz`
+* `LhWPifqaGho696hFVGTR1KmzKJ8ps7ctFa`
+* `LZZPvXLt4BtMzEgddYnHpUWjDjeD61r5aQ`
+* `LQfKhNis7ZKPRW6H3prbXz1FJd29b3jsmT`
+* `LSihmvTbmQ9WZmq6Rjn35SKLUdBiDzcLBB`
+* `Ldbnww88JPAP1AUXiDtLyeZg9v1tuvhHBP`
+* `LR3YwMqnwLt4Qdn6Ydz8bRFEeXvpbNZUvA`
+* `Lbco8vJ56o1mre6AVU6cF7JjDDscnYHXLP`
+* `LfqFuc3sLafGxWE8vdntZT4M9NKq6Be9ox`
+* `LLcmXxj8Zstje6KqgYb11Ephj8bGdyF1vP`
+* `LcJwR1WvVRsnxoe1A66pCzeXicuroDP6L6`
+* `LUNKimRyxBVXLf9gp3FZo2iVp6D3yyzJLJ`
+* `LY1NnVbdywTNmq45DYdhssrVENZKv7Sk8H`
+* `LNmMqhqpyDwb1zzZReuA8aVUxkZSc4Ztqq`
+* `LdxgXRnXToLMBML2KpgGkdDwJSTM6sbiPE`
+* `LZMn8hLZ2kVjejmDZiSJzJhHZjuHq8Ekmr`
+* `LVnc1MLGDGKs2bmpNAH7zcHV51MJkGsuG9`
+* `LRSZUeQb48cGojUrVsZr9eERjw4K1zAoyC`
+* `LQpGaw3af1DQiKUkGYEx18jLZeS9xHyP9v`
+* `LiVzsiWfCCkW2kvHeMBdawWp9TE8uPgi6V`
+* `LY32ncFBjQXhgCkgTAd2LreFv3JZNTpMvR`
+* `LdPtx4xqmA4HRQCm3bQ9PLEneMWLdkdmqg`
+* `LYcHJk7r9gRbg2z3hz9GGj91Po6TaXDK3k`
+* `LMhCVFq5fTmrwQyzgfp2MkhrgADRAVCGsk`
+* `LPv1wSygi4vPp9UeW6EfWwepEeMFHgALmN`
+* `Lf55UbTiSTjnuQ8uWzUBtzghztezEfSLvT`
+* `LdJHZeBQovSYbW1Lei6CzGAY4d3mUxbNKs`
+* `LbBxnFaR1bZVN2CquNDXGe1xCuu9vUBAQw`
+* `LWWWPK2SZZKB3Nu8pHyq2yPscVKvex5v2X`
+* `LYN4ESQuJ1TbPxQdRYNrghznN8mQt8WDJU`
+* `LiLzQs4KU79R5AUn9jJNd7EziNE7r32Dqq`
+* `LeqNtT4aDY9oM1G5gAWWvB8B39iUobThhe`
+* `LfUdSVrimg54iU7MhXFxpUTPkEgFJonHPV`
+* `LTyhWRAeCRcUC9Wd3zkmjz3AhgX6J18kxZ`
+* `Lc2LtsEJmPYay1oj7v8xj16mSV15BwHtGu`
+* `LVsGi1QVXucA6v9xsjwaAL8WYb7axdekAK`
+* `LewV6Gagn52Sk8hzPHRSbBjUpiNAdqmB9z`
+* `5VVyuV5K6c2gMq1zVeQUFAmo8shPZH28MJCVzccrsZG6`
+* `98EWM95ct8tBYWroCxXYN9vCgN7NTcR6nUsvCx1mEdLZ`
+* `Gs7z9TTJwAKyxN4G3YWPFfDmnUo3ofu8q2QSWfdxtNUt`
+* `CTgjc8kegnVqvtVbGZfpP5RHLKnRNikArUYFpVHNebEN`
+* `7Nnjyhwsp8ia2W4P37iWAjpRao3Bj9tVZBZRTbBpwXWU`
+* `3KFBge3yEg793VqVV1P6fxV7gC9CShh55zmoMcGUNu49`
+* `9eU7SkkFGWvDoqSZLqoFJ9kRqJXDQYcEvSiJXyThCWGV`
+* `4SxDspwwkviwR3evbZHrPa3Rw13kBr51Nxv86mECyXUF`
+* `4SxDspwwkviwR3evbZHrPa3Rw13kBr51Nxv86mECyXUF`
+* `9dtS7zbZD2tK7oaMUj78MKvgUWHbRVLQ95bxnpsCaCLL`
+* `7mdCoRPc1omTiZdYY2xG81EvGwN7Z2yodUTX9ZmLm3fx`
+* `8rdABs8nC2jTwVhR9axWW7WMbGZxW7JUzNV5pRF8KvQv`
+* `55YtaEqYEUM7ASAZ9XmVdSBNy6F7r5zkdLsJFv2ZPtAx`
+* `Gr8Kcyt8UVRF1Pux7YHiK32Spm7cmnFVL6hd7LSLHqoB`
+* `9MRmVsciWKDvwwTaZQCK2NvJE2SeVU8W6EGFmukHTRaB`
+* `5j4k1Ye12dXiFMLSJpD7gFrLbv4QcUrRoKHsgo32kRFr`
+* `F1SEspGoVLhqJTCFQEutTcKDubw44uKnqWc2ydz4iXtv`
+* `G3UBJBY69FpDbwyKhZ8Sf4YULLTtHBtJUvSX4GpbTGQn`
+* `DZyZzbGfdMy5GTyn2ah2PDJu8LEoKPq9EhAkFRQ1Fn6K`
+* `HvygSvLTXPK4fvR17zhjEh57kmb85oJuvcQcEgTnrced`
+* `bitcoincash:qpwsaxghtvt6phm53vfdj0s6mj4l7h24dgkuxeanyh`
+* `bitcoincash:qq7dr7gu8tma7mvpftq4ee2xnhaczqk9myqnk6v4c9`
+* `bitcoincash:qpgf3zrw4taxtvj87y5lcaku77qdhq7kqgdga5u6jz`
+* `bitcoincash:qrkrnnc5kacavf5pl4n4hraazdezdrq08ssmxsrdsf`
+* `bitcoincash:qqdepnkh89dmfxyp4naluvhlc3ynej239sdu760y39`
+* `bitcoincash:qqul8wuxs4ec8u4d6arkvetdmdh4ppwr0ggycetq97`
+* `bitcoincash:qq0enkj6n4mffln7w9z6u8vu2mef47jwlcvcx5f823`
+* `bitcoincash:qrc620lztlxv9elhj5qzvmf2cxhe7egup5few7tcd3`
+* `bitcoincash:qrf3urqnjl4gergxe45ttztjymc8dzqyp54wsddp64`
+* `bitcoincash:qr7mkujcr9c38ddfn2ke2a0sagk52tllesderfrue8`
+* `bitcoincash:qqgjn9yqtud5mle3e7zhmagtcap9jdmcg509q56ynt`
+* `bitcoincash:qpuq8uc9ydxszny5q0j4actg30he6uhffvvy0dl7er`
+* `bitcoincash:qz0640hjl2m3n2ca26rknljpr55gyd9pjq89g6xhrz`
+* `bitcoincash:qq0j6vl2ls2g8kkhkvpcfyjxns5zq03llgsqdnzl4s`
+* `bitcoincash:qq8m8rkl29tcyqq8usfruejnvx27zxlpu52mc9spz7`
+* `bitcoincash:qpudgp66jjj8k9zec4na3690tvu8ksq4fq8ycpjzed`
+* `bitcoincash:qqe3qc9uk08kxnng0cznu9xqqluwfyemxym7w2e3xw`
+* `bitcoincash:qpukdxh30d8dtj552q2jet0pqvcvt64gfujaz8h9sa`
+* `bitcoincash:qqs4grdq56y5nnamu5d8tk450kzul3aulyz8u66mjc`
+* `bitcoincash:qp7rhhk0gcusyj9fvl2ftr06ftt0pt8wgumd8ytssd`
+* `bitcoincash:qpmc3y5y2v7h3x3sgdg7npau034fsggwfczvuqtprl`
+* `bitcoincash:qzum0qk4kpauy8ljspmkc5rjxe5mgam5xg7xl5uq2g`
+* `bitcoincash:qqjqp8ayuky5hq4kgrarpu40eq6xjrneuurc43v9lf`
+* `bitcoincash:qqxu6a3f0240v0mwzhspm5zeneeyecggvufgz82w7u`
+* `bitcoincash:qpux2mtlpd03d8zxyc7nsrk8knarnjxxts2fjpzeck`
+* `bitcoincash:qpcgcrjry0excx80zp8hn9vsn4cnmk57vylwa5mtz3`
+* `bitcoincash:qpjj6prm5menjatrmqaqx0h3zkuhdkfy75uauxz2sj`
+* `bitcoincash:qp79qg7np9mvr4mg78vz8vnx0xn8hlkp7sk0g86064`
+* `bitcoincash:qr27clvagvzra5z7sfxxrwmjxy026vltucdkhrsvc7`
+* `bitcoincash:qrsypfz3lqt8xtf8ej5ftrqyhln577me6v640uew8j`
+* `bitcoincash:qrzfrff4czjn6ku0tn2u3cxk7y267enfqvx6zva5w6`
+* `bitcoincash:qr7exs4az754aknl3r5gp9scn74dzjkcrgql3jpv59`
+* `bitcoincash:qq35fzg00mzcmwtag9grmwljvpuy5jm8kuzfs24jhu`
+* `bitcoincash:qra5zfn74m7l85rl4r6wptzpnt2p22h7552swkpa7l`
+* `bitcoincash:qzqllr0fsh9fgfvdhmafx32a0ddtkt52evnqd7w7h7`
+* `bitcoincash:qpjdcwld84wtd5lk00x8t7qp4eu3y0xhnsjjfgrs7q`
+* `bitcoincash:qrgpm5y229xs46wsx9h9mlftedmsm4xjlu98jffmg3`
+* `bitcoincash:qpjl9lkjjp4s6u654k3rz06rhqcap849jg8uwqmaad`
+* `bitcoincash:qra5uwzgh8qus07v3srw5q0e8vrx5872k5cxguu3h5`
+* `bitcoincash:qz6239jkqf9qpl2axk6vclsx3gdt8cy4z5rag98u2r`
+
+👉 Full source code and detection scripts are available:
+```bash
+git clone https://github.com/AdityaBhatt3010/npm-Supply-Chain-Attack-IoCs-Detection-Remediation
+```
+
+---
+
+## 📊 Impacted Packages & Download Stats
+
+The scary part? These weren’t obscure libraries. Attackers compromised some of the **most widely downloaded npm packages**:
+
+* **ansi-styles** (371.41M downloads/week)
+* **debug** (357.6M)
+* **chalk** (299.99M)
+* **supports-color** (287.1M)
+* **strip-ansi** (261.17M)
+* **ansi-regex** (243.64M)
+* **color-convert** (193.5M)
+* **color-name** (191.71M)
+* **wrap-ansi** (197.99M)
+* **slice-ansi** (59.8M)
+* **is-arrayish** (73.8M)
+* **simple-swizzle** (26.26M)
+* **color-string** (27.48M)
+* **error-ex** (47.17M)
+* **has-ansi** (12.1M)
+* **supports-hyperlinks** (19.2M)
+* **chalk-template** (3.9M)
+* **backslash** (0.26M)
+
+These libraries are deeply entrenched in **thousands of projects** — meaning the blast radius is huge.
+
+---
+
+## ⚡️ Detection Script: `IoC_Scan.py`
+
+To help devs quickly identify if their repos or environments are impacted, here’s a Python script that scans `package-lock.json`, `yarn.lock`, and your installed npm tree for **known malicious versions**.
+
+```python
+#!/usr/bin/env python3
+"""
+IoC_Scan.py — scan repo / environment for known malicious npm package versions
+Usage:
+    python3 IoC_Scan.py
+"""
+
+import json, subprocess, sys, os, re
+
+# IOC mapping: package -> malicious version(s)
+MALICIOUS = {
+    "ansi-styles": ["6.2.2"],
+    "debug": ["4.4.2"],
+    "chalk": ["5.6.1"],
+    "supports-color": ["10.2.1"],
+    "strip-ansi": ["7.1.1"],
+    "ansi-regex": ["6.2.1"],
+    "wrap-ansi": ["9.0.1"],
+    "color-convert": ["3.1.1"],
+    "color-name": ["2.0.1"],
+    "is-arrayish": ["0.3.3"],
+    "slice-ansi": ["7.1.1"],
+    "color": ["5.0.1"],
+    "color-string": ["2.1.1"],
+    "simple-swizzle": ["0.2.3"],
+    "supports-hyperlinks": ["4.1.1"],
+    "has-ansi": ["6.0.1"],
+    "chalk-template": ["1.1.1"],
+    "backslash": ["0.2.1"]
+}
+
+def check_package_lock(path="package-lock.json"):
+    hits = []
+    if not os.path.exists(path):
+        return hits
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            pl = json.load(f)
+    except Exception as e:
+        print(f"[!] Failed to parse {path}: {e}")
+        return hits
+
+    def scan_deps(deps, parent="(root)"):
+        if not isinstance(deps, dict):
+            return
+        for name, meta in deps.items():
+            version = meta.get("version") if isinstance(meta, dict) else None
+            if version and name in MALICIOUS and version in MALICIOUS[name]:
+                hits.append(("lockfile", name, version, parent))
+            nested = meta.get("dependencies") if isinstance(meta, dict) else None
+            if nested:
+                scan_deps(nested, parent=name)
+
+    if "dependencies" in pl:
+        scan_deps(pl["dependencies"])
+    else:
+        for name, meta in pl.items():
+            if isinstance(meta, dict):
+                version = meta.get("version")
+                if version and name in MALICIOUS and version in MALICIOUS[name]:
+                    hits.append(("lockfile", name, version, "(root)"))
+    return hits
+
+def check_yarn_lock(path="yarn.lock"):
+    hits = []
+    if not os.path.exists(path):
+        return hits
+    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+        text = f.read()
+    for pkg, versions in MALICIOUS.items():
+        for v in versions:
+            if re.search(rf"^{re.escape(pkg)}@.*:\n.*version \"{re.escape(v)}\"", text, re.MULTILINE):
+                hits.append(("yarn", pkg, v, path))
+            if f"{pkg}@{v}" in text:
+                hits.append(("yarn-substr", pkg, v, path))
+    return hits
+
+def check_npm_ls():
+    hits = []
+    try:
+        out = subprocess.check_output(["npm", "ls", "--json", "--all"], stderr=subprocess.DEVNULL, text=True)
+        data = json.loads(out)
+    except Exception:
+        return hits
+    def walk(node, parent="(root)"):
+        if not isinstance(node, dict):
+            return
+        deps = node.get("dependencies", {})
+        for name, info in deps.items():
+            version = info.get("version")
+            if version and name in MALICIOUS and version in MALICIOUS[name]:
+                hits.append(("installed", name, version, parent))
+            walk(info, parent=name)
+    walk(data)
+    return hits
+
+def main():
+    results = []
+    results += check_package_lock()
+    results += check_yarn_lock()
+    results += check_npm_ls()
+
+    if not results:
+        print("[+] No known malicious versions found in package-lock.json / yarn.lock / npm tree.")
+        return 0
+
+    print("[!] Detected malicious package versions:")
+    for src, name, ver, parent in results:
+        print(f"  - Source: {src:10} | Package: {name:20} | Version: {ver:10} | Parent: {parent}")
+        print(f"    -> Recommended: pin {name} to a safe version (< malicious) and re-run `npm ci`, or remove and reinstall from trusted version.")
+    print("\nSuggested quick remediation steps (manual):")
+    print("  1) Remove node_modules and lockfile: rm -rf node_modules package-lock.json")
+    print("  2) Edit package.json to pin safe versions (version < malicious) or set resolutions")
+    print("  3) Run npm ci (or npm install) in a clean environment")
+    print("  4) Run static scan for suspicious code patterns (see article for patterns)")
+    return 0
+
+if __name__ == "__main__":
+    sys.exit(main())
+```
+
+---
+
+## 🔍 Static Code Red Flags
+
+Beyond IoCs and package versions, you can also hunt for malicious patterns inside source code.
+
+Researchers observed obfuscated payloads hidden in **postinstall scripts**, often using `Buffer.from(base64, "base64")` to dynamically construct network requests.
+
+For reference, here are the **original** and **deobfuscated** malicious code samples:
+
+* **NPM Supply Chain Malware**: [gist #1](https://gist.github.com/security-alliance-bot/2d8b87daa82eb1617dab5f5e33b64528)
+* **NPM Credential Stealer**: [gist #2](https://gist.github.com/security-alliance-bot/6b2aac66cfe9703bd33d8da7218ce1dc)
+
+👉 Full credit to **Security Alliance Bot** for publishing these breakdowns. If you’re doing manual hunts in your repos, use these gists as baselines for spotting tampered dependencies.
+
+---
+
+## 🛡️ Remediation & Defense
+
+1. **Immediate Containment**:
+
+   * Run the script above.
+   * Check your logs for any callbacks to the listed domains/IPs.
+
+2. **Cleanup**:
+
+   * Delete `node_modules` and lockfiles.
+   * Pin dependencies to known-good versions.
+   * Reinstall in a clean environment.
+
+3. **Long-term Measures**:
+
+   * Adopt **dependency pinning** (`npm ci`, `yarn --frozen-lockfile`).
+   * Consider tools like `npm audit` and `socket.dev`.
+   * Monitor threat intel feeds for **new IoCs**.
+
+---
+
+## ⚔️ Closing Thoughts
+
+Supply chain compromises are **high ROI for attackers** — one bad dependency poisons the well for thousands of downstream projects.
+
+The bad news: phishing a single developer opened the door to a global compromise.
+The good news: with **proactive scanning, static hunting, and sane dependency management**, you can shrink your attack surface dramatically.
+
+Stay paranoid, stay patched 🛡️🗿🔥
+
+---
