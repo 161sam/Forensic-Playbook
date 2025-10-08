@@ -108,8 +108,8 @@ black --check .
 | Analysis | `network` | MVP | MVP baseline implementation |
 | Analysis | `registry` | Guarded | Requires reglookup, rip.pl (missing locally) |
 | Analysis | `timeline` | Guarded | Requires fls, log2timeline.py, mactime (missing locally) |
-| Reporting | `exporter` | MVP | MVP baseline implementation |
-| Reporting | `generator` | Guarded | Requires wkhtmltopdf (missing locally) |
+| Reporting | `exporter` | Guarded | Requires wkhtmltopdf (missing locally) |
+| Reporting | `generator` | MVP | MVP baseline implementation |
 | Triage | `persistence` | MVP | MVP baseline implementation |
 | Triage | `quick_triage` | MVP | MVP baseline implementation |
 | Triage | `system_info` | MVP | MVP baseline implementation |
