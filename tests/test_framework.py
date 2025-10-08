@@ -4,18 +4,16 @@ Test Suite for Forensic Framework Core
 Unit and integration tests for core framework components
 """
 
-import json
-import pytest
 import tempfile
 from pathlib import Path
 
-from forensic.core.framework import ForensicFramework, Case
-from forensic.core.evidence import Evidence, EvidenceType, EvidenceState
-from forensic.core.module import ForensicModule, ModuleResult
-from forensic.core.chain_of_custody import ChainOfCustody
-from forensic.core.logger import setup_logging
-from forensic.core.time_utils import utc_isoformat
+import pytest
 
+from forensic.core.chain_of_custody import ChainOfCustody
+from forensic.core.evidence import Evidence, EvidenceState, EvidenceType
+from forensic.core.framework import ForensicFramework
+from forensic.core.module import ForensicModule, ModuleResult
+from forensic.core.time_utils import utc_isoformat
 
 # ============================================================================
 # Fixtures
@@ -211,7 +209,7 @@ class TestChainOfCustody:
     def test_coc_initialization(self, temp_workspace):
         """Test CoC initialization"""
         coc_db = temp_workspace / "coc_test.db"
-        coc = ChainOfCustody(coc_db)
+        ChainOfCustody(coc_db)
         
         assert coc_db.exists()
     

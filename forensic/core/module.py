@@ -171,13 +171,15 @@ class ForensicModule(ABC):
         
         return result
     
-    def pre_execute(self, evidence: Optional[Evidence], params: Dict):
-        """Pre-execution hook (can be overridden)"""
-        pass
+    def pre_execute(self, evidence: Optional[Evidence], params: Dict) -> None:
+        """Pre-execution hook (can be overridden)."""
+        _ = (evidence, params)
+        return None
     
-    def post_execute(self, result: ModuleResult):
-        """Post-execution hook (can be overridden)"""
-        pass
+    def post_execute(self, result: ModuleResult) -> None:
+        """Post-execution hook (can be overridden)."""
+        _ = result
+        return None
     
     def _generate_result_id(self) -> str:
         """Generate unique result ID"""

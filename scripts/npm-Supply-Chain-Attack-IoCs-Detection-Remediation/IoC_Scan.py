@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 ioc_scan.py — Unified IoC Scanner for Forensic Analysis
 
@@ -33,7 +32,7 @@ from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Tuple
 
 # ============================================================================
 # Configuration & Constants
@@ -110,7 +109,7 @@ class ScanResult:
 # IoC Loading & Processing
 # ============================================================================
 
-class IoC LoadError(Exception):
+class IoCLoadError(Exception):
     """Raised when IoC file cannot be loaded"""
     pass
 
@@ -137,7 +136,7 @@ def load_iocs(ioc_file: Path) -> List[IoC]:
     
     # Try JSON first
     try:
-        with open(ioc_file, 'r', encoding='utf-8') as f:
+        with open(ioc_file, encoding='utf-8') as f:
             data = json.load(f)
             if isinstance(data, list):
                 for item in data:
@@ -154,7 +153,7 @@ def load_iocs(ioc_file: Path) -> List[IoC]:
         pass  # Fall through to text format
     
     # Text format (auto-detect type)
-    with open(ioc_file, 'r', encoding='utf-8') as f:
+    with open(ioc_file, encoding='utf-8') as f:
         for line in f:
             line = line.strip()
             if not line or line.startswith('#'):
@@ -167,8 +166,6 @@ def load_iocs(ioc_file: Path) -> List[IoC]:
 
 def detect_ioc_type(value: str) -> str:
     """Auto-detect IoC type from value"""
-    value_lower = value.lower()
-    
     # Package (contains @)
     if '@' in value and '/' not in value and not value.startswith('0x'):
         return 'package'
@@ -319,7 +316,7 @@ def scan_file_for_iocs(
     
     # Text file handling
     try:
-        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+        with open(file_path, encoding='utf-8', errors='ignore') as f:
             for line_num, line in enumerate(f, 1):
                 line_lower = line.lower()
                 
@@ -363,7 +360,6 @@ def extract_timestamp(line: str) -> Optional[str]:
                     # Syslog format - add current year
                     from datetime import datetime as dt_module
                     year = dt_module.now().year
-                    parts = ts_str.split()
                     dt = datetime.strptime(f"{year} {ts_str}", "%Y %b %d %H:%M:%S")
                 
                 return dt.isoformat() + 'Z'
@@ -414,7 +410,7 @@ def scan_package_lock(file_path: Path) -> List[Dict[str, str]]:
     """Scan npm package-lock.json for malicious packages"""
     findings = []
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, encoding='utf-8') as f:
             data = json.load(f)
     except Exception:
         return findings
@@ -437,7 +433,7 @@ def scan_package_lock(file_path: Path) -> List[Dict[str, str]]:
         check_deps(data["dependencies"])
     
     if "packages" in data:
-        for pkg_path, info in data.get("packages", {}).items():
+        for _pkg_path, info in data.get("packages", {}).items():
             if not isinstance(info, dict):
                 continue
             name = info.get("name")
@@ -454,7 +450,7 @@ def scan_yarn_lock(file_path: Path) -> List[Dict[str, str]]:
     """Scan yarn.lock for malicious packages"""
     findings = []
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, encoding='utf-8') as f:
             text = f.read()
     except Exception:
         return findings
@@ -494,7 +490,7 @@ def scan_pnpm_lock(file_path: Path) -> List[Dict[str, str]]:
     """Scan pnpm-lock.yaml for malicious packages"""
     findings = []
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, encoding='utf-8') as f:
             text = f.read()
     except Exception:
         return findings
@@ -768,7 +764,7 @@ Examples:
     
     # Summary
     if args.verbose:
-        print(f"\nScan complete:", file=sys.stderr)
+        print("\nScan complete:", file=sys.stderr)
         print(f"  Files scanned: {stats.get('files_scanned', 0)}", file=sys.stderr)
         print(f"  Files with matches: {stats.get('files_with_matches', 0)}", file=sys.stderr)
         print(f"  Total matches: {stats.get('total_matches', 0)}", file=sys.stderr)
@@ -780,12 +776,12 @@ Examples:
 def format_text(result: ScanResult) -> str:
     """Format results as human-readable text"""
     lines = []
-    lines.append(f"=== IoC Scan Results ===")
+    lines.append("=== IoC Scan Results ===")
     lines.append(f"Scan ID: {result.scan_id}")
     lines.append(f"Timestamp: {result.timestamp}")
     lines.append(f"Scan Path: {result.scan_path}")
     lines.append(f"IoC File: {result.ioc_file}")
-    lines.append(f"\nStatistics:")
+    lines.append("\nStatistics:")
     for key, value in result.stats.items():
         lines.append(f"  {key}: {value}")
     

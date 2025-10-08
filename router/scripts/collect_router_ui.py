@@ -10,9 +10,17 @@
 #   source /mnt/FORNSIC_20251006/venv/bin/activate
 #   python /mnt/FORNSIC_20251006/conf/collect_router_ui.py [--no-headless] [--timeout 4] [--interactive]
 #
+import argparse
+import getpass
+import hashlib
+import os
+import shlex
+import subprocess
+import sys
+import time
 from pathlib import Path
-import os, sys, time, getpass, hashlib, shlex, subprocess, argparse
 from urllib.parse import urljoin
+
 from dotenv import dotenv_values
 
 OUTDIR = Path("/mnt/FORNSIC_20251006")
@@ -58,6 +66,9 @@ env = {}
 if envf.exists():
     env = dotenv_values(envf)
 BASE_URL = env.get("ROUTER_URL") or "https://192.168.0.1/"
+ROUTER_HOST = (
+    BASE_URL.replace("https://", "").replace("http://", "").split("/")[0]
+)
 USERNAME = env.get("ROUTER_USER") or ""
 PASSWORD = env.get("ROUTER_PASS") or ""
 
@@ -86,11 +97,11 @@ except Exception:
 # Import selenium
 try:
     from selenium import webdriver
+    from selenium.common.exceptions import WebDriverException
     from selenium.webdriver.common.by import By
     from selenium.webdriver.firefox.options import Options
     from selenium.webdriver.firefox.service import Service
-    from selenium.common.exceptions import WebDriverException, NoSuchElementException
-except Exception as e:
+except Exception:
     print("ERROR: selenium is not available in this Python environment. Activate venv and pip install selenium.")
     raise
 
@@ -102,8 +113,7 @@ def build_driver(headless: bool):
     if use_wire:
         drv = wire_webdriver.Firefox(service=svc, options=opts)
         # limit capture to router host to reduce memory traffic
-        router_host = BASE_URL.replace("https://","").replace("http://","").split("/")[0]
-        drv.scopes = [r'.*' + router_host + r'.*']
+        drv.scopes = [rf".*{ROUTER_HOST}.*"]
     else:
         drv = webdriver.Firefox(service=svc, options=opts)
     return drv
@@ -148,8 +158,10 @@ def find_login_fields(driver):
 def submit_login_fields(user_el, pass_el, username, password):
     try:
         if user_el:
-            user_el.clear(); user_el.send_keys(username)
-        pass_el.clear(); pass_el.send_keys(password)
+            user_el.clear()
+            user_el.send_keys(username)
+        pass_el.clear()
+        pass_el.send_keys(password)
         # try to submit by finding visible submit button nearby
         try:
             # look for button within form
@@ -169,7 +181,8 @@ def submit_login_fields(user_el, pass_el, username, password):
                 try:
                     btns = form.find_elements(By.CSS_SELECTOR, 'button[type="submit"], input[type="submit"]')
                     if btns:
-                        btns[0].click(); return True
+                        btns[0].click()
+                        return True
                 except Exception:
                     pass
         except Exception:
@@ -177,7 +190,7 @@ def submit_login_fields(user_el, pass_el, username, password):
         # fallback: press Enter on password field
         pass_el.send_keys("\n")
         return True
-    except Exception as e:
+    except Exception:
         return False
 
 def is_logged_in(driver, timeout=6):
@@ -211,13 +224,13 @@ except WebDriverException as e:
 
 # Check connectivity to BASE_URL first (simple GET)
 def check_reachable(drv, url, tries=3, wait=1.5):
-    for i in range(tries):
+    for _ in range(tries):
         try:
             drv.get(url)
             time.sleep(1.0)
             # if page is a neterror, webdriver will raise — we catch below
             return True
-        except WebDriverException as e:
+        except WebDriverException:
             # Connection failures may occur; retry
             time.sleep(wait)
     return False
@@ -286,7 +299,8 @@ if not auto_login_success:
             print("Press Enter to continue after manual login (or wait for auto-detect)...", end="", flush=True)
             try:
                 # use select on stdin for a short timeout to not block indefinitely
-                import select, sys as _sys
+                import select
+                import sys as _sys
                 rlist, _, _ = select.select([_sys.stdin], [], [], 2.0)
                 if rlist:
                     _ = _sys.stdin.readline()
@@ -314,7 +328,8 @@ if not auto_login_success:
         if not is_logged_in(driver, timeout=6):
             print("Login not detected after user confirmation. Exiting.")
             coc("MANUAL_LOGIN_USER_CONFIRMED_BUT_NOT_DETECTED")
-            driver.quit(); sys.exit(5)
+            driver.quit()
+            sys.exit(5)
 
 # At this point we are logged in (auto or manual)
 coc("LOGIN_CONFIRMED, starting collection")
@@ -347,26 +362,29 @@ for name, q in PAGES:
         req = None
         for r in reversed(driver.requests):
             try:
-                if r.host and router_host in r.host:
+                if r.host and ROUTER_HOST in r.host:
                     if q.strip("?") in r.path or q == "":
-                        req = r; break
+                        req = r
+                        break
             except Exception:
                 continue
         if not req and driver.requests:
             req = driver.requests[-1]
         if req:
             meta_lines.append(f"=== REQUEST ===\n{req.method} {req.path}\n")
-            for k,v in req.headers.items(): meta_lines.append(f"{k}: {v}\n")
+            for key, value in req.headers.items():
+                meta_lines.append(f"{key}: {value}\n")
             if req.body:
                 try:
                     mb = req.body.decode('utf-8','ignore')
-                except:
+                except Exception:
                     mb = str(req.body)
                 meta_lines.append("\n--- REQUEST BODY ---\n")
                 meta_lines.append(mb + "\n")
             if req.response:
                 meta_lines.append("\n=== RESPONSE ===\n")
-                for k,v in req.response.headers.items(): meta_lines.append(f"{k}: {v}\n")
+                for key, value in req.response.headers.items():
+                    meta_lines.append(f"{key}: {value}\n")
                 try:
                     rb = req.response.body
                     if rb:
@@ -384,7 +402,7 @@ for name, q in PAGES:
                 try:
                     b = req.body.decode('utf-8','ignore')
                     curl_parts.append("  --data " + shlex.quote(b) + " \\")
-                except:
+                except Exception:
                     pass
             curl_parts.append("  -o /dev/null")
             curlf.write_text("\n".join(curl_parts), encoding="utf-8")
@@ -425,11 +443,15 @@ man = LOGS / f"collect_manifest_{timestamp()}.txt"
 with man.open("w") as f:
     f.write("collect manifest\n")
     f.write(f"started: {now_iso()}\nuser: {os.getlogin()}\nhost: {os.uname().nodename}\nbase_url: {BASE_URL}\n\nfiles:\n")
-    for n,htmlp,shotp,meta,curl in collected:
-        if htmlp.exists(): f.write(f"{htmlp}\n")
-        if shotp.exists(): f.write(f"{shotp}\n")
-        if meta.exists(): f.write(f"{meta}\n")
-        if curl.exists(): f.write(f"{curl}\n")
+    for _, htmlp, shotp, meta, curl in collected:
+        if htmlp.exists():
+            f.write(f"{htmlp}\n")
+        if shotp.exists():
+            f.write(f"{shotp}\n")
+        if meta.exists():
+            f.write(f"{meta}\n")
+        if curl.exists():
+            f.write(f"{curl}\n")
     f.write("\nhashes dir: " + str(HASHES) + "\n")
 print("Collection finished. Manifest:", man)
 coc(f"COLLECT_FINISHED files={len(collected)} manifest={man.name}")

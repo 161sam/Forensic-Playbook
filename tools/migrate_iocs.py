@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""
-Migrate IoCs.txt to IoCs.json with auto-detection
-"""
+"""Migrate IoCs.txt to IoCs.json with auto-detection."""
+
 import json
-import sys
 from pathlib import Path
+
 
 def detect_type(value):
     """Auto-detect IoC type (copy from ioc_scan.py)"""

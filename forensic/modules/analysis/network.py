@@ -22,9 +22,9 @@ import re
 import subprocess
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional
 
-from ...core.evidence import Evidence, EvidenceType
+from ...core.evidence import Evidence
 from ...core.module import AnalysisModule, ModuleResult
 from ...core.time_utils import utc_isoformat
 
@@ -298,7 +298,7 @@ class NetworkAnalysisModule(AnalysisModule):
                             num = re.search(r'(\d+)', value)
                             if num:
                                 stats[key] = int(num.group(1))
-                        except:
+                        except Exception:
                             stats[key] = value
                     else:
                         stats[key] = value
@@ -355,7 +355,7 @@ class NetworkAnalysisModule(AnalysisModule):
                                     'frames': parts[3],
                                     'bytes': parts[4]
                                 })
-                        except:
+                        except Exception:
                             continue
         
         except Exception as e:

@@ -13,13 +13,12 @@ Features:
 """
 
 import csv
-import json
 import subprocess
-import tempfile
+from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
-from ...core.evidence import Evidence, EvidenceType
+from ...core.evidence import Evidence
 from ...core.module import AnalysisModule, ModuleResult
 from ...core.time_utils import utc_isoformat
 
@@ -270,10 +269,10 @@ class TimelineModule(AnalysisModule):
                 self.logger.warning(f"log2timeline warning: {result.stderr}")
             
             stats['log2timeline_rc'] = result.returncode
-        except subprocess.TimeoutExpired:
-            raise RuntimeError("log2timeline timeout")
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError("log2timeline timeout") from exc
         except Exception as e:
-            raise RuntimeError(f"log2timeline failed: {e}")
+            raise RuntimeError(f"log2timeline failed: {e}") from e
         
         # Convert to desired format using psort
         if output_format == 'l2tcsv':
@@ -314,7 +313,7 @@ class TimelineModule(AnalysisModule):
             
             stats['psort_rc'] = result.returncode
         except Exception as e:
-            raise RuntimeError(f"psort failed: {e}")
+            raise RuntimeError(f"psort failed: {e}") from e
         
         # Count events
         if output_file.exists():
@@ -364,7 +363,7 @@ class TimelineModule(AnalysisModule):
             
             stats['fls_rc'] = result.returncode
         except Exception as e:
-            raise RuntimeError(f"fls failed: {e}")
+            raise RuntimeError(f"fls failed: {e}") from e
         
         # Generate timeline from body file
         timeline_file = self.output_dir / "timeline.csv"
@@ -406,7 +405,7 @@ class TimelineModule(AnalysisModule):
             
             stats['mactime_rc'] = result.returncode
         except Exception as e:
-            raise RuntimeError(f"mactime failed: {e}")
+            raise RuntimeError(f"mactime failed: {e}") from e
         
         # Count events
         if timeline_file.exists():
@@ -428,7 +427,7 @@ class TimelineModule(AnalysisModule):
         events = []
         
         # Walk directory tree
-        for root, dirs, files in source.walk() if source.is_dir() else [(source.parent, [], [source.name])]:
+        for root, _dirs, files in source.walk() if source.is_dir() else [(source.parent, [], [source.name])]:
             for fname in files:
                 fpath = Path(root) / fname
                 
@@ -480,7 +479,7 @@ class TimelineModule(AnalysisModule):
         summary = {}
         
         try:
-            with open(timeline_file, 'r') as f:
+            with open(timeline_file, encoding="utf-8") as f:
                 lines = list(f)
             
             summary['total_events'] = len(lines) - 1  # Minus header

@@ -63,7 +63,7 @@ def extract_static_tools(module_path: Path) -> List[str]:
             for target in node.targets:
                 if isinstance(target, ast.Name) and target.id in {"TOOLS", "REQUIRED_TOOLS"}:
                     value = ast.literal_eval(node.value)
-                    if isinstance(value, (list, tuple)):
+                    if isinstance(value, list | tuple):
                         tools.extend(str(item) for item in value)
         elif isinstance(node, ast.Call):
             func = node.func

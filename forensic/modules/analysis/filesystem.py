@@ -18,9 +18,9 @@ import json
 import re
 import subprocess
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
-from ...core.evidence import Evidence, EvidenceType
+from ...core.evidence import Evidence
 from ...core.module import AnalysisModule, ModuleResult
 from ...core.time_utils import utc_isoformat
 
@@ -366,7 +366,6 @@ class FilesystemAnalysisModule(AnalysisModule):
                 # Parse line
                 match = re.match(r'([rd])/([rd])\s+(\d+)(?:\(realloc\))?:\s+(.+)', line)
                 if match:
-                    file_type = match.group(1)
                     dir_type = match.group(2)
                     inode = match.group(3)
                     name = match.group(4)

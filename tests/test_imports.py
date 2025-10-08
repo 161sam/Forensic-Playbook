@@ -1,6 +1,7 @@
 """Smoke tests ensuring critical modules are importable."""
 
 import importlib
+
 import pytest
 
 MODULE_PATHS = [

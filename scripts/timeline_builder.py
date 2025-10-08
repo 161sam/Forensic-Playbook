@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
-# timeline_builder.py
-import os, sys, subprocess, json, datetime, re
+"""Generate a quick timeline from various evidence sources."""
+
+import datetime
+import os
+import re
+import subprocess
+import sys
 
 EVIDIR = sys.argv[1] if len(sys.argv)>1 else "."
 out = []
@@ -20,11 +25,11 @@ for r in roots:
 # 2) npm logs (if present) - parse timestamps for install events
 npm_logs = ["/home/saschi/.npm/_logs"]
 for base in npm_logs:
-    for root,dirs,files in os.walk(base):
+    for root, _dirs, files in os.walk(base):
         for fn in files:
             p = os.path.join(root,fn)
             try:
-                with open(p,"r",errors="ignore") as fh:
+                with open(p, errors="ignore") as fh:
                     data = fh.read(5120)
                     m = re.search(r'"time":"([^"]+)"', data)
                     if m:
@@ -45,7 +50,7 @@ except Exception:
     pass
 
 # 4) router dump timestamps — look for files in /mnt/forensic_evidence router dumps
-for root,dirs,files in os.walk(EVIDIR):
+for root, _dirs, files in os.walk(EVIDIR):
     for fn in files:
         if "router" in fn.lower() or "tr69" in fn.lower() or fn.lower().endswith(".cfg"):
             p = os.path.join(root,fn)
@@ -54,7 +59,7 @@ for root,dirs,files in os.walk(EVIDIR):
 
 # Output sorted timeline
 out_sorted = sorted(out, key=lambda x: x[0])
-with open(os.path.join(EVIDIR,"timeline_router_corruption.txt"), "w") as fh:
+with open(os.path.join(EVIDIR, "timeline_router_corruption.txt"), "w", encoding="utf-8") as fh:
     for ts,label,src in out_sorted:
         fh.write(f"{ts}\t{label}\t{src}\n")
 print("Wrote timeline_router_corruption.txt")
