@@ -1,0 +1,98 @@
+# Disk Forensics Pipeline
+# Comprehensive disk and filesystem analysis
+
+name: "Disk Forensics Pipeline"
+description: "Deep dive disk analysis with file recovery and timeline"
+version: "1.0.0"
+
+config:
+  continue_on_error: true
+  parallel_execution: false
+
+variables:
+  disk_image: "disk.img"
+  partition: "0"
+  output_format: "json"
+
+modules:
+  # Step 1: Disk Image Information
+  - name: filesystem_analysis
+    description: "Extract disk and partition information"
+    params:
+      image: "${disk_image}"
+      partition: "${partition}"
+      include_deleted: true
+      compute_hashes: false
+      max_depth: 0
+    priority: critical
+
+  # Step 2: Deleted File Recovery
+  - name: filesystem_analysis
+    description: "Focus on deleted files"
+    params:
+      image: "${disk_image}"
+      partition: "${partition}"
+      include_deleted: true
+      compute_hashes: true
+      max_depth: 5
+    priority: high
+
+  # Step 3: Timeline Generation (Filesystem)
+  - name: timeline
+    description: "Create filesystem timeline"
+    params:
+      source: "${disk_image}"
+      format: csv
+      type: mactime
+    priority: high
+
+  # Step 4: Timeline Generation (plaso - comprehensive)
+  - name: timeline
+    description: "Create comprehensive log timeline"
+    params:
+      source: "${disk_image}"
+      format: l2tcsv
+      type: plaso
+      include_mft: true
+      include_usnjrnl: true
+      include_browser: true
+      include_logs: true
+    priority: medium
+
+  # Step 5: String Extraction
+  - name: filesystem_analysis
+    description: "Extract strings from disk"
+    params:
+      image: "${disk_image}"
+      partition: "${partition}"
+      extract_strings: true
+    priority: low
+
+  # Step 6: IoC Scan (if IoC file available)
+  - name: ioc_scan
+    description: "Scan for known IoCs"
+    params:
+      path: "${disk_image}"
+      ioc_file: "config/iocs/IoCs.json"
+      timeline: true
+      format: "${output_format}"
+    priority: high
+    condition: file_exists("config/iocs/IoCs.json")
+
+post_analysis:
+  - generate_report:
+      format: html
+      sections:
+        - disk_info
+        - partition_table
+        - deleted_files
+        - timeline
+        - ioc_matches
+  
+  - export_timeline:
+      format: csv
+      output: "timeline_export.csv"
+
+outputs:
+  analysis_dir: "disk_analysis"
+  timeline_dir: "timelines"
