@@ -53,6 +53,9 @@ include-package-data = true
 [tool.setuptools.packages.find]
 include = ["forensic", "forensic.*"]
 
+[tool.setuptools.package-data]
+"forensic.modules.reporting" = ["templates/*.html"]
+
 [tool.black]
 line-length = 88
 target-version = ["py310"]
