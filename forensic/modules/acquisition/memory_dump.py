@@ -156,7 +156,9 @@ class MemoryDumpModule(AcquisitionModule):
             )
 
         try:
-            stdout, stderr, returncode = self._run_command(command, timeout=params.get("timeout", 1800))
+            stdout, stderr, returncode = self._run_command(
+                command, timeout=params.get("timeout", 1800)
+            )
         except Exception as exc:  # pragma: no cover - subprocess errors surface here
             return ModuleResult(
                 result_id=result_id,
