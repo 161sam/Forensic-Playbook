@@ -1,0 +1,133 @@
+# Incident Response Pipeline
+# Complete IR workflow from evidence collection to reporting
+
+name: "Incident Response Pipeline"
+description: "Comprehensive incident response investigation workflow"
+version: "1.0.0"
+author: "Forensic-Playbook"
+
+# Prerequisites
+requirements:
+  - sleuthkit
+  - volatility3
+  - plaso-tools
+  - yara
+  - ddrescue
+
+# Pipeline configuration
+config:
+  continue_on_error: false
+  parallel_execution: false
+  timeout: 7200  # 2 hours
+
+# Evidence sources (variables)
+variables:
+  disk_device: "/dev/sdb"
+  memory_dump: "memory.dmp"
+  output_base: "evidence"
+  ioc_file: "config/iocs/IoCs.json"
+
+# Execution steps
+modules:
+  # Phase 1: Evidence Acquisition
+  - name: disk_imaging
+    description: "Create forensic disk image"
+    params:
+      source: "${disk_device}"
+      output: "${output_base}/disk.img"
+      tool: "ddrescue"
+      hash_algorithm: "sha256"
+      retries: 3
+    on_error: stop
+    priority: critical
+
+  # Phase 2: Quick Triage
+  - name: quick_triage
+    description: "Rapid system assessment"
+    params:
+      target: "${output_base}/disk.img"
+    on_error: continue
+    priority: high
+
+  # Phase 3: Filesystem Analysis
+  - name: filesystem_analysis
+    description: "Comprehensive filesystem analysis"
+    params:
+      image: "${output_base}/disk.img"
+      include_deleted: true
+      compute_hashes: true
+      extract_strings: false
+    on_error: continue
+    priority: high
+
+  # Phase 4: IoC Scanning
+  - name: ioc_scan
+    description: "Scan for indicators of compromise"
+    params:
+      path: "${output_base}/disk.img"
+      ioc_file: "${ioc_file}"
+      timeline: true
+      scan_npm: true
+      extract_strings: true
+      hash_files: true
+      format: json
+    on_error: continue
+    priority: critical
+
+  # Phase 5: Timeline Generation
+  - name: timeline
+    description: "Generate forensic timeline"
+    params:
+      source: "${output_base}/disk.img"
+      format: l2tcsv
+      type: plaso
+      include_mft: true
+      include_usnjrnl: true
+      include_browser: true
+      include_logs: true
+    on_error: continue
+    priority: high
+
+  # Phase 6: Memory Analysis (if memory dump available)
+  - name: memory_analysis
+    description: "Analyze memory dump"
+    params:
+      dump: "${memory_dump}"
+      processes: true
+      network: true
+      registry: true
+      malware: true
+      strings: false
+    on_error: continue
+    priority: high
+    condition: file_exists("${memory_dump}")
+
+# Post-processing
+post_analysis:
+  - generate_report:
+      format: html
+      include_timeline: true
+      include_ioc_matches: true
+      include_malware_indicators: true
+  
+  - generate_report:
+      format: json
+      include_raw_data: true
+
+# Notifications (optional)
+notifications:
+  on_complete:
+    - type: log
+      message: "Incident response pipeline completed successfully"
+  
+  on_error:
+    - type: log
+      level: error
+      message: "Pipeline failed: ${error_message}"
+
+# Output structure
+outputs:
+  reports_dir: "reports"
+  evidence_dir: "evidence"
+  analysis_dir: "analysis"
+  logs_dir: "logs"
