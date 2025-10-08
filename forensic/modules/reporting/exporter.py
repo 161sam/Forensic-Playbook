@@ -1,9 +1,12 @@
-"""Reporting exporters for JSON, Markdown and HTML."""
+"""Reporting exporters and helpers for report generation outputs."""
 
 from __future__ import annotations
 
 import copy
 import json
+import importlib
+import shutil
+import subprocess
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict
@@ -68,6 +71,49 @@ def export_report(data: Dict[str, Any], fmt: str, outpath: Path) -> Path:
     return outpath
 
 
+@lru_cache(maxsize=1)
+def get_pdf_renderer() -> str | None:
+    """Return the available PDF renderer, if any."""
+
+    if shutil.which("wkhtmltopdf"):
+        return "wkhtmltopdf"
+
+    try:
+        importlib.import_module("weasyprint")
+    except ImportError:
+        return None
+
+    return "weasyprint"
+
+
+def export_pdf(html_path: Path, pdf_path: Path) -> Path:
+    """Convert an HTML report at ``html_path`` to PDF at ``pdf_path``."""
+
+    renderer = get_pdf_renderer()
+    if renderer is None:
+        raise RuntimeError("PDF generation requires wkhtmltopdf or weasyprint")
+
+    pdf_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if renderer == "wkhtmltopdf":
+        subprocess.run(
+            [
+                "wkhtmltopdf",
+                "--enable-local-file-access",
+                str(html_path),
+                str(pdf_path),
+            ],
+            check=True,
+            timeout=300,
+        )
+    else:
+        from weasyprint import HTML
+
+        HTML(filename=str(html_path)).write_pdf(pdf_path)
+
+    return pdf_path
+
+
 def _to_markdown(data: Dict[str, Any], level: int = 1) -> str:
     """Convert mapping to a simple Markdown bullet representation."""
 
@@ -83,4 +129,4 @@ def _to_markdown(data: Dict[str, Any], level: int = 1) -> str:
     return "\n".join(lines)
 
 
-__all__ = ["export_report"]
+__all__ = ["export_report", "export_pdf", "get_pdf_renderer"]

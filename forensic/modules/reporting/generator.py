@@ -16,14 +16,13 @@ Features:
 
 import json
 import sqlite3
-import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ...core.evidence import Evidence
 from ...core.module import ModuleResult, ReportingModule
 from ...core.time_utils import utc_isoformat, utc_slug
-from .exporter import export_report
+from .exporter import export_pdf, export_report, get_pdf_renderer
 
 
 class ReportGenerator(ReportingModule):
@@ -71,7 +70,7 @@ class ReportGenerator(ReportingModule):
 
         findings = []
         errors = []
-        metadata = {"format": report_format, "generation_start": timestamp}
+        metadata = {"requested_format": report_format, "generation_start": timestamp}
 
         self.logger.info(f"Generating {report_format.upper()} report...")
 
@@ -118,7 +117,30 @@ class ReportGenerator(ReportingModule):
             elif report_format == "html":
                 output_path = self._generate_html_report(report_data, str(target_path))
             elif report_format == "pdf":
-                output_path = self._generate_pdf_report(report_data, str(target_path))
+                renderer = get_pdf_renderer()
+                metadata["pdf_renderer"] = renderer
+                if renderer:
+                    output_path = self._generate_pdf_report(report_data, str(target_path))
+                else:
+                    fallback_target = target_path.with_suffix(".html")
+                    metadata["output_format"] = "html"
+                    metadata["fallback_format"] = "html"
+                    metadata["output_path"] = str(fallback_target)
+                    self.logger.warning(
+                        "PDF renderer not available; generating HTML report instead."
+                    )
+                    output_path = self._generate_html_report(
+                        report_data, str(fallback_target)
+                    )
+                    findings.append(
+                        {
+                            "type": "pdf_renderer_unavailable",
+                            "description": (
+                                "PDF renderer not available; generated HTML report instead."
+                            ),
+                            "output_file": str(output_path),
+                        }
+                    )
             else:
                 errors.append(f"Unsupported report format: {report_format}")
                 return ModuleResult(
@@ -131,11 +153,16 @@ class ReportGenerator(ReportingModule):
                     errors=errors,
                 )
 
+            if output_path:
+                metadata["output_path"] = str(output_path)
+
+            result_format = metadata.get("output_format", report_format)
+
             if not dry_run:
                 findings.append(
                     {
                         "type": "report_generated",
-                        "description": f"{report_format.upper()} report generated successfully",
+                        "description": f"{result_format.upper()} report generated successfully",
                         "output_file": str(output_path),
                     }
                 )
@@ -717,35 +744,14 @@ class ReportGenerator(ReportingModule):
         else:
             output_file = Path(output_file)
 
-        # Convert HTML to PDF using wkhtmltopdf or weasyprint
+        # Convert HTML to PDF using available renderer
         try:
-            if self._verify_tool("wkhtmltopdf"):
-                subprocess.run(
-                    [
-                        "wkhtmltopdf",
-                        "--enable-local-file-access",
-                        str(html_file),
-                        str(output_file),
-                    ],
-                    check=True,
-                    timeout=300,
-                )
-            else:
-                # Try weasyprint
-                try:
-                    from weasyprint import HTML
-
-                    HTML(filename=str(html_file)).write_pdf(output_file)
-                except ImportError as exc:
-                    raise RuntimeError(
-                        "PDF generation requires wkhtmltopdf or weasyprint"
-                    ) from exc
-
-            self.logger.info(f"PDF report generated: {output_file}")
-            return output_file
-
-        except Exception as e:
+            export_pdf(html_file, output_file)
+        except Exception as e:  # pragma: no cover - passthrough for conversion errors
             raise RuntimeError(f"PDF generation failed: {e}") from e
+
+        self.logger.info(f"PDF report generated: {output_file}")
+        return output_file
 
     def _generate_json_report(self, data: Dict, output_file: Optional[str]) -> Path:
         """Generate JSON report"""
