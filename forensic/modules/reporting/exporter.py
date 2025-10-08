@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import copy
-import json
 import importlib
+import json
 import shutil
 import subprocess
 from functools import lru_cache
@@ -41,7 +41,7 @@ def _ensure_jinja2() -> None:
 
 
 @lru_cache(maxsize=1)
-def _get_environment() -> "Environment":
+def _get_environment() -> Environment:
     """Return a cached Jinja environment for report templates."""
 
     _ensure_jinja2()
