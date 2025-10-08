@@ -6,10 +6,11 @@ Handles evidence objects and metadata
 
 import hashlib
 from dataclasses import dataclass, field
-from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+from forensic.core.time_utils import utc_isoformat, utc_slug
 
 
 class EvidenceType(Enum):
@@ -44,8 +45,8 @@ class Evidence:
     evidence_type: EvidenceType
     source_path: Path
     description: str
-    evidence_id: str = field(default_factory=lambda: f"EVD_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}")
-    collected_at: str = field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
+    evidence_id: str = field(default_factory=lambda: f"EVD_{utc_slug()}")
+    collected_at: str = field(default_factory=utc_isoformat)
     collected_by: Optional[str] = None
     state: EvidenceState = EvidenceState.COLLECTED
     

@@ -17,12 +17,12 @@ Features:
 import json
 import re
 import subprocess
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from ...core.evidence import Evidence, EvidenceType
 from ...core.module import AnalysisModule, ModuleResult
+from ...core.time_utils import utc_isoformat
 
 
 class FilesystemAnalysisModule(AnalysisModule):
@@ -64,7 +64,7 @@ class FilesystemAnalysisModule(AnalysisModule):
     def run(self, evidence: Optional[Evidence], params: Dict) -> ModuleResult:
         """Execute filesystem analysis"""
         result_id = self._generate_result_id()
-        timestamp = datetime.utcnow().isoformat() + "Z"
+        timestamp = utc_isoformat()
         
         image = Path(params['image'])
         partition = params.get('partition')  # Optional partition number
@@ -84,18 +84,16 @@ class FilesystemAnalysisModule(AnalysisModule):
         }
         
         self.logger.info(f"Analyzing filesystem: {image}")
-        
+
         # Check Sleuthkit availability
         if not self._verify_tool('fls'):
-            errors.append("Sleuthkit not installed (install sleuthkit package)")
-            return ModuleResult(
-                result_id=result_id,
-                module_name=self.name,
-                status="failed",
-                timestamp=timestamp,
-                findings=findings,
+            guidance = "Install sleuthkit (fls) to analyze disk images."
+            return self._missing_tool_result(
+                result_id,
+                'fls',
                 metadata=metadata,
-                errors=errors
+                guidance=guidance,
+                timestamp=timestamp,
             )
         
         try:
@@ -235,7 +233,7 @@ class FilesystemAnalysisModule(AnalysisModule):
                 errors=errors
             )
         
-        metadata['analysis_end'] = datetime.utcnow().isoformat() + "Z"
+        metadata['analysis_end'] = utc_isoformat()
         
         status = "success" if not errors else "partial"
         

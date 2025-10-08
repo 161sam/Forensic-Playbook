@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# DEPRECATED: Use "forensic-cli legacy ioc-grep" or migrate to the IoC scanning module.
 set -euo pipefail
 OUTDIR="${1:-./ioc_grep_results}"
 mkdir -p "$OUTDIR"
@@ -18,11 +19,3 @@ for t in "${TARGETS[@]}"; do
     sudo grep -RIn --binary-files=text -E "$PATTERN" "$t" 2>/dev/null | tee -a "$OUTDIR/network_ioc_hits.txt" || true
   fi
 done
-
-# Additional scan: npm cache index-v5
-if [ -d "/home/saschi/.npm/_cacache/index-v5" ]; then
-  echo "=== SCANNING npm _cacache index-v5 metadata ===" | tee -a "$OUTDIR/network_ioc_hits.txt"
-  sudo grep -RIn --binary-files=text -E "$PATTERN" /home/saschi/.npm/_cacache/index-v5 2>/dev/null | tee -a "$OUTDIR/network_ioc_hits.txt" || true
-fi
-
-echo "Done. Results: $OUTDIR/network_ioc_hits.txt"

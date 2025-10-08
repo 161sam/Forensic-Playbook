@@ -21,12 +21,12 @@ import json
 import re
 import subprocess
 from collections import defaultdict
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
 from ...core.evidence import Evidence, EvidenceType
 from ...core.module import AnalysisModule, ModuleResult
+from ...core.time_utils import utc_isoformat
 
 
 class NetworkAnalysisModule(AnalysisModule):
@@ -70,7 +70,7 @@ class NetworkAnalysisModule(AnalysisModule):
     def run(self, evidence: Optional[Evidence], params: Dict) -> ModuleResult:
         """Execute network analysis"""
         result_id = self._generate_result_id()
-        timestamp = datetime.utcnow().isoformat() + "Z"
+        timestamp = utc_isoformat()
         
         pcap_file = Path(params['pcap'])
         extract_files = params.get('extract_files', 'false').lower() == 'true'
@@ -87,18 +87,16 @@ class NetworkAnalysisModule(AnalysisModule):
         }
         
         self.logger.info(f"Analyzing PCAP: {pcap_file}")
-        
+
         # Check tool availability
         if not self._verify_tool('tshark'):
-            errors.append("tshark not installed (install wireshark/tshark package)")
-            return ModuleResult(
-                result_id=result_id,
-                module_name=self.name,
-                status="failed",
-                timestamp=timestamp,
-                findings=findings,
+            guidance = "Install wireshark/tshark to analyze network captures."
+            return self._missing_tool_result(
+                result_id,
+                'tshark',
                 metadata=metadata,
-                errors=errors
+                guidance=guidance,
+                timestamp=timestamp,
             )
         
         try:
@@ -262,7 +260,7 @@ class NetworkAnalysisModule(AnalysisModule):
                 errors=errors
             )
         
-        metadata['analysis_end'] = datetime.utcnow().isoformat() + "Z"
+        metadata['analysis_end'] = utc_isoformat()
         
         status = "success" if not errors else "partial"
         

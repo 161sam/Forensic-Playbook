@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional
 
 from ...core.evidence import Evidence
 from ...core.module import AcquisitionModule, ModuleResult
+from ...core.time_utils import utc_isoformat
 
 TOOLS = ("avml", "lime", "winpmem")
 
@@ -38,7 +38,7 @@ class MemoryDumpModule(AcquisitionModule):
 
     def run(self, evidence: Optional[Evidence], params: Dict) -> ModuleResult:
         result_id = self._generate_result_id()
-        timestamp = datetime.utcnow().isoformat() + "Z"
+        timestamp = utc_isoformat()
         output = Path(params.get("output", self.output_dir / "memory.raw"))
         requested_tool = params.get("tool")
         tool = self._select_tool(requested_tool)

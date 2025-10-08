@@ -17,12 +17,12 @@ Features:
 import json
 import re
 import subprocess
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from ...core.evidence import Evidence, EvidenceType
 from ...core.module import AnalysisModule, ModuleResult
+from ...core.time_utils import utc_isoformat
 
 
 class MemoryAnalysisModule(AnalysisModule):
@@ -64,7 +64,7 @@ class MemoryAnalysisModule(AnalysisModule):
     def run(self, evidence: Optional[Evidence], params: Dict) -> ModuleResult:
         """Execute memory analysis"""
         result_id = self._generate_result_id()
-        timestamp = datetime.utcnow().isoformat() + "Z"
+        timestamp = utc_isoformat()
         
         dump = Path(params['dump'])
         profile = params.get('profile')  # Optional: Windows profile/Linux kernel
@@ -89,15 +89,13 @@ class MemoryAnalysisModule(AnalysisModule):
         # Detect Volatility version
         vol_version = self._detect_volatility()
         if not vol_version:
-            errors.append("Volatility not installed (install volatility3 or volatility)")
-            return ModuleResult(
-                result_id=result_id,
-                module_name=self.name,
-                status="failed",
-                timestamp=timestamp,
-                findings=findings,
+            guidance = "Install volatility3 or volatility to analyze memory dumps."
+            return self._missing_tool_result(
+                result_id,
+                ['vol', 'vol3', 'vol.py', 'volatility'],
                 metadata=metadata,
-                errors=errors
+                guidance=guidance,
+                timestamp=timestamp,
             )
         
         metadata['volatility_version'] = vol_version
@@ -168,7 +166,7 @@ class MemoryAnalysisModule(AnalysisModule):
                 errors=errors
             )
         
-        metadata['analysis_end'] = datetime.utcnow().isoformat() + "Z"
+        metadata['analysis_end'] = utc_isoformat()
         
         # Save comprehensive report
         report_file = self.output_dir / "memory_analysis_report.json"

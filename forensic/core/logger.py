@@ -6,9 +6,10 @@ Centralized logging with forensic-specific features
 
 import logging
 import sys
-from datetime import datetime
 from pathlib import Path
 from typing import Optional
+
+from forensic.core.time_utils import utc_isoformat, utc_slug
 
 
 class ForensicFormatter(logging.Formatter):
@@ -77,7 +78,7 @@ def setup_logging(
         log_dir = Path(log_dir)
         log_dir.mkdir(parents=True, exist_ok=True)
         
-        timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+        timestamp = utc_slug()
         if case_id:
             log_file = log_dir / f"{case_id}_{timestamp}.log"
         else:
@@ -149,7 +150,7 @@ class AuditLogger:
         """Log resource access"""
         self.log(
             f"ACCESS: {action} {resource}",
-            {'actor': actor, 'success': success, 'timestamp': datetime.utcnow().isoformat() + 'Z'}
+            {'actor': actor, 'success': success, 'timestamp': utc_isoformat()}
         )
     
     def log_modification(self, resource: str, action: str, actor: str, before_hash: str = None, after_hash: str = None):
@@ -160,7 +161,7 @@ class AuditLogger:
                 'actor': actor,
                 'before_hash': before_hash,
                 'after_hash': after_hash,
-                'timestamp': datetime.utcnow().isoformat() + 'Z'
+                'timestamp': utc_isoformat()
             }
         )
     
@@ -168,7 +169,7 @@ class AuditLogger:
         """Log security event"""
         self.log(
             f"SECURITY[{severity}]: {event_type}",
-            {'description': description, 'timestamp': datetime.utcnow().isoformat() + 'Z'}
+            {'description': description, 'timestamp': utc_isoformat()}
         )
 
 

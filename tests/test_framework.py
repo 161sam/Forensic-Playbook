@@ -8,13 +8,13 @@ import json
 import pytest
 import tempfile
 from pathlib import Path
-from datetime import datetime
 
 from forensic.core.framework import ForensicFramework, Case
 from forensic.core.evidence import Evidence, EvidenceType, EvidenceState
 from forensic.core.module import ForensicModule, ModuleResult
 from forensic.core.chain_of_custody import ChainOfCustody
 from forensic.core.logger import setup_logging
+from forensic.core.time_utils import utc_isoformat
 
 
 # ============================================================================
@@ -318,7 +318,7 @@ class DummyModule(ForensicModule):
             result_id=self._generate_result_id(),
             module_name=self.name,
             status="success",
-            timestamp=datetime.utcnow().isoformat() + "Z",
+            timestamp=utc_isoformat(),
             findings=[{'type': 'test', 'description': 'Test finding'}]
         )
 

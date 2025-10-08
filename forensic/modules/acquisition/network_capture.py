@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional
 
 from ...core.evidence import Evidence
 from ...core.module import AcquisitionModule, ModuleResult
+from ...core.time_utils import utc_isoformat
 
 CAPTURE_TOOLS = ("tcpdump", "dumpcap")
 
@@ -35,11 +35,12 @@ class NetworkCaptureModule(AcquisitionModule):
 
     def run(self, evidence: Optional[Evidence], params: Dict) -> ModuleResult:
         result_id = self._generate_result_id()
-        timestamp = datetime.utcnow().isoformat() + "Z"
+        timestamp = utc_isoformat()
         duration = int(params.get("duration", 300))
         interface = params.get("interface", "eth0")
         output = Path(params.get("output", self.output_dir / "capture.pcap"))
         tool = params.get("tool", "tcpdump")
+        metadata = {"interface": interface, "tool": tool}
 
         if tool not in CAPTURE_TOOLS:
             return ModuleResult(
@@ -48,20 +49,20 @@ class NetworkCaptureModule(AcquisitionModule):
                 status="failed",
                 timestamp=timestamp,
                 findings=[],
-                metadata={"interface": interface},
+                metadata=metadata,
                 errors=[f"Unsupported tool: {tool}"],
             )
 
         if not self._verify_tool(tool):
-            guidance = f"Tool '{tool}' not found. Install tcpdump or dumpcap to use network capture."
-            return ModuleResult(
-                result_id=result_id,
-                module_name=self.name,
-                status="skipped",
+            guidance = (
+                f"Missing required tool(s): {tool}. Install tcpdump or dumpcap to use network capture."
+            )
+            return self._missing_tool_result(
+                result_id,
+                tool,
+                metadata=metadata,
+                guidance=guidance,
                 timestamp=timestamp,
-                findings=[],
-                metadata={"interface": interface, "tool": tool},
-                errors=[guidance],
             )
 
         if params.get("dry_run", False):
@@ -93,12 +94,7 @@ class NetworkCaptureModule(AcquisitionModule):
                     "description": "Network capture not executed to avoid side effects",
                 }
             ],
-            metadata={
-                "interface": interface,
-                "tool": tool,
-                "planned_output": str(output),
-                "duration": duration,
-            },
+            metadata={**metadata, "planned_output": str(output), "duration": duration},
             errors=[guidance],
         )
 

@@ -6,12 +6,12 @@ Forensic disk imaging with multiple tools and verification
 
 import os
 import shutil
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
 from ...core.evidence import Evidence
 from ...core.module import AcquisitionModule, ModuleResult
+from ...core.time_utils import utc_isoformat
 
 
 class DiskImagingModule(AcquisitionModule):
@@ -79,7 +79,7 @@ class DiskImagingModule(AcquisitionModule):
     def run(self, evidence: Optional[Evidence], params: Dict) -> ModuleResult:
         """Execute disk imaging"""
         result_id = self._generate_result_id()
-        timestamp = datetime.utcnow().isoformat() + "Z"
+        timestamp = utc_isoformat()
         
         source = Path(params['source'])
         output = Path(params.get('output', self.output_dir / f"disk_image_{timestamp}.img"))
@@ -97,6 +97,25 @@ class DiskImagingModule(AcquisitionModule):
             'hash_algorithm': hash_algo,
             'imaging_start': timestamp
         }
+
+        required = {
+            'dd': ['dd'],
+            'ddrescue': ['ddrescue'],
+            'ewfacquire': ['ewfacquire'],
+        }
+        missing = [name for name in required.get(tool, []) if not self._verify_tool(name)]
+        if missing:
+            guidance = (
+                "Install the requested imaging tool(s) before running the module."
+            )
+            return self._missing_tool_result(
+                result_id,
+                missing,
+                metadata=metadata,
+                guidance=guidance,
+                timestamp=timestamp,
+                status="skipped",
+            )
         
         # Ensure output directory exists
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -135,7 +154,7 @@ class DiskImagingModule(AcquisitionModule):
                 image_metadata = {}
             
             metadata.update(image_metadata)
-            metadata['imaging_end'] = datetime.utcnow().isoformat() + "Z"
+            metadata['imaging_end'] = utc_isoformat()
             
             if not success:
                 return ModuleResult(
@@ -289,9 +308,6 @@ class DiskImagingModule(AcquisitionModule):
     
     def _image_with_ddrescue(self, source: Path, output: Path) -> tuple:
         """Image with ddrescue"""
-        if not self._verify_tool('ddrescue'):
-            raise RuntimeError("ddrescue not installed")
-        
         log_file = output.with_suffix('.ddrescue.log')
         
         # Phase 1: Fast copy
@@ -339,9 +355,6 @@ class DiskImagingModule(AcquisitionModule):
     
     def _image_with_ewfacquire(self, source: Path, output: Path) -> tuple:
         """Image with ewfacquire (Expert Witness Format)"""
-        if not self._verify_tool('ewfacquire'):
-            raise RuntimeError("ewfacquire not installed (libewf-tools)")
-        
         # ewfacquire creates .E01 files
         output_base = output.with_suffix('')
         
