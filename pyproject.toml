@@ -43,6 +43,9 @@ pcap = [
     "scapy>=2.5",
     "pyshark>=0.5.3",
 ]
+report_pdf = [
+    "weasyprint>=59.0",
+]
 
 [project.scripts]
 forensic-cli = "forensic.cli:main"

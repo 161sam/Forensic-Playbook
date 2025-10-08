@@ -22,10 +22,16 @@ from .modules.acquisition.network_capture import NetworkCaptureModule
 from .modules.analysis.filesystem import FilesystemAnalysisModule
 from .modules.analysis.malware import MalwareAnalysisModule
 from .modules.analysis.timeline import TimelineModule
+from .modules.reporting.exporter import get_pdf_renderer
 from .modules.reporting.generator import ReportGenerator
 from .modules.triage.persistence import PersistenceModule
 from .modules.triage.quick_triage import QuickTriageModule
 from .modules.triage.system_info import SystemInfoModule
+
+
+REPORT_FORMAT_CHOICES = ["html", "json", "md", "markdown"]
+if get_pdf_renderer() is not None:
+    REPORT_FORMAT_CHOICES.insert(1, "pdf")
 
 try:  # pragma: no cover - optional legacy module
     from .modules.analysis.ioc_scanning import IoCScanner
@@ -300,7 +306,7 @@ def report() -> None:
 @report.command("generate")
 @click.option(
     "--fmt",
-    type=click.Choice(["html", "pdf", "json", "md", "markdown"]),
+    type=click.Choice(REPORT_FORMAT_CHOICES),
     default="md",
     show_default=True,
     help="Report output format.",
