@@ -10,17 +10,19 @@ Features:
 - Filtering by date range, file types, user activity
 - Multiple output formats (CSV, L2TCSV, body, JSON)
 - Timeline visualization support
+- Unified timeline writer aggregating network analysis output
 """
 
 import csv
+import json
 import subprocess
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from ...core.evidence import Evidence
 from ...core.module import AnalysisModule, ModuleResult
-from ...core.time_utils import utc_isoformat
+from ...core.time_utils import utc_isoformat, utc_slug
 
 
 class TimelineModule(AnalysisModule):
@@ -64,6 +66,7 @@ class TimelineModule(AnalysisModule):
         """Execute timeline generation"""
         result_id = self._generate_result_id()
         timestamp = utc_isoformat()
+        timeline_slug = utc_slug()
 
         source = Path(params["source"])
         output_format = params.get("format", "csv").lower()
@@ -113,6 +116,9 @@ class TimelineModule(AnalysisModule):
             )
 
         # Generate timeline
+        timeline_file: Optional[Path] = None
+        stats: Dict[str, Any] = {}
+
         try:
             if timeline_type == "plaso":
                 timeline_file, stats = self._generate_plaso_timeline(
@@ -180,6 +186,41 @@ class TimelineModule(AnalysisModule):
                 errors=errors,
             )
 
+        timeline_events = self._load_timeline_events_from_file(
+            timeline_file, timeline_type
+        )
+        network_events = self._collect_network_events()
+        all_events = self._sort_events(timeline_events + network_events)
+
+        timeline_dir = self.case_dir / "timeline" / timeline_slug
+        timeline_dir.mkdir(parents=True, exist_ok=True)
+        events_csv, events_json = self._write_unified_timeline(all_events, timeline_dir)
+
+        findings.append(
+            {
+                "type": "unified_timeline",
+                "description": "Unified timeline written to case timeline directory",
+                "event_count": len(all_events),
+                "timeline_directory": str(timeline_dir),
+                "csv_file": str(events_csv),
+                "json_file": str(events_json),
+            }
+        )
+
+        metadata.update(
+            {
+                "timeline_slug": timeline_slug,
+                "unified_timeline": {
+                    "timeline_dir": str(timeline_dir),
+                    "csv_file": str(events_csv),
+                    "json_file": str(events_json),
+                    "event_count": len(all_events),
+                },
+                "timeline_events_imported": len(timeline_events),
+                "network_event_count": len(network_events),
+            }
+        )
+
         metadata["end"] = utc_isoformat()
 
         status = "success" if not errors else "partial"
@@ -189,7 +230,7 @@ class TimelineModule(AnalysisModule):
             module_name=self.name,
             status=status,
             timestamp=timestamp,
-            output_path=timeline_file,
+            output_path=events_csv,
             findings=findings,
             metadata=metadata,
             errors=errors,
@@ -511,3 +552,416 @@ class TimelineModule(AnalysisModule):
             self.logger.warning(f"Timeline analysis failed: {e}")
 
         return summary
+
+    # ------------------------------------------------------------------
+    # Unified timeline helpers
+    # ------------------------------------------------------------------
+    def _load_timeline_events_from_file(
+        self, timeline_file: Optional[Path], timeline_type: str
+    ) -> List[Dict[str, str]]:
+        if not timeline_file or not timeline_file.exists():
+            return []
+
+        source_label = f"timeline:{timeline_type}"
+        suffix = timeline_file.suffix.lower()
+
+        if suffix in {".json", ".jsonl"}:
+            return self._parse_json_timeline(timeline_file, source_label)
+
+        return self._parse_csv_timeline(timeline_file, source_label)
+
+    def _parse_csv_timeline(
+        self, timeline_file: Path, source_label: str
+    ) -> List[Dict[str, str]]:
+        events: List[Dict[str, str]] = []
+        timestamp_fields = [
+            "timestamp",
+            "datetime",
+            "datetime_utc",
+            "date",
+            "time",
+        ]
+        type_fields = ["type", "event_type", "category", "source"]
+        summary_fields = [
+            "summary",
+            "message",
+            "description",
+            "event_description",
+            "filename",
+            "path",
+        ]
+
+        try:
+            with timeline_file.open(encoding="utf-8", newline="") as handle:
+                reader = csv.DictReader(handle)
+                if not reader.fieldnames:
+                    return events
+
+                for idx, row in enumerate(reader, start=1):
+                    ts_value = self._first_non_empty(row, timestamp_fields)
+                    if not ts_value:
+                        continue
+
+                    timestamp = self._normalise_timestamp(ts_value)
+                    if not timestamp:
+                        continue
+
+                    event_type = self._first_non_empty(row, type_fields) or "event"
+                    summary = self._first_non_empty(row, summary_fields)
+                    if not summary:
+                        summary = self._fallback_summary(
+                            row, timestamp_fields + type_fields
+                        )
+
+                    events.append(
+                        {
+                            "timestamp": timestamp,
+                            "source": source_label,
+                            "type": str(event_type),
+                            "summary": summary,
+                            "details_ref": f"{timeline_file}:{idx + 1}",
+                        }
+                    )
+        except Exception as exc:
+            self.logger.debug(
+                "Failed to parse CSV timeline %s: %s", timeline_file, exc
+            )
+
+        return events
+
+    def _parse_json_timeline(
+        self, timeline_file: Path, source_label: str
+    ) -> List[Dict[str, str]]:
+        events: List[Dict[str, str]] = []
+        try:
+            if timeline_file.suffix.lower() == ".jsonl":
+                with timeline_file.open(encoding="utf-8") as handle:
+                    records: Iterable[Any] = (
+                        json.loads(line)
+                        for line in handle
+                        if line.strip()
+                    )
+                    events.extend(
+                        self._events_from_records(
+                            records, source_label, timeline_file
+                        )
+                    )
+            else:
+                with timeline_file.open(encoding="utf-8") as handle:
+                    data = json.load(handle)
+                if isinstance(data, list):
+                    records = data
+                else:
+                    records = data.get("events", []) if isinstance(data, dict) else []
+                events.extend(
+                    self._events_from_records(records, source_label, timeline_file)
+                )
+        except Exception as exc:
+            self.logger.debug(
+                "Failed to parse JSON timeline %s: %s", timeline_file, exc
+            )
+
+        return events
+
+    def _events_from_records(
+        self,
+        records: Iterable[Any],
+        source_label: str,
+        timeline_file: Path,
+    ) -> List[Dict[str, str]]:
+        events: List[Dict[str, str]] = []
+        timestamp_fields = ["timestamp", "datetime", "time", "date"]
+        type_fields = ["type", "event_type", "category", "source"]
+        summary_fields = [
+            "summary",
+            "message",
+            "description",
+            "event_description",
+        ]
+
+        for idx, record in enumerate(records, start=1):
+            if not isinstance(record, dict):
+                continue
+
+            ts_value = self._first_non_empty(record, timestamp_fields)
+            if not ts_value:
+                continue
+
+            timestamp = self._normalise_timestamp(ts_value)
+            if not timestamp:
+                continue
+
+            event_type = self._first_non_empty(record, type_fields) or "event"
+            summary = self._first_non_empty(record, summary_fields)
+            if not summary:
+                summary = self._fallback_summary(
+                    record, timestamp_fields + type_fields
+                )
+
+            events.append(
+                {
+                    "timestamp": timestamp,
+                    "source": source_label,
+                    "type": str(event_type),
+                    "summary": summary,
+                    "details_ref": f"{timeline_file}:{idx}",
+                }
+            )
+
+        return events
+
+    def _collect_network_events(self) -> List[Dict[str, str]]:
+        events: List[Dict[str, str]] = []
+        network_root = self.case_dir / "analysis" / "network"
+        if not network_root.exists():
+            return events
+
+        for network_file in sorted(network_root.glob("**/network.json")):
+            try:
+                with network_file.open(encoding="utf-8") as handle:
+                    payload = json.load(handle)
+            except Exception as exc:
+                self.logger.debug(
+                    "Failed to load network analysis output %s: %s",
+                    network_file,
+                    exc,
+                )
+                continue
+
+            events.extend(self._network_flow_events(payload.get("flows", []), network_file))
+            dns_payload = {}
+            if isinstance(payload.get("dns"), dict):
+                dns_payload = payload.get("dns", {})
+            events.extend(
+                self._network_dns_events(
+                    dns_payload.get("queries", []), network_file
+                )
+            )
+            http_payload = {}
+            if isinstance(payload.get("http"), dict):
+                http_payload = payload.get("http", {})
+            events.extend(
+                self._network_http_events(
+                    http_payload.get("requests", []), network_file
+                )
+            )
+
+        return events
+
+    def _network_flow_events(
+        self, flows: Iterable[Dict[str, Any]], network_file: Path
+    ) -> List[Dict[str, str]]:
+        events: List[Dict[str, str]] = []
+        for flow in flows:
+            if not isinstance(flow, dict):
+                continue
+            summary = self._flow_summary(flow)
+            start_ts = self._normalise_timestamp(flow.get("start_ts"))
+            end_ts = self._normalise_timestamp(flow.get("end_ts"))
+            details_ref = str(network_file)
+
+            if start_ts:
+                events.append(
+                    {
+                        "timestamp": start_ts,
+                        "source": "network",
+                        "type": "flow_start",
+                        "summary": f"Flow started {summary}",
+                        "details_ref": details_ref,
+                    }
+                )
+            if end_ts:
+                events.append(
+                    {
+                        "timestamp": end_ts,
+                        "source": "network",
+                        "type": "flow_end",
+                        "summary": f"Flow ended {summary}",
+                        "details_ref": details_ref,
+                    }
+                )
+
+        return events
+
+    def _network_dns_events(
+        self, queries: Iterable[Dict[str, Any]], network_file: Path
+    ) -> List[Dict[str, str]]:
+        events: List[Dict[str, str]] = []
+        for query in queries:
+            if not isinstance(query, dict):
+                continue
+            timestamp = self._normalise_timestamp(query.get("timestamp"))
+            if not timestamp:
+                continue
+
+            domain = query.get("query") or "(unknown domain)"
+            src = query.get("src") or "unknown"
+            summary = f"DNS query for {domain} from {src}"
+            events.append(
+                {
+                    "timestamp": timestamp,
+                    "source": "network",
+                    "type": "dns_query",
+                    "summary": summary,
+                    "details_ref": str(network_file),
+                }
+            )
+
+        return events
+
+    def _network_http_events(
+        self, requests: Iterable[Dict[str, Any]], network_file: Path
+    ) -> List[Dict[str, str]]:
+        events: List[Dict[str, str]] = []
+        for request in requests:
+            if not isinstance(request, dict):
+                continue
+            timestamp = self._normalise_timestamp(request.get("timestamp"))
+            if not timestamp:
+                continue
+
+            method = (request.get("method") or "HTTP").upper()
+            host = request.get("host") or ""
+            uri = request.get("uri") or ""
+            if host and uri:
+                target = f"{host}{uri}"
+            else:
+                target = host or uri or "(unknown endpoint)"
+            summary = f"HTTP {method} request to {target}"
+
+            events.append(
+                {
+                    "timestamp": timestamp,
+                    "source": "network",
+                    "type": "http_request",
+                    "summary": summary,
+                    "details_ref": str(network_file),
+                }
+            )
+
+        return events
+
+    def _write_unified_timeline(
+        self, events: List[Dict[str, str]], timeline_dir: Path
+    ) -> Tuple[Path, Path]:
+        csv_path = timeline_dir / "events.csv"
+        json_path = timeline_dir / "events.json"
+
+        fieldnames = ["timestamp", "source", "type", "summary", "details_ref"]
+
+        with csv_path.open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fieldnames)
+            writer.writeheader()
+            for event in events:
+                writer.writerow({field: event.get(field, "") for field in fieldnames})
+
+        with json_path.open("w", encoding="utf-8") as handle:
+            json.dump(events, handle, indent=2, ensure_ascii=False)
+
+        return csv_path, json_path
+
+    def _first_non_empty(
+        self, data: Dict[str, Any], candidates: Iterable[str]
+    ) -> Optional[str]:
+        for key in candidates:
+            value = data.get(key)
+            if value is None:
+                continue
+            if isinstance(value, str):
+                if value.strip():
+                    return value
+            else:
+                return str(value)
+        return None
+
+    def _fallback_summary(
+        self, data: Dict[str, Any], exclude_keys: Iterable[str]
+    ) -> str:
+        exclude = set(exclude_keys)
+        parts = []
+        for key, value in data.items():
+            if key in exclude:
+                continue
+            if value is None:
+                continue
+            value_str = str(value).strip()
+            if not value_str:
+                continue
+            parts.append(f"{key}={value_str}")
+            if len(parts) >= 3:
+                break
+        return "; ".join(parts) if parts else "Timeline event"
+
+    def _flow_summary(self, flow: Dict[str, Any]) -> str:
+        src = flow.get("src") or "unknown"
+        src_port = flow.get("src_port")
+        dst = flow.get("dst") or "unknown"
+        dst_port = flow.get("dst_port")
+        protocol = flow.get("protocol") or "?"
+        src_repr = f"{src}:{src_port}" if src_port else str(src)
+        dst_repr = f"{dst}:{dst_port}" if dst_port else str(dst)
+        return f"{src_repr} -> {dst_repr} ({protocol})"
+
+    def _normalise_timestamp(self, value: Any) -> Optional[str]:
+        if value is None:
+            return None
+        if isinstance(value, (int, float)):
+            try:
+                return datetime.fromtimestamp(float(value), tz=timezone.utc).isoformat()
+            except Exception:
+                return None
+
+        value_str = str(value).strip()
+        if not value_str or value_str.lower() == "unknown":
+            return None
+
+        iso_candidate = value_str
+        if iso_candidate.endswith("Z"):
+            iso_candidate = iso_candidate[:-1] + "+00:00"
+
+        try:
+            dt = datetime.fromisoformat(iso_candidate)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            else:
+                dt = dt.astimezone(timezone.utc)
+            return dt.isoformat()
+        except ValueError:
+            pass
+
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y/%m/%d %H:%M:%S", "%Y-%m-%d"):
+            try:
+                dt = datetime.strptime(value_str, fmt)
+                dt = dt.replace(tzinfo=timezone.utc)
+                return dt.isoformat()
+            except ValueError:
+                continue
+
+        try:
+            return datetime.fromtimestamp(float(value_str), tz=timezone.utc).isoformat()
+        except Exception:
+            return None
+
+    def _sort_events(self, events: List[Dict[str, str]]) -> List[Dict[str, str]]:
+        def sort_key(event: Dict[str, str]) -> Tuple:
+            timestamp = event.get("timestamp")
+            dt: datetime
+            if timestamp:
+                ts = timestamp
+                if ts.endswith("Z"):
+                    ts = ts[:-1] + "+00:00"
+                try:
+                    dt = datetime.fromisoformat(ts)
+                except ValueError:
+                    dt = datetime.min.replace(tzinfo=timezone.utc)
+            else:
+                dt = datetime.min.replace(tzinfo=timezone.utc)
+
+            return (
+                dt,
+                event.get("source", ""),
+                event.get("type", ""),
+                event.get("summary", ""),
+            )
+
+        return sorted(events, key=sort_key)
