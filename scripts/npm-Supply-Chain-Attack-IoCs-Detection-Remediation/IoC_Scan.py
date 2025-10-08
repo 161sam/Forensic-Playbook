@@ -1,662 +1,814 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-IoC_Scan.py — npm/yarn/pnpm supply-chain scanner mit Heuristiken & Registry-Härtung
+ioc_scan.py — Unified IoC Scanner for Forensic Analysis
 
-Was es macht:
-- Findet Repos via package.json (node_modules & Co. ignoriert)
-- Parst Lockfiles: package-lock.json, npm-shrinkwrap.json, yarn.lock (Classic & Berry),
-  pnpm-lock.yaml
-- Prüft package.json-Lifecycle-Hooks (pre/install/prepare/postinstall)
-- Grept Source nach Red Flags:
-    * child_process.(exec|spawn|execSync|spawnSync)        [+3]
-    * eval(…) oder new Function(…)                         [+2]
-    * Buffer.from(…, "base64") oder atob(…)                [+2]
-    * Netz-IO (curl|wget|Invoke-WebRequest|https?://)      [+4]
-  Hooks selbst geben +3 (nur wenn nicht whitelisted, s. --whitelist)
-- Registry-Härtung: scannt .npmrc, publishConfig.registry, .yarnrc.yml (npmRegistryServer)
-  und NPM_CONFIG_REGISTRY; warnt, wenn ≠ https://registry.npmjs.org
-- Optionales IoC-Matching (Packages oder Domains)
-- Ausgaben: JSON (detailliert), CSV (Summary) und SARIF 2.1.0
-- Performance: Multiprocessing + optional ripgrep-Beschleunigung
+Features:
+- Scans filesystems, logs, npm/yarn/pnpm lockfiles for IoCs
+- Supports defanged domains ([.]), base64, hex-encoded IoCs
+- Timeline correlation (extracts timestamps from logs)
+- Multiple output formats: JSON, CSV, SARIF
+- File hashing (optional)
+- Fully offline-capable (no network calls)
+- Modular design for integration into other tools
 
-Beispiele:
-  python3 IoC_Scan.py /path/to/root1 /path/to/root2 \
-    --json out.json --csv out.csv --sarif out.sarif --workers 8
+Usage:
+    python3 ioc_scan.py --path /mnt/evidence --ioc-file IoCs.json \\
+        --format json --timeline --extract-strings --hash-files \\
+        --out-dir ./output
 
-  python3 IoC_Scan.py /home/user/Projects --ioc-file iocs.txt --no-rg
-
-IoC-Datei (einfach, newline-delimited):
-  # package IoCs
-  left-pad@1.3.0
-  @scope/badpkg@2.0.0
-  # domains / URLs
-  websocket-api2.publicvm.com
-  https://npmjs.help
+Author: Forensic-Playbook Contributors
+License: MIT
 """
 
-from __future__ import annotations
-
 import argparse
-import concurrent.futures as cf
 import csv
-import dataclasses
-import fnmatch
+import hashlib
 import io
 import json
 import os
 import re
-import shlex
-import shutil
-import subprocess
 import sys
-import time
 from collections import defaultdict
+from dataclasses import asdict, dataclass, field
+from datetime import datetime
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple, Set
+from typing import Dict, List, Optional, Set, Tuple
 
-# --------------------------- Defaults ---------------------------
+# ============================================================================
+# Configuration & Constants
+# ============================================================================
 
+VERSION = "2.0.0"
 DEFAULT_EXCLUDES = [
     "**/node_modules/**",
     "**/.git/**",
-    "**/.hg/**",
-    "**/.svn/**",
-    "**/.cache/**",
-    "**/.venv/**",
-    "**/.venvs/**",
-    "**/.next/**",
     "**/dist/**",
     "**/build/**",
-    "**/out/**",
-    "**/__tests__/**",
-    "**/tests/**",
-    "**/test/**",
-    "**/spec/**",
-    "**/examples/**",
-    "**/example/**",
-    "**/docs/**",
+    "**/__pycache__/**",
 ]
 
-DEFAULT_EXTS = [".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".json"]
+MALICIOUS_NPM_PACKAGES = {
+    "ansi-styles": {"6.2.2"},
+    "strip-ansi": {"7.1.1"},
+    "ansi-regex": {"6.2.1"},
+    "debug": {"4.4.2"},
+    "color-convert": {"3.1.1"},
+    "color-name": {"2.0.1"},
+    "supports-color": {"10.2.1"},
+    "chalk": {"5.6.1"},
+    "wrap-ansi": {"9.0.1"},
+    "slice-ansi": {"7.1.1"},
+    "color": {"5.0.1"},
+}
 
-WHITELIST_DEFAULT = [
-    # Whitelist greift NUR auf Hook-Kommandos (substring, case-insensitive)
-    "husky", "prisma", "node-gyp", "opencollective", "esbuild",
-    "sharp", "cypress", "electron", "nx", "vite"
+# Timestamp patterns for log parsing
+TIMESTAMP_PATTERNS = [
+    # ISO 8601
+    re.compile(r'\b(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)\b'),
+    # Syslog: Oct  8 07:49:02
+    re.compile(r'\b((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})\b'),
+    # Common log: [08/Oct/2025:14:32:10 +0000]
+    re.compile(r'\[(\d{2}/\w{3}/\d{4}:\d{2}:\d{2}:\d{2}\s+[+-]\d{4})\]'),
 ]
 
-REGISTRY_SAFE = "https://registry.npmjs.org"
+# ============================================================================
+# Data Classes
+# ============================================================================
 
-# Heuristik-Gewichte
-WEIGHTS = {
-    "hook": 3,
-    "child_process": 3,
-    "eval_function": 2,
-    "base64_decode": 2,
-    "net_io": 4,
-    "registry_warn": 1,
-    "ioc_match": 5,
-}
-
-# ripgrep-Patterns
-RG_PATTERNS = {
-    "child_process": r"child_process\.(exec|spawn|execSync|spawnSync)",
-    "eval_function": r"\beval\s*\(|\bnew\s+Function\s*\(",
-    "base64_decode": r"Buffer\.from\([^,]+,\s*['\"]base64['\"]\)|\batob\s*\(",
-    "net_io": r"\bcurl\s+https?://|\bwget\s+https?://|\bInvoke-WebRequest\b|\bPowerShell\s+-|https?://|wss?://|tcp://|udp://",
-}
-
-RE_NPMRC_REG = re.compile(r"^\s*(?:@[^:]+:)?registry\s*=\s*(\S+)\s*$", re.I)
-RE_YARNRC_REG = re.compile(r"^\s*npmRegistryServer\s*:\s*(\S+)\s*$", re.I)
-RE_ENV_ASSIGN = re.compile(r"\bNPM_CONFIG_REGISTRY\s*=\s*([^\s\"']+)", re.I)
-
-RE_YARN_RESOLVED = re.compile(r'^\s*resolved\s+"([^"]+)"')         # Classic
-RE_YARN_RESOLUTION = re.compile(r'^\s*resolution\s*:\s*"([^"]+)"')  # Berry
-RE_URL = re.compile(r"https?://[^\s\"')]+")
-
-RE_PNPM_TARBALL = re.compile(r"\btarball\s*:\s*(https?://\S+)")
-RE_PNPM_NAME = re.compile(r"^\s*name\s*:\s*(.+)$")
-
-RE_HOST = re.compile(r"^(?:https?://)?([^/]+)")
-
-# --------------------------- Data ---------------------------
-
-@dataclasses.dataclass
-class RuleHit:
-    rule: str
-    file: str
-    line: int
-    snippet: str
-
-@dataclasses.dataclass
-class HookHit:
-    file: str
-    hook: str
-    command: str
-    whitelisted: bool
-
-@dataclasses.dataclass
-class RegistryFinding:
-    file: str
-    kind: str  # npmrc | publishConfig | yarnrc | env
+@dataclass
+class IoC:
+    """Represents a single Indicator of Compromise"""
+    type: str  # domain, ip, hash, wallet, package, url
     value: str
-    ok: bool
+    tags: List[str] = field(default_factory=list)
+    source: Optional[str] = None
+    comment: Optional[str] = None
 
-@dataclasses.dataclass
-class LockFinding:
-    file: str
-    package: Optional[str]
-    resolved: Optional[str]
-    extra: Dict[str, str] = dataclasses.field(default_factory=dict)
+@dataclass
+class Match:
+    """Represents a match of an IoC in a file"""
+    ioc: IoC
+    file_path: str
+    line_number: Optional[int] = None
+    context: Optional[str] = None
+    timestamp: Optional[str] = None
+    file_hash: Optional[str] = None
 
-@dataclasses.dataclass
-class RepoReport:
-    repo_path: str
-    score: int
-    rule_counts: Dict[str, int]
-    hooks: List[HookHit]
-    rule_hits: List[RuleHit]
-    registries: List[RegistryFinding]
-    lockfindings: List[LockFinding]
-    ioc_matches: List[str]
-    notes: List[str]
+@dataclass
+class ScanResult:
+    """Complete scan results"""
+    scan_id: str
+    timestamp: str
+    scan_path: str
+    ioc_file: str
+    matches: List[Match] = field(default_factory=list)
+    npm_packages: List[Dict[str, str]] = field(default_factory=list)
+    stats: Dict[str, int] = field(default_factory=dict)
 
-# --------------------------- Utils ---------------------------
+# ============================================================================
+# IoC Loading & Processing
+# ============================================================================
 
-def which(cmd: str) -> Optional[str]:
-    return shutil.which(cmd)
+class IoC LoadError(Exception):
+    """Raised when IoC file cannot be loaded"""
+    pass
 
-def read_text(path: Path, max_bytes: int = 8 * 1024 * 1024) -> Optional[str]:
+def load_iocs(ioc_file: Path) -> List[IoC]:
+    """
+    Load IoCs from JSON or text file.
+    
+    JSON format:
+        [
+            {"type": "domain", "value": "evil.com", "tags": ["apt28"], "comment": "C2"},
+            {"type": "ip", "value": "1.2.3.4"},
+            ...
+        ]
+    
+    Text format (legacy):
+        evil.com
+        1.2.3.4
+        package@version
+    """
+    if not ioc_file.exists():
+        raise IoCLoadError(f"IoC file not found: {ioc_file}")
+    
+    iocs = []
+    
+    # Try JSON first
     try:
-        with open(path, "rb") as f:
-            data = f.read(max_bytes + 1)
-        if len(data) > max_bytes:
-            data = data[:max_bytes]
-        return data.decode("utf-8", errors="replace")
-    except Exception:
-        return None
+        with open(ioc_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            if isinstance(data, list):
+                for item in data:
+                    if isinstance(item, dict):
+                        iocs.append(IoC(
+                            type=item.get('type', 'unknown'),
+                            value=item.get('value', ''),
+                            tags=item.get('tags', []),
+                            source=item.get('source'),
+                            comment=item.get('comment')
+                        ))
+                return iocs
+    except (json.JSONDecodeError, KeyError):
+        pass  # Fall through to text format
+    
+    # Text format (auto-detect type)
+    with open(ioc_file, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            
+            ioc_type = detect_ioc_type(line)
+            iocs.append(IoC(type=ioc_type, value=line))
+    
+    return iocs
 
-def is_excluded(path: Path, exclude_globs: List[str]) -> bool:
-    s = str(path)
-    for pat in exclude_globs:
-        if fnmatch.fnmatch(s, pat):
-            return True
+def detect_ioc_type(value: str) -> str:
+    """Auto-detect IoC type from value"""
+    value_lower = value.lower()
+    
+    # Package (contains @)
+    if '@' in value and '/' not in value and not value.startswith('0x'):
+        return 'package'
+    
+    # IP address
+    if re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', value):
+        return 'ip'
+    
+    # URL
+    if value.startswith(('http://', 'https://', 'ftp://')):
+        return 'url'
+    
+    # Hash (SHA256=64 hex, MD5=32 hex)
+    if re.match(r'^[a-fA-F0-9]{32}$', value):
+        return 'hash_md5'
+    if re.match(r'^[a-fA-F0-9]{64}$', value):
+        return 'hash_sha256'
+    
+    # Crypto wallet
+    if value.startswith(('1', '3', 'bc1')) and len(value) > 25:
+        return 'wallet_btc'
+    if value.startswith('0x') and len(value) == 42:
+        return 'wallet_eth'
+    if value.startswith('T') and len(value) == 34:
+        return 'wallet_tron'
+    if value.startswith('L') and len(value) == 34:
+        return 'wallet_litecoin'
+    if len(value) == 44 and value.replace('0-9A-Za-z', ''):
+        return 'wallet_solana'
+    
+    # Domain (contains dot, no spaces)
+    if '.' in value and ' ' not in value:
+        return 'domain'
+    
+    return 'unknown'
+
+def generate_ioc_variants(ioc: IoC) -> List[str]:
+    """
+    Generate variants of an IoC for matching:
+    - Plain (refanged)
+    - Defanged ([.] → .)
+    - Base64-encoded
+    - Hex-encoded
+    """
+    variants = []
+    value = ioc.value
+    
+    # Refang (convert [.] to .)
+    refanged = value.replace('[.]', '.').replace('(.)', '.')
+    variants.append(refanged)
+    
+    # Keep original if defanged
+    if '[.]' in value or '(.)' in value:
+        variants.append(value)
+    
+    # Base64 variants
+    try:
+        import base64
+        b64 = base64.b64encode(refanged.encode('utf-8')).decode('utf-8')
+        variants.extend([b64, b64.rstrip('=')])
+    except Exception:
+        pass
+    
+    # Hex variant
+    try:
+        hex_val = refanged.encode('utf-8').hex()
+        variants.append(hex_val)
+    except Exception:
+        pass
+    
+    return list(set(variants))
+
+# ============================================================================
+# File Scanning
+# ============================================================================
+
+def should_exclude(path: Path, excludes: List[str]) -> bool:
+    """Check if path matches any exclusion pattern"""
+    path_str = str(path)
+    for pattern in excludes:
+        if pattern.endswith('/**'):
+            if pattern[:-3] in path_str:
+                return True
+        elif pattern.startswith('**/'):
+            if pattern[3:] in path_str:
+                return True
+        else:
+            if pattern in path_str:
+                return True
     return False
 
-def find_repos(roots: List[Path], exclude_globs: List[str]) -> List[Path]:
-    repo_roots: Set[Path] = set()
-    for root in roots:
-        root = root.resolve()
-        if root.is_file():
-            continue
-        for p in root.rglob("package.json"):
-            if "node_modules" in p.parts:
-                continue
-            if any(fnmatch.fnmatch(str(p), g) for g in exclude_globs):
-                continue
-            repo_roots.add(p.parent.resolve())
-    return sorted(repo_roots)
-
-def load_json_safely(p: Path) -> Optional[dict]:
+def extract_strings(file_path: Path, min_length: int = 4) -> List[str]:
+    """Extract printable strings from binary file"""
+    strings = []
     try:
-        return json.loads(read_text(p) or "")
+        with open(file_path, 'rb') as f:
+            data = f.read()
+            # Find sequences of printable ASCII (0x20-0x7E)
+            pattern = rb'[\x20-\x7e]{' + str(min_length).encode() + rb',}'
+            for match in re.finditer(pattern, data):
+                strings.append(match.group().decode('latin-1'))
     except Exception:
-        return None
+        pass
+    return strings
 
-def iter_files(repo: Path, exts: List[str], exclude_globs: List[str]) -> Iterable[Path]:
-    for p in repo.rglob("*"):
-        if p.is_file():
-            if exts and p.suffix.lower() not in exts:
-                continue
-            if is_excluded(p, exclude_globs):
-                continue
-            yield p
-
-# --------------------------- ripgrep ---------------------------
-
-def rg_search(repo: Path, pattern: str, exts: List[str], exclude_globs: List[str], max_filesize: int) -> List[RuleHit]:
-    rg = which("rg")
-    if not rg:
-        return []
-    cmd = [rg, "-n", "-i", "--no-heading", f"--max-filesize={max_filesize}M"]
-    for g in exclude_globs:
-        cmd += ["-g", f"!{g}"]
-    if exts:
-        for ext in set(exts):
-            cmd += ["-g", f"**/*{ext}"]
-    cmd += ["-e", pattern, str(repo)]
+def scan_file_for_iocs(
+    file_path: Path,
+    iocs: List[IoC],
+    ioc_variants: Dict[str, List[str]],
+    extract_binary_strings: bool = False,
+    hash_matches: bool = False,
+    enable_timeline: bool = False
+) -> List[Match]:
+    """
+    Scan a single file for IoC matches.
+    
+    Returns list of Match objects.
+    """
+    matches = []
+    
+    # Check if binary
+    is_binary = False
     try:
-        out = subprocess.run(cmd, check=False, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True).stdout
+        with open(file_path, 'rb') as f:
+            chunk = f.read(1024)
+            if b'\x00' in chunk:
+                is_binary = True
     except Exception:
-        return []
-    hits: List[RuleHit] = []
-    for line in out.splitlines():
-        try:
-            file_part, lineno, snippet = line.split(":", 2)
-            hits.append(RuleHit(rule="", file=file_part, line=int(lineno), snippet=snippet.strip()))
-        except ValueError:
-            continue
-    return hits
+        return matches
+    
+    # Binary file handling
+    if is_binary:
+        if not extract_binary_strings:
+            return matches
+        
+        strings = extract_strings(file_path)
+        for s in strings:
+            s_lower = s.lower()
+            for ioc in iocs:
+                for variant in ioc_variants.get(ioc.value, [ioc.value]):
+                    if variant.lower() in s_lower:
+                        matches.append(Match(
+                            ioc=ioc,
+                            file_path=str(file_path),
+                            context=s[:200]
+                        ))
+        return matches
+    
+    # Text file handling
+    try:
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            for line_num, line in enumerate(f, 1):
+                line_lower = line.lower()
+                
+                for ioc in iocs:
+                    for variant in ioc_variants.get(ioc.value, [ioc.value]):
+                        if variant.lower() in line_lower:
+                            timestamp = None
+                            if enable_timeline:
+                                timestamp = extract_timestamp(line)
+                            
+                            file_hash = None
+                            if hash_matches:
+                                file_hash = compute_file_hash(file_path)
+                            
+                            matches.append(Match(
+                                ioc=ioc,
+                                file_path=str(file_path),
+                                line_number=line_num,
+                                context=line.strip()[:500],
+                                timestamp=timestamp,
+                                file_hash=file_hash
+                            ))
+                            break  # Only count once per line
+    except Exception:
+        pass
+    
+    return matches
 
-def py_grep(repo: Path, pattern: str, exts: List[str], exclude_globs: List[str], max_bytes_per_file: int = 4 * 1024 * 1024) -> List[RuleHit]:
-    rx = re.compile(pattern, re.I)
-    hits: List[RuleHit] = []
-    for f in iter_files(repo, exts, exclude_globs):
-        txt = read_text(f, max_bytes=max_bytes_per_file)
-        if not txt:
-            continue
-        for i, ln in enumerate(txt.splitlines(), 1):
-            if rx.search(ln):
-                hits.append(RuleHit(rule="", file=str(f), line=i, snippet=ln.strip()))
-    return hits
+def extract_timestamp(line: str) -> Optional[str]:
+    """Extract timestamp from log line"""
+    for pattern in TIMESTAMP_PATTERNS:
+        match = pattern.search(line)
+        if match:
+            ts_str = match.group(1)
+            try:
+                # Try to parse to ISO format
+                if 'T' in ts_str or len(ts_str) > 20:
+                    # Already ISO-ish
+                    dt = datetime.fromisoformat(ts_str.replace('Z', '+00:00'))
+                else:
+                    # Syslog format - add current year
+                    from datetime import datetime as dt_module
+                    year = dt_module.now().year
+                    parts = ts_str.split()
+                    dt = datetime.strptime(f"{year} {ts_str}", "%Y %b %d %H:%M:%S")
+                
+                return dt.isoformat() + 'Z'
+            except Exception:
+                return ts_str
+    return None
 
-# --------------------------- Lockfiles ---------------------------
+def compute_file_hash(file_path: Path, algorithm: str = 'sha256') -> str:
+    """Compute file hash"""
+    h = hashlib.sha256() if algorithm == 'sha256' else hashlib.md5()
+    try:
+        with open(file_path, 'rb') as f:
+            for chunk in iter(lambda: f.read(65536), b''):
+                h.update(chunk)
+        return h.hexdigest()
+    except Exception:
+        return ''
 
-def parse_package_lock(p: Path) -> List[LockFinding]:
-    data = load_json_safely(p) or {}
-    findings: List[LockFinding] = []
-    if "packages" in data:  # npm v7+
-        for k, v in data.get("packages", {}).items():
-            resolved = (v or {}).get("resolved")
-            name = (v or {}).get("name")
-            if resolved or name:
-                findings.append(LockFinding(file=str(p), package=name, resolved=resolved))
-    elif "dependencies" in data:
-        def walk_deps(d):
-            for name, info in d.items():
-                resolved = (info or {}).get("resolved")
-                version = (info or {}).get("version")
-                pkg = f"{name}@{version}" if version else name
-                findings.append(LockFinding(file=str(p), package=pkg, resolved=resolved))
-                if "dependencies" in (info or {}):
-                    walk_deps(info["dependencies"])
-        walk_deps(data["dependencies"])
+# ============================================================================
+# NPM Package Scanning
+# ============================================================================
+
+def scan_npm_lockfiles(scan_path: Path) -> List[Dict[str, str]]:
+    """
+    Scan npm/yarn/pnpm lockfiles for known malicious packages.
+    
+    Returns list of dicts: [{"package": "name@version", "file": "path"}, ...]
+    """
+    findings = []
+    
+    for root, dirs, files in os.walk(scan_path):
+        # Skip excluded directories
+        dirs[:] = [d for d in dirs if not should_exclude(Path(root) / d, DEFAULT_EXCLUDES)]
+        
+        for fname in files:
+            fpath = Path(root) / fname
+            
+            if fname == "package-lock.json" or fname == "npm-shrinkwrap.json":
+                findings.extend(scan_package_lock(fpath))
+            elif fname == "yarn.lock":
+                findings.extend(scan_yarn_lock(fpath))
+            elif fname == "pnpm-lock.yaml":
+                findings.extend(scan_pnpm_lock(fpath))
+    
     return findings
 
-def parse_yarn_lock(p: Path) -> List[LockFinding]:
-    findings: List[LockFinding] = []
-    txt = read_text(p) or ""
-    pkg_current: Optional[str] = None
-    for raw in txt.splitlines():
-        line = raw.rstrip()
-        m_resolved = RE_YARN_RESOLVED.match(line)  # Classic
-        if m_resolved:
-            findings.append(LockFinding(file=str(p), package=pkg_current, resolved=m_resolved.group(1)))
-            continue
-        if line and not line.startswith((" ", "#")) and line.endswith(":"):
-            pkg_current = line.strip().rstrip(":").strip('"')
-        m_resolution = RE_YARN_RESOLUTION.match(line)  # Berry
-        if m_resolution:
-            findings.append(LockFinding(file=str(p), package=m_resolution.group(1), resolved=None, extra={"resolution": m_resolution.group(1)}))
-            continue
-        for u in RE_URL.findall(line):
-            findings.append(LockFinding(file=str(p), package=pkg_current, resolved=u))
-    return findings
-
-def parse_pnpm_lock(p: Path) -> List[LockFinding]:
-    findings: List[LockFinding] = []
-    txt = read_text(p) or ""
-    current_name: Optional[str] = None
-    for line in txt.splitlines():
-        m_name = RE_PNPM_NAME.match(line)
-        if m_name:
-            current_name = m_name.group(1).strip().strip('"')
-        for m in RE_PNPM_TARBALL.finditer(line):
-            findings.append(LockFinding(file=str(p), package=current_name, resolved=m.group(1)))
-        for u in RE_URL.findall(line):
-            if u.endswith(".tgz"):
-                findings.append(LockFinding(file=str(p), package=current_name, resolved=u))
-    return findings
-
-def parse_lockfiles(repo: Path) -> List[LockFinding]:
-    findings: List[LockFinding] = []
-    for name in ("package-lock.json", "npm-shrinkwrap.json"):
-        p = repo / name
-        if p.exists():
-            findings.extend(parse_package_lock(p))
-    yl = repo / "yarn.lock"
-    if yl.exists():
-        findings.extend(parse_yarn_lock(yl))
-    pl = repo / "pnpm-lock.yaml"
-    if pl.exists():
-        findings.extend(parse_pnpm_lock(pl))
-    return findings
-
-# --------------------------- IoCs ---------------------------
-
-@dataclasses.dataclass
-class IoCSet:
-    packages: Set[str]
-    domains: Set[str]
-    raw: Set[str]
-
-def load_iocs(path: Optional[Path]) -> IoCSet:
-    pkgs: Set[str] = set()
-    doms: Set[str] = set()
-    raw: Set[str] = set()
-    if path and path.exists():
-        content = read_text(path) or ""
-        for line in content.splitlines():
-            line = line.strip()
-            if not line or line.startswith("#"):
+def scan_package_lock(file_path: Path) -> List[Dict[str, str]]:
+    """Scan npm package-lock.json for malicious packages"""
+    findings = []
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    except Exception:
+        return findings
+    
+    def check_deps(deps):
+        for name, info in deps.items():
+            if not isinstance(info, dict):
                 continue
-            raw.add(line)
-            if "://" in line:
-                m = RE_HOST.match(line.replace("\\", "/"))
-                if m:
-                    doms.add(m.group(1).lower())
-            elif "/" in line and "." in line and " " not in line:
-                doms.add(line.lower())
-            elif "@" in line:
-                pkgs.add(line)
-            else:
-                pkgs.add(line + "@*")
-    return IoCSet(pkgs, doms, raw)
-
-def ioc_match_lock(lockfindings: List[LockFinding], iocs: IoCSet) -> List[str]:
-    matches: Set[str] = set()
-    for lf in lockfindings:
-        if lf.package:
-            pkg = lf.package
-            if "@npm:" in pkg:  # Yarn Berry normalize
-                pkg = pkg.replace("@npm:", "@")
-            if pkg in iocs.packages:
-                matches.add(pkg)
-            if "@" in pkg:
-                name = pkg.split("@", 1)[0]
-                if f"{name}@*" in iocs.packages:
-                    matches.add(pkg)
-        if lf.resolved:
-            m = RE_HOST.match(lf.resolved)
-            if m and m.group(1).lower() in iocs.domains:
-                matches.add(m.group(1).lower())
-    return sorted(matches)
-
-# --------------------------- Registry-Härtung ---------------------------
-
-def scan_registries(repo: Path) -> List[RegistryFinding]:
-    findings: List[RegistryFinding] = []
-
-    # .npmrc
-    for p in repo.rglob(".npmrc"):
-        if is_excluded(p, DEFAULT_EXCLUDES):
-            continue
-        txt = read_text(p) or ""
-        for ln in txt.splitlines():
-            m = RE_NPMRC_REG.search(ln)
-            if m:
-                val = m.group(1).strip()
-                ok = val.startswith(REGISTRY_SAFE)
-                findings.append(RegistryFinding(file=str(p), kind="npmrc", value=val, ok=ok))
-
-    # publishConfig.registry
-    for p in repo.rglob("package.json"):
-        if "node_modules" in p.parts or is_excluded(p, DEFAULT_EXCLUDES):
-            continue
-        data = load_json_safely(p) or {}
-        pc = (data or {}).get("publishConfig") or {}
-        reg = pc.get("registry")
-        if isinstance(reg, str):
-            ok = reg.startswith(REGISTRY_SAFE)
-            findings.append(RegistryFinding(file=str(p), kind="publishConfig", value=reg, ok=ok))
-
-    # .yarnrc.yml
-    for p in repo.rglob(".yarnrc.yml"):
-        if is_excluded(p, DEFAULT_EXCLUDES):
-            continue
-        txt = read_text(p) or ""
-        for ln in txt.splitlines():
-            m = RE_YARNRC_REG.search(ln)
-            if m:
-                val = m.group(1).strip()
-                ok = val.startswith(REGISTRY_SAFE)
-                findings.append(RegistryFinding(file=str(p), kind="yarnrc", value=val, ok=ok))
-
-    # NPM_CONFIG_REGISTRY in env-/shell-Dateien
-    cand_globs = ["*.env", ".env", ".env.*", "*rc", "*.sh", "*.bash", "*.zsh", "*.fish"]
-    for g in cand_globs:
-        for p in repo.rglob(g):
-            if is_excluded(p, DEFAULT_EXCLUDES):
+            version = str(info.get("version", ""))
+            if name in MALICIOUS_NPM_PACKAGES and version in MALICIOUS_NPM_PACKAGES[name]:
+                findings.append({
+                    "package": f"{name}@{version}",
+                    "file": str(file_path)
+                })
+            # Recurse
+            if "dependencies" in info:
+                check_deps(info["dependencies"])
+    
+    if "dependencies" in data:
+        check_deps(data["dependencies"])
+    
+    if "packages" in data:
+        for pkg_path, info in data.get("packages", {}).items():
+            if not isinstance(info, dict):
                 continue
-            txt = read_text(p) or ""
-            for m in RE_ENV_ASSIGN.finditer(txt):
-                val = m.group(1).strip()
-                ok = val.startswith(REGISTRY_SAFE)
-                findings.append(RegistryFinding(file=str(p), kind="env", value=val, ok=ok))
-
+            name = info.get("name")
+            version = str(info.get("version", ""))
+            if name and name in MALICIOUS_NPM_PACKAGES and version in MALICIOUS_NPM_PACKAGES[name]:
+                findings.append({
+                    "package": f"{name}@{version}",
+                    "file": str(file_path)
+                })
+    
     return findings
 
-# --------------------------- Hooks ---------------------------
+def scan_yarn_lock(file_path: Path) -> List[Dict[str, str]]:
+    """Scan yarn.lock for malicious packages"""
+    findings = []
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            text = f.read()
+    except Exception:
+        return findings
+    
+    current_pkg = None
+    for line in text.splitlines():
+        line = line.rstrip()
+        
+        # Package declaration line
+        if line and not line.startswith(' ') and line.endswith(':'):
+            pkg_id = line[:-1].strip('"')
+            if '@' in pkg_id:
+                # Extract package name
+                if pkg_id.startswith('@'):
+                    # Scoped package
+                    parts = pkg_id.split('@', 2)
+                    if len(parts) >= 3:
+                        current_pkg = '@' + parts[1]
+                else:
+                    current_pkg = pkg_id.split('@')[0]
+        
+        # Version line
+        if line.strip().startswith('version'):
+            parts = line.split()
+            if len(parts) >= 2:
+                version = parts[1].strip('"')
+                if current_pkg and current_pkg in MALICIOUS_NPM_PACKAGES:
+                    if version in MALICIOUS_NPM_PACKAGES[current_pkg]:
+                        findings.append({
+                            "package": f"{current_pkg}@{version}",
+                            "file": str(file_path)
+                        })
+    
+    return findings
 
-def scan_hooks(repo: Path, whitelist: List[str]) -> List[HookHit]:
-    hits: List[HookHit] = []
-    wl = [w.lower() for w in whitelist]
-    for p in repo.rglob("package.json"):
-        if "node_modules" in p.parts or is_excluded(p, DEFAULT_EXCLUDES):
-            continue
-        data = load_json_safely(p) or {}
-        scripts = (data or {}).get("scripts") or {}
-        for hook in ("preinstall", "install", "prepare", "postinstall"):
-            cmd = scripts.get(hook)
-            if not isinstance(cmd, str):
-                continue
-            lower = cmd.lower()
-            whitelisted = any(w in lower for w in wl)
-            hits.append(HookHit(file=str(p), hook=hook, command=cmd, whitelisted=whitelisted))
-    return hits
+def scan_pnpm_lock(file_path: Path) -> List[Dict[str, str]]:
+    """Scan pnpm-lock.yaml for malicious packages"""
+    findings = []
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            text = f.read()
+    except Exception:
+        return findings
+    
+    # Simple regex-based parsing (YAML parsing would require pyyaml)
+    for line in text.splitlines():
+        for pkg_name, versions in MALICIOUS_NPM_PACKAGES.items():
+            for version in versions:
+                if f"{pkg_name}@{version}" in line or f"{pkg_name}/{version}" in line:
+                    findings.append({
+                        "package": f"{pkg_name}@{version}",
+                        "file": str(file_path)
+                    })
+    
+    return findings
 
-# --------------------------- Code-Grep ---------------------------
+# ============================================================================
+# Output Formatting
+# ============================================================================
 
-def scan_code(repo: Path, use_rg: bool, exts: List[str], exclude_globs: List[str], max_filesize_mb: int, max_hits_per_rule: int) -> Tuple[Dict[str, int], List[RuleHit]]:
-    counts: Dict[str, int] = defaultdict(int)
-    all_hits: List[RuleHit] = []
-    for rule, pattern in RG_PATTERNS.items():
-        if use_rg and which("rg"):
-            hits = rg_search(repo, pattern, exts, exclude_globs, max_filesize=max_filesize_mb)
-        else:
-            hits = py_grep(repo, pattern, exts, exclude_globs)
-        for h in hits[:max_hits_per_rule] if max_hits_per_rule > 0 else hits:
-            h.rule = rule
-            all_hits.append(h)
-        counts[rule] += len(hits)
-    return counts, all_hits
+def format_json(result: ScanResult) -> str:
+    """Format results as JSON"""
+    return json.dumps(asdict(result), indent=2, default=str)
 
-# --------------------------- Scoring ---------------------------
-
-def compute_score(hooks: List[HookHit], rule_counts: Dict[str, int], registries: List[RegistryFinding], ioc_matches: List[str]) -> int:
-    score = 0
-    for h in hooks:
-        if not h.whitelisted:
-            score += WEIGHTS["hook"]
-    for k, c in rule_counts.items():
-        score += WEIGHTS.get(k, 0) * c
-    for r in registries:
-        if not r.ok:
-            score += WEIGHTS["registry_warn"]
-    if ioc_matches:
-        score += WEIGHTS["ioc_match"] * len(ioc_matches)
-    return score
-
-# --------------------------- Repo-Verarbeitung ---------------------------
-
-def process_repo(repo: Path, args, iocs) -> RepoReport:
-    notes: List[str] = []
-    hooks = scan_hooks(repo, args.whitelist)
-    rule_counts, rule_hits = scan_code(
-        repo=repo,
-        use_rg=not args.no_rg,
-        exts=args.exts,
-        exclude_globs=args.exclude,
-        max_filesize_mb=args.max_filesize,
-        max_hits_per_rule=args.max_hits
-    )
-    lockfindings = parse_lockfiles(repo)
-    registries = scan_registries(repo)
-    ioc_matches = ioc_match_lock(lockfindings, iocs) if iocs.raw else []
-    score = compute_score(hooks, rule_counts, registries, ioc_matches)
-    return RepoReport(
-        repo_path=str(repo),
-        score=score,
-        rule_counts=dict(rule_counts),
-        hooks=hooks,
-        rule_hits=rule_hits,
-        registries=registries,
-        lockfindings=lockfindings,
-        ioc_matches=ioc_matches,
-        notes=notes,
-    )
-
-# --------------------------- Output ---------------------------
-
-def to_json(reports: List[RepoReport]) -> str:
-    def _enc(o):
-        if dataclasses.is_dataclass(o):
-            return dataclasses.asdict(o)
-        if isinstance(o, Path):
-            return str(o)
-        raise TypeError
-    return json.dumps(reports, default=_enc, indent=2, ensure_ascii=False)
-
-def to_csv(reports: List[RepoReport]) -> str:
-    buf = io.StringIO()
-    writer = csv.writer(buf)
-    writer.writerow([
-        "repo_path", "score",
-        "hooks", "child_process", "eval_function", "base64_decode", "net_io",
-        "registry_warn_count", "ioc_matches"
-    ])
-    for r in reports:
-        reg_warns = sum(1 for x in r.registries if not x.ok)
+def format_csv(result: ScanResult) -> str:
+    """Format results as CSV"""
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # Header
+    writer.writerow(['IoC Type', 'IoC Value', 'File Path', 'Line Number', 'Timestamp', 'File Hash', 'Context'])
+    
+    # Data rows
+    for match in result.matches:
         writer.writerow([
-            r.repo_path, r.score,
-            sum(1 for h in r.hooks if not h.whitelisted),
-            r.rule_counts.get("child_process", 0),
-            r.rule_counts.get("eval_function", 0),
-            r.rule_counts.get("base64_decode", 0),
-            r.rule_counts.get("net_io", 0),
-            reg_warns,
-            ";".join(r.ioc_matches),
+            match.ioc.type,
+            match.ioc.value,
+            match.file_path,
+            match.line_number or '',
+            match.timestamp or '',
+            match.file_hash or '',
+            (match.context or '')[:100]
         ])
-    return buf.getvalue()
+    
+    return output.getvalue()
 
-def to_sarif(reports: List[RepoReport]) -> dict:
-    rules = {
-        "HOOK":  {"id":"HOOK","name":"Lifecycle hook","shortDescription":{"text":"Suspicious lifecycle hook"},"help":{"text":"Install-Skripte können Code ausführen."}},
-        "CHILD": {"id":"CHILD","name":"child_process usage","shortDescription":{"text":"Spawns shell/commands"},"help":{"text":"Kann beliebigen Code ausführen."}},
-        "EVAL":  {"id":"EVAL","name":"eval/new Function","shortDescription":{"text":"Dynamic code evaluation"},"help":{"text":"Häufige Obfuskation."}},
-        "B64":   {"id":"B64","name":"base64 decoding","shortDescription":{"text":"Buffer.from(..., 'base64')/atob"},"help":{"text":"Payload-Dekodierung."}},
-        "NET":   {"id":"NET","name":"network IO","shortDescription":{"text":"Network access strings"},"help":{"text":"Downloads/Beaconing."}},
-        "REG":   {"id":"REG","name":"registry override","shortDescription":{"text":"Non-standard npm registry"},"help":{"text":"Sollte registry.npmjs.org sein."}},
-    }
+def format_sarif(result: ScanResult) -> str:
+    """Format results as SARIF 2.1.0"""
     sarif = {
         "version": "2.1.0",
         "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
         "runs": [{
-            "tool": {"driver": {"name": "IoC_Scan.py", "informationUri": "https://example.local/ioc-scan","rules": list(rules.values())}},
+            "tool": {
+                "driver": {
+                    "name": "ioc_scan.py",
+                    "version": VERSION,
+                    "informationUri": "https://github.com/your-org/Forensic-Playbook",
+                    "rules": [
+                        {
+                            "id": "IOC_MATCH",
+                            "name": "Indicator of Compromise Detected",
+                            "shortDescription": {"text": "File contains known IoC"},
+                            "fullDescription": {"text": "The file contains a known Indicator of Compromise from the provided IoC list."},
+                            "defaultConfiguration": {"level": "error"}
+                        }
+                    ]
+                }
+            },
             "results": []
         }]
     }
-    results = sarif["runs"][0]["results"]
-    for r in reports:
-        for h in r.hooks:
-            if h.whitelisted:
-                continue
-            results.append({
-                "ruleId": "HOOK",
-                "message": {"text": f"{h.hook} -> {h.command}"},
-                "locations": [{"physicalLocation":{"artifactLocation":{"uri": h.file},"region":{"startLine":1}}}],
-                "properties": {"repo": r.repo_path}
-            })
-        mapping = {"child_process":"CHILD","eval_function":"EVAL","base64_decode":"B64","net_io":"NET"}
-        for hit in r.rule_hits:
-            results.append({
-                "ruleId": mapping.get(hit.rule, "NET"),
-                "message": {"text": hit.snippet[:500]},
-                "locations": [{"physicalLocation":{"artifactLocation":{"uri": hit.file},"region":{"startLine": hit.line}}}],
-                "properties": {"repo": r.repo_path}
-            })
-        for reg in r.registries:
-            if reg.ok:
-                continue
-            results.append({
-                "ruleId": "REG",
-                "message": {"text": f"{reg.kind}: {reg.value}"},
-                "locations": [{"physicalLocation":{"artifactLocation":{"uri": reg.file},"region":{"startLine":1}}}],
-                "properties": {"repo": r.repo_path}
-            })
-    return sarif
+    
+    for match in result.matches:
+        sarif["runs"][0]["results"].append({
+            "ruleId": "IOC_MATCH",
+            "level": "error",
+            "message": {"text": f"IoC detected: {match.ioc.type} = {match.ioc.value}"},
+            "locations": [{
+                "physicalLocation": {
+                    "artifactLocation": {"uri": match.file_path},
+                    "region": {
+                        "startLine": match.line_number or 1
+                    }
+                }
+            }],
+            "properties": {
+                "iocType": match.ioc.type,
+                "iocValue": match.ioc.value,
+                "timestamp": match.timestamp,
+                "fileHash": match.file_hash,
+                "context": match.context
+            }
+        })
+    
+    return json.dumps(sarif, indent=2)
 
-# --------------------------- Args ---------------------------
+# ============================================================================
+# Main Scanner
+# ============================================================================
 
-def parse_args(argv: List[str]) -> argparse.Namespace:
-    ap = argparse.ArgumentParser(
-        description="Scan npm/yarn/pnpm Repos nach IoCs, riskanten Patterns und Registry-Overrides.",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+def scan_directory(
+    scan_path: Path,
+    iocs: List[IoC],
+    exclude_patterns: List[str],
+    extract_binary_strings: bool = False,
+    hash_matches: bool = False,
+    enable_timeline: bool = False
+) -> Tuple[List[Match], Dict[str, int]]:
+    """
+    Recursively scan directory for IoC matches.
+    
+    Returns:
+        (matches, stats)
+    """
+    matches = []
+    stats = defaultdict(int)
+    
+    # Pre-compute IoC variants
+    ioc_variants = {}
+    for ioc in iocs:
+        ioc_variants[ioc.value] = generate_ioc_variants(ioc)
+    
+    # Walk directory
+    for root, dirs, files in os.walk(scan_path):
+        # Filter excluded directories
+        dirs[:] = [d for d in dirs if not should_exclude(Path(root) / d, exclude_patterns)]
+        
+        for fname in files:
+            fpath = Path(root) / fname
+            
+            if should_exclude(fpath, exclude_patterns):
+                continue
+            
+            stats['files_scanned'] += 1
+            
+            file_matches = scan_file_for_iocs(
+                fpath,
+                iocs,
+                ioc_variants,
+                extract_binary_strings,
+                hash_matches,
+                enable_timeline
+            )
+            
+            if file_matches:
+                matches.extend(file_matches)
+                stats['files_with_matches'] += 1
+                stats['total_matches'] += len(file_matches)
+    
+    return matches, dict(stats)
+
+def main():
+    """Main entry point"""
+    parser = argparse.ArgumentParser(
+        description="Unified IoC Scanner for Forensic Analysis",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Basic scan
+  python3 ioc_scan.py --path /mnt/evidence --ioc-file IoCs.json
+
+  # Full scan with all features
+  python3 ioc_scan.py --path /mnt/evidence --ioc-file IoCs.json \\
+      --format json --timeline --extract-strings --hash-files \\
+      --out-dir ./output --scan-npm
+
+  # CSV output with timeline
+  python3 ioc_scan.py --path /var/log --ioc-file IoCs.json \\
+      --format csv --timeline --out-file results.csv
+        """
     )
-    ap.add_argument("paths", nargs="+", help="Directories zum Scannen (es wird nach package.json gesucht).")
-    ap.add_argument("--ioc-file", type=str, default=None, help="Pfad zu IoC-Liste (Packages/Domains).")
-    ap.add_argument("--json", type=str, default=None, help="Schreibe detailliertes JSON hierhin. (Default: stdout)")
-    ap.add_argument("--csv", type=str, default=None, help="Schreibe Summary-CSV hierhin.")
-    ap.add_argument("--sarif", type=str, default=None, help="Schreibe SARIF v2.1.0 hierhin.")
-    ap.add_argument("--workers", type=int, default=os.cpu_count() or 4, help="Parallelität.")
-    ap.add_argument("--no-rg", action="store_true", help="ripgrep-Beschleunigung deaktivieren.")
-    ap.add_argument("--max-hits", type=int, default=50, help="Max. gespeicherte Hits je Rule/Repo (0 = unlimited).")
-    ap.add_argument("--max-filesize", type=int, default=4, help="Max. Filesize (MB) für Code-Scan.")
-    ap.add_argument("--exts", type=str, default=",".join(DEFAULT_EXTS), help="Dateiendungen (comma-separated).")
-    ap.add_argument("--exclude", type=str, default=",".join(DEFAULT_EXCLUDES), help="Glob-Excludes (comma-separated).")
-    ap.add_argument("--whitelist", type=str, default=",".join(WHITELIST_DEFAULT), help="Whitelist-Substrings für Hook-Kommandos.")
-    return ap.parse_args(argv)
-
-# --------------------------- Main ---------------------------
-
-def main(argv: List[str]) -> int:
-    args = parse_args(argv)
-    roots = [Path(p) for p in args.paths]
-    args.exts = [e.strip() for e in (args.exts.split(",") if isinstance(args.exts, str) else args.exts) if e.strip()]
-    args.exclude = [g.strip() for g in (args.exclude.split(",") if isinstance(args.exclude, str) else args.exclude) if g.strip()]
-    args.whitelist = [w.strip() for w in (args.whitelist.split(",") if isinstance(args.whitelist, str) else args.whitelist) if w.strip()]
-
-    repos = find_repos(roots, args.exclude)
-    if not repos:
-        print("Keine Repos gefunden (keine package.json).", file=sys.stderr)
-        return 2
-
-    iocs = load_iocs(Path(args.ioc_file)) if args.ioc_file else IoCSet(set(), set(), set())
-    print(f"[+] {len(repos)} Repos gefunden. ripgrep: {'ja' if (not args.no_rg and which('rg')) else 'nein'}", file=sys.stderr)
-
-    reports: List[RepoReport] = []
-    t0 = time.time()
-    with cf.ProcessPoolExecutor(max_workers=args.workers) as exe:
-        futs = [exe.submit(process_repo, repo, args, iocs) for repo in repos]
-        for i, fut in enumerate(cf.as_completed(futs), 1):
-            try:
-                reports.append(fut.result())
-            except Exception as e:
-                print(f"[!] Fehler im Repo: {e}", file=sys.stderr)
-            if i % 20 == 0:
-                print(f"  .. {i}/{len(repos)} Repos verarbeitet", file=sys.stderr)
-    elapsed = time.time() - t0
-    print(f"[+] Fertig. {len(reports)} Repos in {elapsed:.1f}s verarbeitet", file=sys.stderr)
-
-    reports.sort(key=lambda r: r.score, reverse=True)
-
-    if args.json:
-        Path(args.json).write_text(to_json(reports), encoding="utf-8")
-        print(f"[+] JSON: {args.json}", file=sys.stderr)
+    
+    parser.add_argument('-p', '--path', type=Path, required=True,
+                        help='Path to scan (directory or file)')
+    parser.add_argument('-i', '--ioc-file', type=Path, required=True,
+                        help='IoC file (JSON or text format)')
+    parser.add_argument('-f', '--format', choices=['json', 'csv', 'sarif', 'text'],
+                        default='text', help='Output format')
+    parser.add_argument('-o', '--out-file', type=Path,
+                        help='Output file (default: stdout)')
+    parser.add_argument('--out-dir', type=Path,
+                        help='Output directory for all artifacts')
+    parser.add_argument('-t', '--timeline', action='store_true',
+                        help='Enable timeline correlation')
+    parser.add_argument('-x', '--extract-strings', action='store_true',
+                        help='Extract strings from binary files')
+    parser.add_argument('--hash-files', action='store_true',
+                        help='Compute SHA256 hash of files with matches')
+    parser.add_argument('--scan-npm', action='store_true',
+                        help='Scan npm/yarn/pnpm lockfiles for malicious packages')
+    parser.add_argument('--exclude', action='append',
+                        help='Exclude patterns (can be used multiple times)')
+    parser.add_argument('-v', '--verbose', action='store_true',
+                        help='Verbose output')
+    parser.add_argument('--version', action='version', version=f'%(prog)s {VERSION}')
+    
+    args = parser.parse_args()
+    
+    # Validate inputs
+    if not args.path.exists():
+        print(f"Error: Scan path does not exist: {args.path}", file=sys.stderr)
+        return 1
+    
+    # Load IoCs
+    try:
+        iocs = load_iocs(args.ioc_file)
+        if args.verbose:
+            print(f"Loaded {len(iocs)} IoCs from {args.ioc_file}", file=sys.stderr)
+    except IoCLoadError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    
+    # Setup output directory
+    if args.out_dir:
+        args.out_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Scan
+    if args.verbose:
+        print(f"Scanning: {args.path}", file=sys.stderr)
+    
+    exclude_patterns = args.exclude or DEFAULT_EXCLUDES
+    matches, stats = scan_directory(
+        args.path,
+        iocs,
+        exclude_patterns,
+        args.extract_strings,
+        args.hash_files,
+        args.timeline
+    )
+    
+    # NPM scan if requested
+    npm_packages = []
+    if args.scan_npm:
+        if args.verbose:
+            print("Scanning npm/yarn/pnpm lockfiles...", file=sys.stderr)
+        npm_packages = scan_npm_lockfiles(args.path)
+        stats['npm_malicious_packages'] = len(npm_packages)
+    
+    # Sort matches by timestamp if timeline enabled
+    if args.timeline:
+        matches.sort(key=lambda m: m.timestamp or '9999-12-31')
+    
+    # Create result object
+    result = ScanResult(
+        scan_id=f"scan_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}",
+        timestamp=datetime.utcnow().isoformat() + 'Z',
+        scan_path=str(args.path),
+        ioc_file=str(args.ioc_file),
+        matches=matches,
+        npm_packages=npm_packages,
+        stats=stats
+    )
+    
+    # Format output
+    if args.format == 'json':
+        output = format_json(result)
+    elif args.format == 'csv':
+        output = format_csv(result)
+    elif args.format == 'sarif':
+        output = format_sarif(result)
+    else:  # text
+        output = format_text(result)
+    
+    # Write output
+    if args.out_file:
+        args.out_file.write_text(output, encoding='utf-8')
+        if args.verbose:
+            print(f"Results written to: {args.out_file}", file=sys.stderr)
     else:
-        print(to_json(reports))
+        print(output)
+    
+    # Summary
+    if args.verbose:
+        print(f"\nScan complete:", file=sys.stderr)
+        print(f"  Files scanned: {stats.get('files_scanned', 0)}", file=sys.stderr)
+        print(f"  Files with matches: {stats.get('files_with_matches', 0)}", file=sys.stderr)
+        print(f"  Total matches: {stats.get('total_matches', 0)}", file=sys.stderr)
+        if npm_packages:
+            print(f"  Malicious npm packages: {len(npm_packages)}", file=sys.stderr)
+    
+    return 0 if not matches else 2  # Exit code 2 if IoCs found
 
-    if args.csv:
-        Path(args.csv).write_text(to_csv(reports), encoding="utf-8")
-        print(f"[+] CSV: {args.csv}", file=sys.stderr)
+def format_text(result: ScanResult) -> str:
+    """Format results as human-readable text"""
+    lines = []
+    lines.append(f"=== IoC Scan Results ===")
+    lines.append(f"Scan ID: {result.scan_id}")
+    lines.append(f"Timestamp: {result.timestamp}")
+    lines.append(f"Scan Path: {result.scan_path}")
+    lines.append(f"IoC File: {result.ioc_file}")
+    lines.append(f"\nStatistics:")
+    for key, value in result.stats.items():
+        lines.append(f"  {key}: {value}")
+    
+    if result.matches:
+        lines.append(f"\n=== Matches ({len(result.matches)}) ===")
+        for match in result.matches:
+            lines.append(f"\n[{match.ioc.type}] {match.ioc.value}")
+            lines.append(f"  File: {match.file_path}")
+            if match.line_number:
+                lines.append(f"  Line: {match.line_number}")
+            if match.timestamp:
+                lines.append(f"  Timestamp: {match.timestamp}")
+            if match.file_hash:
+                lines.append(f"  File Hash: {match.file_hash}")
+            if match.context:
+                lines.append(f"  Context: {match.context[:200]}")
+    
+    if result.npm_packages:
+        lines.append(f"\n=== Malicious NPM Packages ({len(result.npm_packages)}) ===")
+        for pkg in result.npm_packages:
+            lines.append(f"  {pkg['package']} in {pkg['file']}")
+    
+    return '\n'.join(lines)
 
-    if args.sarif:
-        Path(args.sarif).write_text(json.dumps(to_sarif(reports), indent=2), encoding="utf-8")
-        print(f"[+] SARIF: {args.sarif}", file=sys.stderr)
-
-    return 0
-
-if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
-
+if __name__ == '__main__':
+    sys.exit(main())
