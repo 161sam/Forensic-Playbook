@@ -15,10 +15,10 @@ from forensic.core.time_utils import utc_isoformat
 class ChainOfCustody:
     """
     Chain of Custody tracker
-    
+
     Maintains immutable audit trail of all evidence handling,
     access, and modifications.
-    
+
     Events logged:
     - Evidence collection
     - Evidence access
@@ -27,23 +27,24 @@ class ChainOfCustody:
     - Analysis execution
     - Report generation
     """
-    
+
     def __init__(self, db_path: Path):
         """
         Initialize CoC tracker
-        
+
         Args:
             db_path: Path to SQLite database
         """
         self.db_path = db_path
         self._init_database()
-    
+
     def _init_database(self):
         """Initialize SQLite database"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        
-        cursor.execute("""
+
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS coc_events (
                 event_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp TEXT NOT NULL,
@@ -58,22 +59,29 @@ class ChainOfCustody:
                 previous_event_id INTEGER,
                 FOREIGN KEY (previous_event_id) REFERENCES coc_events(event_id)
             )
-        """)
-        
+        """
+        )
+
         # Index for fast queries
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_case_id ON coc_events(case_id)
-        """)
-        cursor.execute("""
+        """
+        )
+        cursor.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_evidence_id ON coc_events(evidence_id)
-        """)
-        cursor.execute("""
+        """
+        )
+        cursor.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_timestamp ON coc_events(timestamp)
-        """)
-        
+        """
+        )
+
         conn.commit()
         conn.close()
-    
+
     def log_event(
         self,
         event_type: str,
@@ -83,11 +91,11 @@ class ChainOfCustody:
         case_id: str = None,
         evidence_id: str = None,
         metadata: Dict[str, Any] = None,
-        integrity_hash: str = None
+        integrity_hash: str = None,
     ) -> int:
         """
         Log a chain of custody event
-        
+
         Args:
             event_type: Type of event (COLLECTED, ACCESSED, MODIFIED, etc.)
             actor: Person/system performing action
@@ -97,30 +105,30 @@ class ChainOfCustody:
             evidence_id: Related evidence ID
             metadata: Additional event metadata
             integrity_hash: Evidence hash at time of event
-        
+
         Returns:
             Event ID
         """
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        
+
         timestamp = utc_isoformat()
-        
+
         # Get previous event ID for this evidence (if any)
         previous_event_id = None
         if evidence_id:
             cursor.execute(
                 "SELECT event_id FROM coc_events WHERE evidence_id = ? ORDER BY event_id DESC LIMIT 1",
-                (evidence_id,)
+                (evidence_id,),
             )
             result = cursor.fetchone()
             if result:
                 previous_event_id = result[0]
-        
+
         # Construct action if not provided
         if action is None:
-            action = event_type.lower().replace('_', ' ')
-        
+            action = event_type.lower().replace("_", " ")
+
         cursor.execute(
             """
             INSERT INTO coc_events (
@@ -138,29 +146,29 @@ class ChainOfCustody:
                 description,
                 json.dumps(metadata) if metadata else None,
                 integrity_hash,
-                previous_event_id
-            )
+                previous_event_id,
+            ),
         )
-        
+
         event_id = cursor.lastrowid
         conn.commit()
         conn.close()
-        
+
         return event_id
-    
+
     def get_evidence_chain(self, evidence_id: str) -> List[Dict]:
         """
         Get complete chain of custody for evidence
-        
+
         Args:
             evidence_id: Evidence ID
-        
+
         Returns:
             List of events in chronological order
         """
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        
+
         cursor.execute(
             """
             SELECT event_id, timestamp, event_type, actor, action,
@@ -169,39 +177,41 @@ class ChainOfCustody:
             WHERE evidence_id = ?
             ORDER BY timestamp ASC
             """,
-            (evidence_id,)
+            (evidence_id,),
         )
-        
+
         events = []
         for row in cursor.fetchall():
-            events.append({
-                'event_id': row[0],
-                'timestamp': row[1],
-                'event_type': row[2],
-                'actor': row[3],
-                'action': row[4],
-                'description': row[5],
-                'metadata': json.loads(row[6]) if row[6] else {},
-                'integrity_hash': row[7],
-                'previous_event_id': row[8]
-            })
-        
+            events.append(
+                {
+                    "event_id": row[0],
+                    "timestamp": row[1],
+                    "event_type": row[2],
+                    "actor": row[3],
+                    "action": row[4],
+                    "description": row[5],
+                    "metadata": json.loads(row[6]) if row[6] else {},
+                    "integrity_hash": row[7],
+                    "previous_event_id": row[8],
+                }
+            )
+
         conn.close()
         return events
-    
+
     def get_case_chain(self, case_id: str) -> List[Dict]:
         """
         Get all chain of custody events for a case
-        
+
         Args:
             case_id: Case ID
-        
+
         Returns:
             List of events in chronological order
         """
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        
+
         cursor.execute(
             """
             SELECT event_id, timestamp, event_type, evidence_id, actor,
@@ -210,83 +220,89 @@ class ChainOfCustody:
             WHERE case_id = ?
             ORDER BY timestamp ASC
             """,
-            (case_id,)
+            (case_id,),
         )
-        
+
         events = []
         for row in cursor.fetchall():
-            events.append({
-                'event_id': row[0],
-                'timestamp': row[1],
-                'event_type': row[2],
-                'evidence_id': row[3],
-                'actor': row[4],
-                'action': row[5],
-                'description': row[6],
-                'metadata': json.loads(row[7]) if row[7] else {},
-                'integrity_hash': row[8]
-            })
-        
+            events.append(
+                {
+                    "event_id": row[0],
+                    "timestamp": row[1],
+                    "event_type": row[2],
+                    "evidence_id": row[3],
+                    "actor": row[4],
+                    "action": row[5],
+                    "description": row[6],
+                    "metadata": json.loads(row[7]) if row[7] else {},
+                    "integrity_hash": row[8],
+                }
+            )
+
         conn.close()
         return events
-    
+
     def verify_chain_integrity(self, evidence_id: str) -> tuple:
         """
         Verify chain of custody integrity
-        
+
         Checks:
         - No gaps in event sequence
         - Proper linking between events
         - Hash consistency
-        
+
         Args:
             evidence_id: Evidence ID
-        
+
         Returns:
             (is_valid, issues)
         """
         events = self.get_evidence_chain(evidence_id)
-        
+
         if not events:
             return False, ["No chain of custody events found"]
-        
+
         issues = []
-        
+
         # Check event sequence
         for i in range(1, len(events)):
-            prev_event = events[i-1]
+            prev_event = events[i - 1]
             curr_event = events[i]
-            
+
             # Check if previous_event_id links correctly
-            if curr_event['previous_event_id'] != prev_event['event_id']:
-                issues.append(f"Event {curr_event['event_id']}: Broken link to previous event")
-            
+            if curr_event["previous_event_id"] != prev_event["event_id"]:
+                issues.append(
+                    f"Event {curr_event['event_id']}: Broken link to previous event"
+                )
+
             # Check timestamps are in order
-            if curr_event['timestamp'] < prev_event['timestamp']:
+            if curr_event["timestamp"] < prev_event["timestamp"]:
                 issues.append(f"Event {curr_event['event_id']}: Timestamp out of order")
-        
+
         # Check hash consistency
         last_hash = None
         for event in events:
-            if event['integrity_hash']:
-                if last_hash and last_hash != event['integrity_hash']:
-                    if event['event_type'] not in ['MODIFIED', 'PROCESSED']:
-                        issues.append(f"Event {event['event_id']}: Hash mismatch without modification")
-                last_hash = event['integrity_hash']
-        
+            if event["integrity_hash"]:
+                if last_hash and last_hash != event["integrity_hash"]:
+                    if event["event_type"] not in ["MODIFIED", "PROCESSED"]:
+                        issues.append(
+                            f"Event {event['event_id']}: Hash mismatch without modification"
+                        )
+                last_hash = event["integrity_hash"]
+
         is_valid = len(issues) == 0
         return is_valid, issues
-    
+
     def export_chain(
         self,
         case_id: str = None,
         evidence_id: str = None,
         output_path: Path = None,
-        format: str = 'json'
+        format: str = "json",
     ):
         """
         Export chain of custody
-        
+
         Args:
             case_id: Case ID (optional)
             evidence_id: Evidence ID (optional)
@@ -299,35 +315,44 @@ class ChainOfCustody:
             events = self.get_case_chain(case_id)
         else:
             raise ValueError("Must provide either case_id or evidence_id")
-        
-        if format == 'json':
+
+        if format == "json":
             output = json.dumps(events, indent=2)
-        elif format == 'csv':
+        elif format == "csv":
             import csv
             import io
+
             output_buffer = io.StringIO()
             writer = csv.DictWriter(
                 output_buffer,
-                fieldnames=['event_id', 'timestamp', 'event_type', 'actor', 'action', 'description']
+                fieldnames=[
+                    "event_id",
+                    "timestamp",
+                    "event_type",
+                    "actor",
+                    "action",
+                    "description",
+                ],
             )
             writer.writeheader()
             for event in events:
-                writer.writerow({k: event.get(k, '') for k in writer.fieldnames})
+                writer.writerow({k: event.get(k, "") for k in writer.fieldnames})
             output = output_buffer.getvalue()
-        elif format == 'html':
+        elif format == "html":
             output = self._generate_html_report(events)
         else:
             raise ValueError(f"Unsupported format: {format}")
-        
+
         if output_path:
-            with open(output_path, 'w') as f:
+            with open(output_path, "w") as f:
                 f.write(output)
-        
+
         return output
-    
+
     def _generate_html_report(self, events: List[Dict]) -> str:
         """Generate HTML chain of custody report"""
-        html = """
+        html = (
+            """
 <!DOCTYPE html>
 <html>
 <head>
@@ -345,8 +370,12 @@ class ChainOfCustody:
 </head>
 <body>
     <h1>Chain of Custody Report</h1>
-    <p>Generated: """ + utc_isoformat() + """</p>
-    <p>Total Events: """ + str(len(events)) + """</p>
+    <p>Generated: """
+            + utc_isoformat()
+            + """</p>
+    <p>Total Events: """
+            + str(len(events))
+            + """</p>
     
     <table>
         <tr>
@@ -358,7 +387,8 @@ class ChainOfCustody:
             <th>Hash</th>
         </tr>
 """
-        
+        )
+
         for event in events:
             html += f"""
         <tr>
@@ -370,48 +400,47 @@ class ChainOfCustody:
             <td class="hash">{event.get('integrity_hash', '')[:16]}...</td>
         </tr>
 """
-        
+
         html += """
     </table>
 </body>
 </html>
 """
         return html
-    
+
     def get_statistics(self, case_id: str = None) -> Dict:
         """
         Get chain of custody statistics
-        
+
         Args:
             case_id: Optional case ID to filter by
-        
+
         Returns:
             Statistics dictionary
         """
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        
+
         where_clause = "WHERE case_id = ?" if case_id else ""
         params = (case_id,) if case_id else ()
-        
+
         # Total events
         cursor.execute(f"SELECT COUNT(*) FROM coc_events {where_clause}", params)
         total_events = cursor.fetchone()[0]
-        
+
         # Events by type
         cursor.execute(
             f"SELECT event_type, COUNT(*) FROM coc_events {where_clause} GROUP BY event_type",
-            params
+            params,
         )
         events_by_type = dict(cursor.fetchall())
-        
+
         # Unique actors
         cursor.execute(
-            f"SELECT COUNT(DISTINCT actor) FROM coc_events {where_clause}",
-            params
+            f"SELECT COUNT(DISTINCT actor) FROM coc_events {where_clause}", params
         )
         unique_actors = cursor.fetchone()[0]
-        
+
         # Unique evidence
         evidence_clause = (
             f"{where_clause} AND evidence_id IS NOT NULL"
@@ -423,12 +452,12 @@ class ChainOfCustody:
             params,
         )
         unique_evidence = cursor.fetchone()[0]
-        
+
         conn.close()
-        
+
         return {
-            'total_events': total_events,
-            'events_by_type': events_by_type,
-            'unique_actors': unique_actors,
-            'unique_evidence': unique_evidence
+            "total_events": total_events,
+            "events_by_type": events_by_type,
+            "unique_actors": unique_actors,
+            "unique_evidence": unique_evidence,
         }

@@ -501,9 +501,7 @@ class ForensicFramework:
 
         if output_path is None:
             output_path = (
-                self.current_case.case_dir
-                / "reports"
-                / f"report_{utc_slug()}.{format}"
+                self.current_case.case_dir / "reports" / f"report_{utc_slug()}.{format}"
             )
 
         # TODO: Implement report generation with Jinja2 templates

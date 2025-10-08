@@ -29,53 +29,52 @@ from .exporter import export_report
 class ReportGenerator(ReportingModule):
     """
     Report generation module
-    
+
     Generates comprehensive forensic investigation reports
     from case data and analysis results.
     """
-    
+
     @property
     def name(self) -> str:
         return "report_generator"
-    
+
     @property
     def description(self) -> str:
         return "Generate forensic investigation reports"
-    
+
     @property
     def requires_root(self) -> bool:
         return False
-    
+
     def validate_params(self, params: Dict) -> bool:
         """Validate parameters"""
         # Case ID will come from framework context
         return True
-    
+
     def run(self, evidence: Optional[Evidence], params: Dict) -> ModuleResult:
         """Generate report"""
         result_id = self._generate_result_id()
         timestamp = utc_isoformat()
-        
+
         report_format = params.get("format", "html").lower()
         output_file = params.get("output_file")
         dry_run = bool(params.get("dry_run", False))
-        
+
         # Report sections to include
-        include_executive_summary = params.get('executive_summary', 'true').lower() == 'true'
-        include_timeline = params.get('timeline', 'true').lower() == 'true'
-        include_evidence = params.get('evidence', 'true').lower() == 'true'
-        include_findings = params.get('findings', 'true').lower() == 'true'
-        include_coc = params.get('chain_of_custody', 'true').lower() == 'true'
-        
+        include_executive_summary = (
+            params.get("executive_summary", "true").lower() == "true"
+        )
+        include_timeline = params.get("timeline", "true").lower() == "true"
+        include_evidence = params.get("evidence", "true").lower() == "true"
+        include_findings = params.get("findings", "true").lower() == "true"
+        include_coc = params.get("chain_of_custody", "true").lower() == "true"
+
         findings = []
         errors = []
-        metadata = {
-            'format': report_format,
-            'generation_start': timestamp
-        }
-        
+        metadata = {"format": report_format, "generation_start": timestamp}
+
         self.logger.info(f"Generating {report_format.upper()} report...")
-        
+
         try:
             # Gather report data
             report_data = self._gather_report_data(
@@ -83,9 +82,9 @@ class ReportGenerator(ReportingModule):
                 include_timeline,
                 include_evidence,
                 include_findings,
-                include_coc
+                include_coc,
             )
-            
+
             metadata["sections"] = list(report_data.keys())
             metadata["output_format"] = report_format
 
@@ -133,11 +132,13 @@ class ReportGenerator(ReportingModule):
                 )
 
             if not dry_run:
-                findings.append({
-                    'type': 'report_generated',
-                    'description': f'{report_format.upper()} report generated successfully',
-                    'output_file': str(output_path),
-                })
+                findings.append(
+                    {
+                        "type": "report_generated",
+                        "description": f"{report_format.upper()} report generated successfully",
+                        "output_file": str(output_path),
+                    }
+                )
 
         except Exception as e:
             self.logger.error(f"Report generation failed: {e}")
@@ -149,11 +150,11 @@ class ReportGenerator(ReportingModule):
                 timestamp=timestamp,
                 findings=findings,
                 metadata=metadata,
-                errors=errors
+                errors=errors,
             )
-        
-        metadata['generation_end'] = utc_isoformat()
-        
+
+        metadata["generation_end"] = utc_isoformat()
+
         return ModuleResult(
             result_id=result_id,
             module_name=self.name,
@@ -162,279 +163,292 @@ class ReportGenerator(ReportingModule):
             output_path=output_path,
             findings=findings,
             metadata=metadata,
-            errors=errors
+            errors=errors,
         )
-    
+
     def _gather_report_data(
         self,
         include_executive: bool,
         include_timeline: bool,
         include_evidence: bool,
         include_findings: bool,
-        include_coc: bool
+        include_coc: bool,
     ) -> Dict:
         """Gather all data needed for report"""
         data = {}
-        
+
         # Case metadata
-        data['case'] = self._get_case_metadata()
-        
+        data["case"] = self._get_case_metadata()
+
         # Executive summary
         if include_executive:
-            data['executive_summary'] = self._generate_executive_summary()
-        
+            data["executive_summary"] = self._generate_executive_summary()
+
         # Evidence inventory
         if include_evidence:
-            data['evidence'] = self._get_evidence_inventory()
-        
+            data["evidence"] = self._get_evidence_inventory()
+
         # Analysis findings
         if include_findings:
-            data['findings'] = self._get_all_findings()
-        
+            data["findings"] = self._get_all_findings()
+
         # Timeline
         if include_timeline:
-            data['timeline'] = self._get_timeline_data()
-        
+            data["timeline"] = self._get_timeline_data()
+
         # Chain of Custody
         if include_coc:
-            data['chain_of_custody'] = self._get_coc_events()
-        
+            data["chain_of_custody"] = self._get_coc_events()
+
         # Statistics
-        data['statistics'] = self._calculate_statistics(data)
-        
+        data["statistics"] = self._calculate_statistics(data)
+
         return data
-    
+
     def _get_case_metadata(self) -> Dict:
         """Get case metadata from database"""
         case_db = self.case_dir.parent.parent.parent / "cases.db"
-        
+
         if not case_db.exists():
-            return {'error': 'Case database not found'}
-        
+            return {"error": "Case database not found"}
+
         conn = sqlite3.connect(case_db)
         cursor = conn.cursor()
-        
+
         # Get case info
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT case_id, name, description, investigator, created_at, metadata
             FROM cases
             WHERE case_dir = ?
-        """, (str(self.case_dir),))
-        
+        """,
+            (str(self.case_dir),),
+        )
+
         row = cursor.fetchone()
         conn.close()
-        
+
         if row:
             return {
-                'case_id': row[0],
-                'name': row[1],
-                'description': row[2],
-                'investigator': row[3],
-                'created_at': row[4],
-                'metadata': json.loads(row[5]) if row[5] else {}
+                "case_id": row[0],
+                "name": row[1],
+                "description": row[2],
+                "investigator": row[3],
+                "created_at": row[4],
+                "metadata": json.loads(row[5]) if row[5] else {},
             }
-        
+
         return {}
-    
+
     def _get_evidence_inventory(self) -> List[Dict]:
         """Get evidence inventory"""
         case_db = self.case_dir.parent.parent.parent / "cases.db"
-        
+
         if not case_db.exists():
             return []
-        
+
         conn = sqlite3.connect(case_db)
         cursor = conn.cursor()
-        
-        case_id = self._get_case_metadata().get('case_id')
-        
-        cursor.execute("""
+
+        case_id = self._get_case_metadata().get("case_id")
+
+        cursor.execute(
+            """
             SELECT evidence_id, evidence_type, source_path, description,
                    collected_at, hash_sha256, metadata
             FROM evidence
             WHERE case_id = ?
-        """, (case_id,))
-        
+        """,
+            (case_id,),
+        )
+
         evidence = []
         for row in cursor.fetchall():
-            evidence.append({
-                'evidence_id': row[0],
-                'type': row[1],
-                'source_path': row[2],
-                'description': row[3],
-                'collected_at': row[4],
-                'hash_sha256': row[5],
-                'metadata': json.loads(row[6]) if row[6] else {}
-            })
-        
+            evidence.append(
+                {
+                    "evidence_id": row[0],
+                    "type": row[1],
+                    "source_path": row[2],
+                    "description": row[3],
+                    "collected_at": row[4],
+                    "hash_sha256": row[5],
+                    "metadata": json.loads(row[6]) if row[6] else {},
+                }
+            )
+
         conn.close()
         return evidence
-    
+
     def _get_all_findings(self) -> List[Dict]:
         """Get all findings from module results"""
         findings = []
-        
+
         # Scan analysis directories
         analysis_dir = self.case_dir / "analysis"
         if not analysis_dir.exists():
             return findings
-        
+
         for module_dir in analysis_dir.iterdir():
             if not module_dir.is_dir():
                 continue
-            
+
             # Look for result files
             for result_file in module_dir.glob("*.json"):
                 try:
                     with open(result_file) as f:
                         result_data = json.load(f)
-                        
+
                         if isinstance(result_data, dict):
                             # Extract findings
-                            module_findings = result_data.get('findings', [])
+                            module_findings = result_data.get("findings", [])
                             for finding in module_findings:
-                                finding['module'] = module_dir.name
-                                finding['source_file'] = str(result_file)
+                                finding["module"] = module_dir.name
+                                finding["source_file"] = str(result_file)
                                 findings.append(finding)
                 except Exception as e:
                     self.logger.warning(f"Failed to load {result_file}: {e}")
-        
+
         # Sort by severity
-        severity_order = {'critical': 0, 'high': 1, 'medium': 2, 'low': 3, 'info': 4}
-        findings.sort(key=lambda f: severity_order.get(f.get('severity', 'info'), 99))
-        
+        severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+        findings.sort(key=lambda f: severity_order.get(f.get("severity", "info"), 99))
+
         return findings
-    
+
     def _get_timeline_data(self) -> List[Dict]:
         """Get timeline events"""
         timeline_events = []
-        
+
         # Look for timeline files
         timeline_dirs = [
             self.case_dir / "analysis" / "timeline",
-            self.case_dir / "analysis" / "ioc_scan"
+            self.case_dir / "analysis" / "ioc_scan",
         ]
-        
+
         for timeline_dir in timeline_dirs:
             if not timeline_dir.exists():
                 continue
-            
+
             for timeline_file in timeline_dir.glob("*.csv"):
                 try:
                     import csv
+
                     with open(timeline_file) as f:
                         reader = csv.DictReader(f)
                         for row in reader:
-                            if 'timestamp' in row:
+                            if "timestamp" in row:
                                 timeline_events.append(row)
                 except Exception:
                     pass
-        
+
         # Sort by timestamp
-        timeline_events.sort(key=lambda e: e.get('timestamp', ''))
-        
+        timeline_events.sort(key=lambda e: e.get("timestamp", ""))
+
         return timeline_events[:1000]  # Limit to 1000 events
-    
+
     def _get_coc_events(self) -> List[Dict]:
         """Get Chain of Custody events"""
         coc_db = self.case_dir.parent.parent.parent / "chain_of_custody.db"
-        
+
         if not coc_db.exists():
             return []
-        
+
         conn = sqlite3.connect(coc_db)
         cursor = conn.cursor()
-        
-        case_id = self._get_case_metadata().get('case_id')
-        
-        cursor.execute("""
+
+        case_id = self._get_case_metadata().get("case_id")
+
+        cursor.execute(
+            """
             SELECT event_id, timestamp, event_type, evidence_id, actor,
                    action, description, metadata
             FROM coc_events
             WHERE case_id = ?
             ORDER BY timestamp ASC
-        """, (case_id,))
-        
+        """,
+            (case_id,),
+        )
+
         events = []
         for row in cursor.fetchall():
-            events.append({
-                'event_id': row[0],
-                'timestamp': row[1],
-                'event_type': row[2],
-                'evidence_id': row[3],
-                'actor': row[4],
-                'action': row[5],
-                'description': row[6],
-                'metadata': json.loads(row[7]) if row[7] else {}
-            })
-        
+            events.append(
+                {
+                    "event_id": row[0],
+                    "timestamp": row[1],
+                    "event_type": row[2],
+                    "evidence_id": row[3],
+                    "actor": row[4],
+                    "action": row[5],
+                    "description": row[6],
+                    "metadata": json.loads(row[7]) if row[7] else {},
+                }
+            )
+
         conn.close()
         return events
-    
+
     def _generate_executive_summary(self) -> Dict:
         """Generate executive summary"""
         findings = self._get_all_findings()
         evidence = self._get_evidence_inventory()
-        
+
         # Count by severity
         severity_counts = {}
         for finding in findings:
-            severity = finding.get('severity', 'info')
+            severity = finding.get("severity", "info")
             severity_counts[severity] = severity_counts.get(severity, 0) + 1
-        
+
         # Key findings (top 5 critical/high)
         key_findings = [
-            f for f in findings 
-            if f.get('severity') in ['critical', 'high']
+            f for f in findings if f.get("severity") in ["critical", "high"]
         ][:5]
-        
+
         return {
-            'total_evidence': len(evidence),
-            'total_findings': len(findings),
-            'severity_breakdown': severity_counts,
-            'key_findings': key_findings,
-            'analysis_complete': True
+            "total_evidence": len(evidence),
+            "total_findings": len(findings),
+            "severity_breakdown": severity_counts,
+            "key_findings": key_findings,
+            "analysis_complete": True,
         }
-    
+
     def _calculate_statistics(self, data: Dict) -> Dict:
         """Calculate report statistics"""
         stats = {}
-        
-        if 'findings' in data:
-            stats['total_findings'] = len(data['findings'])
-            
+
+        if "findings" in data:
+            stats["total_findings"] = len(data["findings"])
+
             # By type
             types = {}
-            for f in data['findings']:
-                ftype = f.get('type', 'unknown')
+            for f in data["findings"]:
+                ftype = f.get("type", "unknown")
                 types[ftype] = types.get(ftype, 0) + 1
-            stats['findings_by_type'] = types
-            
+            stats["findings_by_type"] = types
+
             # By module
             modules = {}
-            for f in data['findings']:
-                module = f.get('module', 'unknown')
+            for f in data["findings"]:
+                module = f.get("module", "unknown")
                 modules[module] = modules.get(module, 0) + 1
-            stats['findings_by_module'] = modules
-        
-        if 'evidence' in data:
-            stats['total_evidence'] = len(data['evidence'])
-        
-        if 'timeline' in data:
-            stats['timeline_events'] = len(data['timeline'])
-        
-        if 'chain_of_custody' in data:
-            stats['coc_events'] = len(data['chain_of_custody'])
-        
+            stats["findings_by_module"] = modules
+
+        if "evidence" in data:
+            stats["total_evidence"] = len(data["evidence"])
+
+        if "timeline" in data:
+            stats["timeline_events"] = len(data["timeline"])
+
+        if "chain_of_custody" in data:
+            stats["coc_events"] = len(data["chain_of_custody"])
+
         return stats
-    
+
     def _generate_html_report(self, data: Dict, output_file: Optional[str]) -> Path:
         """Generate HTML report"""
         if not output_file:
             output_file = self.output_dir / f"report_{utc_slug()}.html"
         else:
             output_file = Path(output_file)
-        
+
         # Create HTML template
         html_template = """<!DOCTYPE html>
 <html lang="en">
@@ -758,129 +772,139 @@ class ReportGenerator(ReportingModule):
 </body>
 </html>
 """
-        
+
         # Render template
         from jinja2 import Template
+
         template = Template(html_template)
-        
+
         # Add current datetime if not present
-        data['statistics']['report_time'] = utc_display()
-        
+        data["statistics"]["report_time"] = utc_display()
+
         html_content = template.render(**data)
-        
+
         # Write to file
         output_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(output_file, 'w', encoding='utf-8') as f:
+        with open(output_file, "w", encoding="utf-8") as f:
             f.write(html_content)
-        
+
         self.logger.info(f"HTML report generated: {output_file}")
         return output_file
-    
+
     def _generate_pdf_report(self, data: Dict, output_file: Optional[str]) -> Path:
         """Generate PDF report"""
         # First generate HTML
         html_file = self._generate_html_report(data, None)
-        
+
         if not output_file:
             output_file = self.output_dir / f"report_{utc_slug()}.pdf"
         else:
             output_file = Path(output_file)
-        
+
         # Convert HTML to PDF using wkhtmltopdf or weasyprint
         try:
-            if self._verify_tool('wkhtmltopdf'):
-                subprocess.run([
-                    'wkhtmltopdf',
-                    '--enable-local-file-access',
-                    str(html_file),
-                    str(output_file)
-                ], check=True, timeout=300)
+            if self._verify_tool("wkhtmltopdf"):
+                subprocess.run(
+                    [
+                        "wkhtmltopdf",
+                        "--enable-local-file-access",
+                        str(html_file),
+                        str(output_file),
+                    ],
+                    check=True,
+                    timeout=300,
+                )
             else:
                 # Try weasyprint
                 try:
                     from weasyprint import HTML
+
                     HTML(filename=str(html_file)).write_pdf(output_file)
                 except ImportError as exc:
-                    raise RuntimeError("PDF generation requires wkhtmltopdf or weasyprint") from exc
+                    raise RuntimeError(
+                        "PDF generation requires wkhtmltopdf or weasyprint"
+                    ) from exc
 
             self.logger.info(f"PDF report generated: {output_file}")
             return output_file
 
         except Exception as e:
             raise RuntimeError(f"PDF generation failed: {e}") from e
-    
+
     def _generate_json_report(self, data: Dict, output_file: Optional[str]) -> Path:
         """Generate JSON report"""
         if not output_file:
             output_file = self.output_dir / f"report_{utc_slug()}.json"
         else:
             output_file = Path(output_file)
-        
+
         output_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(output_file, 'w', encoding='utf-8') as f:
+        with open(output_file, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, default=str)
-        
+
         self.logger.info(f"JSON report generated: {output_file}")
         return output_file
-    
+
     def _generate_markdown_report(self, data: Dict, output_file: Optional[str]) -> Path:
         """Generate Markdown report"""
         if not output_file:
             output_file = self.output_dir / f"report_{utc_slug()}.md"
         else:
             output_file = Path(output_file)
-        
+
         md_lines = []
-        
+
         # Header
-        case = data.get('case', {})
+        case = data.get("case", {})
         md_lines.append("# Forensic Investigation Report")
         md_lines.append(f"\n## {case.get('name', 'N/A')}")
         md_lines.append(f"\n**Case ID:** {case.get('case_id', 'N/A')}")
         md_lines.append(f"**Investigator:** {case.get('investigator', 'N/A')}")
         md_lines.append(f"**Created:** {case.get('created_at', 'N/A')}")
-        
-        if case.get('description'):
+
+        if case.get("description"):
             md_lines.append(f"\n**Description:** {case['description']}")
-        
+
         # Executive Summary
-        if 'executive_summary' in data:
-            es = data['executive_summary']
+        if "executive_summary" in data:
+            es = data["executive_summary"]
             md_lines.append("\n## Executive Summary")
             md_lines.append(f"\n- **Evidence Items:** {es.get('total_evidence', 0)}")
             md_lines.append(f"- **Total Findings:** {es.get('total_findings', 0)}")
-            
-            sev = es.get('severity_breakdown', {})
+
+            sev = es.get("severity_breakdown", {})
             md_lines.append(f"- **Critical:** {sev.get('critical', 0)}")
             md_lines.append(f"- **High:** {sev.get('high', 0)}")
             md_lines.append(f"- **Medium:** {sev.get('medium', 0)}")
-        
+
         # Evidence
-        if 'evidence' in data:
+        if "evidence" in data:
             md_lines.append("\n## Evidence Inventory")
-            for ev in data['evidence']:
+            for ev in data["evidence"]:
                 md_lines.append(f"\n### {ev.get('evidence_id')}")
                 md_lines.append(f"- **Type:** {ev.get('type')}")
                 md_lines.append(f"- **Description:** {ev.get('description')}")
                 md_lines.append(f"- **Collected:** {ev.get('collected_at')}")
                 md_lines.append(f"- **Hash:** `{ev.get('hash_sha256', '')[:32]}...`")
-        
+
         # Findings
-        if 'findings' in data:
+        if "findings" in data:
             md_lines.append("\n## Analysis Findings")
-            for f in data['findings']:
-                severity = f.get('severity', 'info').upper()
-                md_lines.append(f"\n### [{severity}] {f.get('description', f.get('type'))}")
+            for f in data["findings"]:
+                severity = f.get("severity", "info").upper()
+                md_lines.append(
+                    f"\n### [{severity}] {f.get('description', f.get('type'))}"
+                )
                 md_lines.append(f"\n**Module:** {f.get('module')}")
-                if f.get('file_path'):
+                if f.get("file_path"):
                     md_lines.append(f"**File:** `{f.get('file_path')}`")
-                if f.get('context'):
+                if f.get("context"):
                     md_lines.append(f"\n{f.get('context')[:200]}")
-        
+
         # Write file
         output_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(output_file, 'w', encoding='utf-8') as f:
-            f.write('\n'.join(md_lines))
-        
+        with open(output_file, "w", encoding="utf-8") as f:
+            f.write("\n".join(md_lines))
+
         self.logger.info(f"Markdown report generated: {output_file}")
         return output_file

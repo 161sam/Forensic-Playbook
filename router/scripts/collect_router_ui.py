@@ -44,8 +44,15 @@ PAGES = [
     ("event_log", "?page=status_event_log"),
 ]
 
-def timestamp(): return time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-def now_iso(): return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+def timestamp():
+    return time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+
+
+def now_iso():
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
 def sha256_file(p: Path):
     h = hashlib.sha256()
     with p.open("rb") as f:
@@ -53,11 +60,20 @@ def sha256_file(p: Path):
             h.update(chunk)
     return h.hexdigest()
 
+
 # CLI args
 parser = argparse.ArgumentParser()
-parser.add_argument("--no-headless", action="store_true", help="start browser visible from the start")
-parser.add_argument("--timeout", type=int, default=4, help="wait (seconds) after page loads")
-parser.add_argument("--interactive", action="store_true", help="force interactive manual login (visible browser)")
+parser.add_argument(
+    "--no-headless", action="store_true", help="start browser visible from the start"
+)
+parser.add_argument(
+    "--timeout", type=int, default=4, help="wait (seconds) after page loads"
+)
+parser.add_argument(
+    "--interactive",
+    action="store_true",
+    help="force interactive manual login (visible browser)",
+)
 args = parser.parse_args()
 
 # load env
@@ -66,9 +82,7 @@ env = {}
 if envf.exists():
     env = dotenv_values(envf)
 BASE_URL = env.get("ROUTER_URL") or "https://192.168.0.1/"
-ROUTER_HOST = (
-    BASE_URL.replace("https://", "").replace("http://", "").split("/")[0]
-)
+ROUTER_HOST = BASE_URL.replace("https://", "").replace("http://", "").split("/")[0]
 USERNAME = env.get("ROUTER_USER") or ""
 PASSWORD = env.get("ROUTER_PASS") or ""
 
@@ -83,13 +97,14 @@ GECKO_PATH = None
 if gp.exists():
     for line in gp.read_text().splitlines():
         if line.strip().startswith("GECKO_PATH="):
-            GECKO_PATH = line.split("=",1)[1].strip()
+            GECKO_PATH = line.split("=", 1)[1].strip()
             break
 
 # Try selenium-wire, fallback to selenium-only
 use_wire = False
 try:
     from seleniumwire import webdriver as wire_webdriver  # type: ignore
+
     use_wire = True
 except Exception:
     use_wire = False
@@ -102,8 +117,11 @@ try:
     from selenium.webdriver.firefox.options import Options
     from selenium.webdriver.firefox.service import Service
 except Exception:
-    print("ERROR: selenium is not available in this Python environment. Activate venv and pip install selenium.")
+    print(
+        "ERROR: selenium is not available in this Python environment. Activate venv and pip install selenium."
+    )
     raise
+
 
 # prepare driver factory to allow relaunching visible/hidden
 def build_driver(headless: bool):
@@ -118,13 +136,20 @@ def build_driver(headless: bool):
         drv = webdriver.Firefox(service=svc, options=opts)
     return drv
 
+
 # Chain-of-custody helper
 coc_file = HASHES / f"chain_of_custody_collect_{timestamp()}.txt"
+
+
 def coc(msg):
     with coc_file.open("a") as f:
         f.write(f"{now_iso()} | {msg}\n")
 
-coc(f"START_COLLECT user={os.getlogin()} host={os.uname().nodename} base_url={BASE_URL}")
+
+coc(
+    f"START_COLLECT user={os.getlogin()} host={os.uname().nodename} base_url={BASE_URL}"
+)
+
 
 # Heuristics to detect login form and to find username field
 def find_login_fields(driver):
@@ -136,13 +161,13 @@ def find_login_fields(driver):
     # try many heuristics to get username
     cand_selectors = [
         'input[type="text"]',
-        'input[name*=user]',
-        'input[id*=user]',
-        'input[name*=login]',
-        'input[id*=login]',
-        'input[placeholder*=User]',
-        'input[placeholder*=user]',
-        'input:not([type])'
+        "input[name*=user]",
+        "input[id*=user]",
+        "input[name*=login]",
+        "input[id*=login]",
+        "input[placeholder*=User]",
+        "input[placeholder*=user]",
+        "input:not([type])",
     ]
     user_el = None
     for sel in cand_selectors:
@@ -154,6 +179,7 @@ def find_login_fields(driver):
         except Exception:
             continue
     return (user_el, pass_el)
+
 
 def submit_login_fields(user_el, pass_el, username, password):
     try:
@@ -169,17 +195,19 @@ def submit_login_fields(user_el, pass_el, username, password):
             el = pass_el
             for _ in range(4):
                 try:
-                    form = el.find_element(By.XPATH, './ancestor::form')
+                    form = el.find_element(By.XPATH, "./ancestor::form")
                     break
                 except Exception:
                     try:
-                        el = el.find_element(By.XPATH, '..')
+                        el = el.find_element(By.XPATH, "..")
                     except Exception:
                         break
             if form:
                 # attempt to find submit inside form
                 try:
-                    btns = form.find_elements(By.CSS_SELECTOR, 'button[type="submit"], input[type="submit"]')
+                    btns = form.find_elements(
+                        By.CSS_SELECTOR, 'button[type="submit"], input[type="submit"]'
+                    )
                     if btns:
                         btns[0].click()
                         return True
@@ -193,16 +221,26 @@ def submit_login_fields(user_el, pass_el, username, password):
     except Exception:
         return False
 
+
 def is_logged_in(driver, timeout=6):
     # heuristics: login form absent OR presence of logout / session elements / dashboard text
     end = time.time() + timeout
     while time.time() < end:
         try:
             # if password field still present => not logged in
-            if len(driver.find_elements(By.CSS_SELECTOR, 'input[type="password"]')) == 0:
+            if (
+                len(driver.find_elements(By.CSS_SELECTOR, 'input[type="password"]'))
+                == 0
+            ):
                 # try to detect logout or dashboard hints
                 body = driver.page_source.lower()
-                if "logout" in body or "abmelden" in body or "dashboard" in body or "overview" in body or "status" in body:
+                if (
+                    "logout" in body
+                    or "abmelden" in body
+                    or "dashboard" in body
+                    or "overview" in body
+                    or "status" in body
+                ):
                     return True
                 # absence of password with some content is likely logged in
                 return True
@@ -212,15 +250,19 @@ def is_logged_in(driver, timeout=6):
             time.sleep(0.6)
     return False
 
+
 # Main: try to auto-login; if fail -> interactive visible fallback
 headless = False if (args.no_headless or args.interactive) else True
 driver = None
 try:
     driver = build_driver(headless=headless)
 except WebDriverException as e:
-    print("ERROR: Could not start webdriver. Check geckodriver and that X is available for visible mode.")
+    print(
+        "ERROR: Could not start webdriver. Check geckodriver and that X is available for visible mode."
+    )
     coc(f"WEBDRIVER_START_ERROR {e}")
     raise
+
 
 # Check connectivity to BASE_URL first (simple GET)
 def check_reachable(drv, url, tries=3, wait=1.5):
@@ -235,8 +277,11 @@ def check_reachable(drv, url, tries=3, wait=1.5):
             time.sleep(wait)
     return False
 
+
 if not check_reachable(driver, BASE_URL, tries=3):
-    print(f"ERROR: Router at {BASE_URL} not reachable from this host/browser. Check cable/power/IP.")
+    print(
+        f"ERROR: Router at {BASE_URL} not reachable from this host/browser. Check cable/power/IP."
+    )
     coc("ROUTER_NOT_REACHABLE")
     driver.quit()
     sys.exit(3)
@@ -280,7 +325,9 @@ if not auto_login_success:
         driver = build_driver(headless=False)
         # open login page visibly
         driver.get(BASE_URL)
-        print("Please perform manual login in the opened Firefox window. Once logged in, either:")
+        print(
+            "Please perform manual login in the opened Firefox window. Once logged in, either:"
+        )
         print(" - Press Enter here to continue, OR")
         print(" - Wait; script will try to detect login automatically (timeout 300s).")
         coc("AWAIT_MANUAL_LOGIN_START")
@@ -296,11 +343,16 @@ if not auto_login_success:
                 print("Login detected automatically.")
                 break
             # non-blocking check if user pressed Enter
-            print("Press Enter to continue after manual login (or wait for auto-detect)...", end="", flush=True)
+            print(
+                "Press Enter to continue after manual login (or wait for auto-detect)...",
+                end="",
+                flush=True,
+            )
             try:
                 # use select on stdin for a short timeout to not block indefinitely
                 import select
                 import sys as _sys
+
                 rlist, _, _ = select.select([_sys.stdin], [], [], 2.0)
                 if rlist:
                     _ = _sys.stdin.readline()
@@ -309,22 +361,30 @@ if not auto_login_success:
                         coc("MANUAL_LOGIN_CONFIRMED_BY_USER")
                         break
                     else:
-                        print("Manual login not detected yet. Continue logging in and press Enter again when finished.")
+                        print(
+                            "Manual login not detected yet. Continue logging in and press Enter again when finished."
+                        )
                         continue
             except Exception:
                 # fallback simple sleep
                 time.sleep(2)
         if not logged:
-            print("Manual login not detected within timeout. Exiting to avoid unprivileged changes.")
+            print(
+                "Manual login not detected within timeout. Exiting to avoid unprivileged changes."
+            )
             coc("MANUAL_LOGIN_TIMEOUT")
             driver.quit()
             sys.exit(4)
     else:
         # visible mode but still failed auto-login (user likely wanted manual)
-        print("Auto-login failed. You're running visible browser mode; please login manually in the opened window.")
+        print(
+            "Auto-login failed. You're running visible browser mode; please login manually in the opened window."
+        )
         coc("AUTO_LOGIN_FAILED_VISIBLE_WAITING")
         # Wait for manual login (press Enter)
-        input("After you completed login in the browser, press Enter here to continue...")
+        input(
+            "After you completed login in the browser, press Enter here to continue..."
+        )
         if not is_logged_in(driver, timeout=6):
             print("Login not detected after user confirmation. Exiting.")
             coc("MANUAL_LOGIN_USER_CONFIRMED_BUT_NOT_DETECTED")
@@ -376,7 +436,7 @@ for name, q in PAGES:
                 meta_lines.append(f"{key}: {value}\n")
             if req.body:
                 try:
-                    mb = req.body.decode('utf-8','ignore')
+                    mb = req.body.decode("utf-8", "ignore")
                 except Exception:
                     mb = str(req.body)
                 meta_lines.append("\n--- REQUEST BODY ---\n")
@@ -388,19 +448,28 @@ for name, q in PAGES:
                 try:
                     rb = req.response.body
                     if rb:
-                        meta_lines.append("\n--- RESPONSE BODY (first 8192 bytes) ---\n")
-                        meta_lines.append(rb[:8192].decode('utf-8','ignore') + "\n")
+                        meta_lines.append(
+                            "\n--- RESPONSE BODY (first 8192 bytes) ---\n"
+                        )
+                        meta_lines.append(rb[:8192].decode("utf-8", "ignore") + "\n")
                 except Exception as e:
                     meta_lines.append(f"\n--- RESPONSE BODY capture error: {e}\n")
             # build curl
-            curl_parts = [f"curl -k -X {req.method} '{BASE_URL.rstrip('/')}{req.path}' \\"]
+            curl_parts = [
+                f"curl -k -X {req.method} '{BASE_URL.rstrip('/')}{req.path}' \\"
+            ]
             for hk, hv in req.headers.items():
-                if hk.lower() in ['host','content-length','connection','accept-encoding']:
+                if hk.lower() in [
+                    "host",
+                    "content-length",
+                    "connection",
+                    "accept-encoding",
+                ]:
                     continue
                 curl_parts.append(f"  -H '{hk}: {hv}' \\")
             if req.body:
                 try:
-                    b = req.body.decode('utf-8','ignore')
+                    b = req.body.decode("utf-8", "ignore")
                     curl_parts.append("  --data " + shlex.quote(b) + " \\")
                 except Exception:
                     pass
@@ -417,14 +486,22 @@ for name, q in PAGES:
             headers_out = CONF / f"headers_{name}_{ts}.txt"
             body_out = CONF / f"pagebody_{name}_{ts}.html"
             curl_cmd = [
-                "curl", "-k", "-sS", "-D", str(headers_out), "-o", str(body_out),
-                "-H", f"Cookie: {cookie_header}", safe_url
+                "curl",
+                "-k",
+                "-sS",
+                "-D",
+                str(headers_out),
+                "-o",
+                str(body_out),
+                "-H",
+                f"Cookie: {cookie_header}",
+                safe_url,
             ]
             subprocess.run(curl_cmd, check=True)
             curl_replay_lines = [
                 "#!/usr/bin/env bash",
                 f"# curl replay for page {name}",
-                f"curl -k -sS -D '{headers_out.name}' -o '{body_out.name}' -H 'Cookie: {cookie_header}' '{safe_url}'"
+                f"curl -k -sS -D '{headers_out.name}' -o '{body_out.name}' -H 'Cookie: {cookie_header}' '{safe_url}'",
             ]
             curlf.write_text("\n".join(curl_replay_lines), encoding="utf-8")
             meta_lines.append(f"CURL_REPLAY_CREATED {curlf.name}\n")
@@ -434,7 +511,9 @@ for name, q in PAGES:
     # write hashes for artifacts
     for p in (htmlp, shotp, metaf, curlf):
         if p.exists():
-            (HASHES / f"{p.name}.sha256").write_text(f"{sha256_file(p)}  {p.name}\n", encoding="utf-8")
+            (HASHES / f"{p.name}.sha256").write_text(
+                f"{sha256_file(p)}  {p.name}\n", encoding="utf-8"
+            )
     collected.append((name, htmlp, shotp, metaf, curlf))
     print("Saved:", htmlp.name, shotp.name, metaf.name, curlf.name)
 
@@ -442,7 +521,9 @@ for name, q in PAGES:
 man = LOGS / f"collect_manifest_{timestamp()}.txt"
 with man.open("w") as f:
     f.write("collect manifest\n")
-    f.write(f"started: {now_iso()}\nuser: {os.getlogin()}\nhost: {os.uname().nodename}\nbase_url: {BASE_URL}\n\nfiles:\n")
+    f.write(
+        f"started: {now_iso()}\nuser: {os.getlogin()}\nhost: {os.uname().nodename}\nbase_url: {BASE_URL}\n\nfiles:\n"
+    )
     for _, htmlp, shotp, meta, curl in collected:
         if htmlp.exists():
             f.write(f"{htmlp}\n")
