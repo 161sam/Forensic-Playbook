@@ -1,0 +1,6 @@
+scan_targets:
+  - /etc/systemd/system
+  - /etc/crontab
+  - /etc/cron.hourly
+  - /etc/rc.local
+  - /etc/xdg/autostart

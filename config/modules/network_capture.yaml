@@ -1,0 +1,3 @@
+default_tool: tcpdump
+default_interface: eth0
+default_duration: 300

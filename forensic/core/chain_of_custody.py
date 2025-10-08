@@ -412,9 +412,14 @@ class ChainOfCustody:
         unique_actors = cursor.fetchone()[0]
         
         # Unique evidence
+        evidence_clause = (
+            f"{where_clause} AND evidence_id IS NOT NULL"
+            if case_id
+            else "WHERE evidence_id IS NOT NULL"
+        )
         cursor.execute(
-            f"SELECT COUNT(DISTINCT evidence_id) FROM coc_events {where_clause} WHERE evidence_id IS NOT NULL",
-            params
+            f"SELECT COUNT(DISTINCT evidence_id) FROM coc_events {evidence_clause}",
+            params,
         )
         unique_evidence = cursor.fetchone()[0]
         
