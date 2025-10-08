@@ -120,7 +120,9 @@ class ReportGenerator(ReportingModule):
                 renderer = get_pdf_renderer()
                 metadata["pdf_renderer"] = renderer
                 if renderer:
-                    output_path = self._generate_pdf_report(report_data, str(target_path))
+                    output_path = self._generate_pdf_report(
+                        report_data, str(target_path)
+                    )
                 else:
                     fallback_target = target_path.with_suffix(".html")
                     metadata["output_format"] = "html"
