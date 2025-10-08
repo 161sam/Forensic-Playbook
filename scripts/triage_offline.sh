@@ -8,8 +8,6 @@
 # chmod +x /root/triage_offline.sh
 # SRC=/mnt/korrupt_root OUTBASE=/mnt/usb_rw /root/triage_offline.sh
 
-###
-
 set -Eeuo pipefail
 IFS=$'\n\t'
 TZ=UTC
