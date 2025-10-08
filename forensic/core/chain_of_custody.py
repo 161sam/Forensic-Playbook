@@ -7,7 +7,7 @@ Tracks all evidence handling and maintains audit trail
 import json
 import sqlite3
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from forensic.core.time_utils import utc_isoformat
 

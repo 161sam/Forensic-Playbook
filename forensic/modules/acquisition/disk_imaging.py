@@ -5,7 +5,6 @@ Forensic disk imaging with multiple tools and verification
 """
 
 import os
-import shutil
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -125,7 +124,7 @@ class DiskImagingModule(AcquisitionModule):
         
         # Pre-imaging hash of source (if requested)
         if not skip_verify:
-            self.logger.info(f"Computing source hash...")
+            self.logger.info("Computing source hash...")
             try:
                 source_hash = self._hash_device(source, hash_algo)
                 metadata['source_hash'] = source_hash

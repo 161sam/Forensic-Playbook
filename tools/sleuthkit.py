@@ -253,7 +253,6 @@ class SleuthkitWrapper:
             
             match = re.match(r'([rd])/([rd])\s+(\d+)(?:\(realloc\))?:\s+(.+)', line)
             if match:
-                file_type_char = match.group(1)
                 dir_type_char = match.group(2)
                 inode = int(match.group(3))
                 name_part = match.group(4)
@@ -462,10 +461,10 @@ class SleuthkitWrapper:
                     result.returncode
                 )
         
-        except subprocess.TimeoutExpired:
-            raise RuntimeError(f"Command timeout: {' '.join(cmd)}")
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(f"Command timeout: {' '.join(cmd)}") from exc
         except Exception as e:
-            raise RuntimeError(f"Command failed: {e}")
+            raise RuntimeError(f"Command failed: {e}") from e
 
 
 # Convenience functions

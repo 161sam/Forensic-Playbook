@@ -18,9 +18,9 @@ import json
 import re
 import subprocess
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
-from ...core.evidence import Evidence, EvidenceType
+from ...core.evidence import Evidence
 from ...core.module import AnalysisModule, ModuleResult
 from ...core.time_utils import utc_isoformat
 

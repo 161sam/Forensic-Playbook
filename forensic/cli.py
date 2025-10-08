@@ -22,10 +22,10 @@ from .modules.acquisition.network_capture import NetworkCaptureModule
 from .modules.analysis.filesystem import FilesystemAnalysisModule
 from .modules.analysis.malware import MalwareAnalysisModule
 from .modules.analysis.timeline import TimelineModule
+from .modules.reporting.generator import ReportGenerator
 from .modules.triage.persistence import PersistenceModule
 from .modules.triage.quick_triage import QuickTriageModule
 from .modules.triage.system_info import SystemInfoModule
-from .modules.reporting.generator import ReportGenerator
 
 try:  # pragma: no cover - optional legacy module
     from .modules.analysis.ioc_scanning import IoCScanner

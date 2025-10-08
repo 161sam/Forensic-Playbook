@@ -5,29 +5,30 @@ Unit tests for acquisition, analysis, and reporting modules
 """
 
 import json
-import pytest
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
-from forensic.core.evidence import Evidence, EvidenceType
+import pytest
+
 from forensic.modules.acquisition.disk_imaging import DiskImagingModule
 from forensic.modules.analysis.filesystem import FilesystemAnalysisModule
+
 # Legacy modules are optional in the MVP build. Skip this suite entirely when
 # the historical implementations are not present.
 try:
     from forensic.modules.analysis.ioc_scanning import IoCScanner
 except ModuleNotFoundError:  # pragma: no cover - legacy guard
     IoCScanner = None
+from forensic.modules.analysis.memory import MemoryAnalysisModule
+from forensic.modules.analysis.network import NetworkAnalysisModule
+from forensic.modules.analysis.registry import RegistryAnalysisModule
+from forensic.modules.analysis.timeline import TimelineModule
+from forensic.modules.reporting.generator import ReportGenerator
+from forensic.modules.triage.quick_triage import QuickTriageModule
 
 if IoCScanner is None:  # pragma: no cover - legacy guard
     pytest.skip("Legacy module suite not available in this build", allow_module_level=True)
-from forensic.modules.analysis.timeline import TimelineModule
-from forensic.modules.analysis.memory import MemoryAnalysisModule
-from forensic.modules.analysis.registry import RegistryAnalysisModule
-from forensic.modules.analysis.network import NetworkAnalysisModule
-from forensic.modules.triage.quick_triage import QuickTriageModule
-from forensic.modules.reporting.generator import ReportGenerator
 
 
 # ============================================================================

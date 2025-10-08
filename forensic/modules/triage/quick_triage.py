@@ -5,9 +5,7 @@ Rapid assessment of system or disk image
 Migrated from triage_offline.sh with enhancements
 """
 
-import os
 import re
-import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -319,7 +317,7 @@ class QuickTriageModule(TriageModule):
             
             for file in files:
                 try:
-                    with open(file, 'r', errors='ignore') as f:
+                    with open(file, errors='ignore') as f:
                         content = f.read(1024 * 100)  # Max 100KB
                         for pattern in suspicious_patterns:
                             if re.search(pattern, content, re.IGNORECASE):

@@ -14,13 +14,11 @@ Features:
 - Multiple report templates
 """
 
-import base64
 import json
 import sqlite3
+import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional
-
-from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from ...core.evidence import Evidence
 from ...core.module import ModuleResult, ReportingModule
@@ -802,14 +800,14 @@ class ReportGenerator(ReportingModule):
                 try:
                     from weasyprint import HTML
                     HTML(filename=str(html_file)).write_pdf(output_file)
-                except ImportError:
-                    raise RuntimeError("PDF generation requires wkhtmltopdf or weasyprint")
-            
+                except ImportError as exc:
+                    raise RuntimeError("PDF generation requires wkhtmltopdf or weasyprint") from exc
+
             self.logger.info(f"PDF report generated: {output_file}")
             return output_file
-            
+
         except Exception as e:
-            raise RuntimeError(f"PDF generation failed: {e}")
+            raise RuntimeError(f"PDF generation failed: {e}") from e
     
     def _generate_json_report(self, data: Dict, output_file: Optional[str]) -> Path:
         """Generate JSON report"""
@@ -836,7 +834,7 @@ class ReportGenerator(ReportingModule):
         
         # Header
         case = data.get('case', {})
-        md_lines.append(f"# Forensic Investigation Report")
+        md_lines.append("# Forensic Investigation Report")
         md_lines.append(f"\n## {case.get('name', 'N/A')}")
         md_lines.append(f"\n**Case ID:** {case.get('case_id', 'N/A')}")
         md_lines.append(f"**Investigator:** {case.get('investigator', 'N/A')}")
