@@ -9,19 +9,26 @@ import sys
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
-
-ROOT_DIR = Path(__file__).resolve().parent.parent
-if str(ROOT_DIR) not in sys.path:
-    sys.path.insert(0, str(ROOT_DIR))
-
 from click.testing import CliRunner
 
-from forensic.cli import cli
-from forensic.core.evidence import EvidenceType
-from forensic.core.framework import ForensicFramework
-from forensic.modules.analysis.network import NetworkAnalysisModule
-from forensic.modules.reporting.generator import ReportGenerator
-from tests.utils import invoke_pcap_synth, redirect_stdin
+try:
+    from forensic.cli import cli
+    from forensic.core.evidence import EvidenceType
+    from forensic.core.framework import ForensicFramework
+    from forensic.modules.analysis.network import NetworkAnalysisModule
+    from forensic.modules.reporting.generator import ReportGenerator
+    from tests.utils import invoke_pcap_synth, redirect_stdin
+except ModuleNotFoundError:  # pragma: no cover - fallback for direct script execution
+    ROOT_DIR = Path(__file__).resolve().parent.parent
+    if str(ROOT_DIR) not in sys.path:
+        sys.path.insert(0, str(ROOT_DIR))
+
+    from forensic.cli import cli
+    from forensic.core.evidence import EvidenceType
+    from forensic.core.framework import ForensicFramework
+    from forensic.modules.analysis.network import NetworkAnalysisModule
+    from forensic.modules.reporting.generator import ReportGenerator
+    from tests.utils import invoke_pcap_synth, redirect_stdin
 
 
 def _synthesise_network_fixture(
