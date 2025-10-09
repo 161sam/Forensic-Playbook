@@ -644,9 +644,7 @@ def run_module(
 
     module_payload = _module_result_to_dict(result)
     cli_status, exit_code = _module_status_to_cli(module_payload["status"])
-    message = (
-        f"Module {module_name} finished with status: {module_payload['status']}"
-    )
+    message = f"Module {module_name} finished with status: {module_payload['status']}"
 
     details: list[str] = [f"Status: {module_payload['status']}"]
     if module_payload.get("output_path"):
@@ -897,9 +895,7 @@ def diagnostics(ctx: click.Context) -> None:
 
 def _ensure_legacy_enabled(ctx: click.Context) -> None:
     if not ctx.obj.get("legacy_enabled"):
-        message = (
-            "Legacy wrappers are disabled. Re-run with --legacy to access deprecated tools."
-        )
+        message = "Legacy wrappers are disabled. Re-run with --legacy to access deprecated tools."
         _emit_status(
             ctx,
             "legacy",
