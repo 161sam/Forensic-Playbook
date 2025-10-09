@@ -44,9 +44,14 @@ def test_load_env_config(monkeypatch: pytest.MonkeyPatch) -> None:
     assert env_config == {"log_level": "debug", "parallel_execution": False}
 
 
-def test_load_yaml_without_pyyaml_warns(tmp_path: Path) -> None:
+def test_load_yaml_without_pyyaml_warns(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     target = tmp_path / "config.yaml"
     target.write_text("log_level: DEBUG", encoding="utf-8")
+
+    if config.yaml is not None:
+        monkeypatch.setattr(config, "yaml", None)
 
     with pytest.warns(RuntimeWarning):
         assert config.load_yaml(target) == {}
