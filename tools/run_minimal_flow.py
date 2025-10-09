@@ -110,13 +110,15 @@ def run_minimal_flow(
 
     if analysis_params.get("pcap_json") == "-" and stdin_payload is not None:
         with redirect_stdin(io.StringIO(stdin_payload)):
-            analysis_result = framework.execute_module("network", params=analysis_params)
+            analysis_result = framework.execute_module(
+                "network", params=analysis_params
+            )
     else:
         analysis_result = framework.execute_module("network", params=analysis_params)
     if analysis_result.status != "success":
         raise RuntimeError(
             "Network analysis failed:",
-            f" {analysis_result.status} | {analysis_result.errors}"
+            f" {analysis_result.status} | {analysis_result.errors}",
         )
 
     if not generate_report:
@@ -129,7 +131,7 @@ def run_minimal_flow(
     if report_result.status != "success":
         raise RuntimeError(
             "Report generation failed:",
-            f" {report_result.status} | {report_result.errors}"
+            f" {report_result.status} | {report_result.errors}",
         )
 
     if (
@@ -170,12 +172,9 @@ def main() -> None:
     )
 
     if args.skip_report:
-        print(
-            "Minimal flow completed without generating a report (skip requested)."
-        )
+        print("Minimal flow completed without generating a report (skip requested).")
     else:
         print(f"Report generated at: {output_path}")
-
 
 
 if __name__ == "__main__":

@@ -73,7 +73,9 @@ def test_minimal_end_to_end_flow(tmp_path: Path) -> None:
     if analysis_params.get("pcap_json") == "-":
         assert analysis_input_payload is not None
         with redirect_stdin(io.StringIO(analysis_input_payload)):
-            analysis_result = framework.execute_module("network", params=analysis_params)
+            analysis_result = framework.execute_module(
+                "network", params=analysis_params
+            )
     else:
         analysis_result = framework.execute_module("network", params=analysis_params)
     assert analysis_result.status == "success"

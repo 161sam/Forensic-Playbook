@@ -879,7 +879,9 @@ class TimelineModule(AnalysisModule):
                 writer.writerow({field: event.get(field, "") for field in fieldnames})
 
         with json_path.open("w", encoding="utf-8") as handle:
-            json.dump(sorted_events, handle, indent=2, ensure_ascii=False, sort_keys=True)
+            json.dump(
+                sorted_events, handle, indent=2, ensure_ascii=False, sort_keys=True
+            )
 
         return csv_path, json_path
 

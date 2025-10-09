@@ -335,7 +335,9 @@ class MemoryAnalysisModule(AnalysisModule):
                 except (ValueError, IndexError):
                     continue
 
-        return sorted(processes, key=lambda proc: (proc.get("pid", 0), proc.get("name", "")))
+        return sorted(
+            processes, key=lambda proc: (proc.get("pid", 0), proc.get("name", ""))
+        )
 
     def _detect_suspicious_processes(self, processes: List[Dict]) -> List[Dict]:
         """Detect suspicious process patterns"""
