@@ -45,9 +45,14 @@ source venv/bin/activate
 pip install -e .
 
 # Verify installation
-./scripts/forensic-cli.py version
-./scripts/forensic-cli.py check-tools
+forensic-cli version
+forensic-cli check-tools
 ```
+
+> **Fixture policy:** PCAP-Fixtures werden zur Laufzeit über einen Synthesizer
+> erzeugt. Falls das nicht möglich ist, nutzt die CLI JSON-Fallbacks – dadurch
+> benötigen wir keine Binär-Fixtures im Repository und vermeiden Plattform-
+> Abweichungen.
 
 ---
 
@@ -79,23 +84,23 @@ Every investigation is organized as a **Case**:
 
 ```bash
 # Step 1: Create case
-./scripts/forensic-cli.py case create "Malware Investigation 2025-001" \
+forensic-cli case create "Malware Investigation 2025-001" \
     --investigator "John Smith" \
     --description "Suspected ransomware on workstation"
 
 # Step 2: Add evidence (disk image)
-./scripts/forensic-cli.py evidence add /path/to/disk.img \
+forensic-cli evidence add /path/to/disk.img \
     --type disk \
     --description "Suspect workstation C: drive"
 
 # Step 3: Filesystem analysis
-./scripts/forensic-cli.py module run filesystem_analysis \
+forensic-cli module run filesystem_analysis \
     --param image=/path/to/disk.img \
     --param include_deleted=true \
     --param compute_hashes=true
 
 # Step 4: IoC scan
-./scripts/forensic-cli.py module run ioc_scan \
+forensic-cli module run ioc_scan \
     --param path=/mnt/evidence \
     --param ioc_file=config/iocs/IoCs.json \
     --param timeline=true \
@@ -103,13 +108,13 @@ Every investigation is organized as a **Case**:
     --param format=json
 
 # Step 5: Generate timeline
-./scripts/forensic-cli.py module run timeline \
+forensic-cli module run timeline \
     --param source=/path/to/disk.img \
     --param format=csv \
     --param type=plaso
 
 # Step 6: Generate report
-./scripts/forensic-cli.py report --format html
+forensic-cli report --format html
 ```
 
 **Results Location:**
@@ -138,7 +143,7 @@ forensic_workspace/
 
 ```bash
 # Quick triage command
-./scripts/forensic-cli.py quick-triage /mnt/suspect_system \
+forensic-cli quick-triage /mnt/suspect_system \
     --name "Quick Triage 2025-001" \
     --investigator "Jane Doe"
 ```
@@ -161,7 +166,7 @@ forensic_workspace/
 
 ```bash
 # Standalone IoC scan
-./scripts/forensic-cli.py ioc-scan /mnt/evidence \
+forensic-cli ioc-scan /mnt/evidence \
     config/iocs/IoCs.json \
     --format json \
     --timeline \
@@ -199,11 +204,11 @@ forensic_workspace/
 
 ```bash
 # Create case first
-./scripts/forensic-cli.py case create "Disk Imaging - Server01" \
+forensic-cli case create "Disk Imaging - Server01" \
     --investigator "Forensic Team"
 
 # Image disk with verification
-sudo ./scripts/forensic-cli.py module run disk_imaging \
+sudo forensic-cli module run disk_imaging \
     --param source=/dev/sdb \
     --param output=evidence/server01_disk.img \
     --param tool=ddrescue \
@@ -225,7 +230,7 @@ sudo ./scripts/forensic-cli.py module run disk_imaging \
 
 ```bash
 # List all modules
-./scripts/forensic-cli.py module list
+forensic-cli module list
 ```
 
 **Current Modules:**
@@ -360,23 +365,23 @@ sqlite3 forensic_workspace/chain_of_custody.db \
 
 ```bash
 # List available modules
-./scripts/forensic-cli.py module list
+forensic-cli module list
 
-# Check module registration in forensic-cli.py
+# Check module registration in forensic/cli.py
 ```
 
 ### Permission Denied
 
 ```bash
 # Some modules require root (disk imaging)
-sudo ./scripts/forensic-cli.py module run disk_imaging ...
+sudo forensic-cli module run disk_imaging ...
 ```
 
 ### Tool Not Found
 
 ```bash
 # Check tool availability
-./scripts/forensic-cli.py check-tools
+forensic-cli check-tools
 
 # Install missing tools
 sudo apt install sleuthkit plaso-tools
@@ -389,7 +394,7 @@ sudo apt install sleuthkit plaso-tools
 cat forensic_workspace/logs/forensic_*.log
 
 # Verify parameters
-./scripts/forensic-cli.py module run MODULE_NAME --param key=value
+forensic-cli module run MODULE_NAME --param key=value
 ```
 
 ---
@@ -416,29 +421,29 @@ Create custom IoC files:
 
 ```bash
 # Create case
-./scripts/forensic-cli.py case create "Multi-Evidence Case"
+forensic-cli case create "Multi-Evidence Case"
 
 # Add multiple evidence items
-./scripts/forensic-cli.py evidence add disk1.img --type disk
-./scripts/forensic-cli.py evidence add memory.dmp --type memory
-./scripts/forensic-cli.py evidence add capture.pcap --type network
+forensic-cli evidence add disk1.img --type disk
+forensic-cli evidence add memory.dmp --type memory
+forensic-cli evidence add capture.pcap --type network
 
 # Run analysis on each
-./scripts/forensic-cli.py module run filesystem_analysis --param image=disk1.img
-./scripts/forensic-cli.py module run ioc_scan --param path=/mnt/disk1
+forensic-cli module run filesystem_analysis --param image=disk1.img
+forensic-cli module run ioc_scan --param path=/mnt/disk1
 ```
 
 ### Case Management
 
 ```bash
 # List all cases
-./scripts/forensic-cli.py case list
+forensic-cli case list
 
 # Load existing case
-./scripts/forensic-cli.py case load CASE_20251008_120000
+forensic-cli case load CASE_20251008_120000
 
 # Continue investigation
-./scripts/forensic-cli.py module run timeline --param source=/mnt/evidence
+forensic-cli module run timeline --param source=/mnt/evidence
 ```
 
 ---

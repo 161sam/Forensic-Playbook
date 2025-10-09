@@ -78,6 +78,7 @@ successfully. Reporting exporter round-trips are covered in
 | CI (E2E) | Kein End-to-end-Job, nur Unit Tests | Minimalflow in GitHub Actions mit HTML-Report + Coverage-Artefakten |
 | Dokumentation | README ohne Real-Backend-/Report-Anleitungen | Ergänzte Sektionen zu Acquisition, Netzwerk/Timeline-Walkthrough und Reports |
 | Modul-Matrix | Manuelle Nachpflege, ohne Guard/Backend-Spalten | Generator erweitert um „Backend/Extra“ & „Guard“, README synchronisiert |
+| Testdaten (PCAP) | PCAP-Binär im Repo | Runtime-Synthesizer/JSON-Fallback |
 
 ### Phase-3 nächste Schritte
 

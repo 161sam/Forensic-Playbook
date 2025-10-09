@@ -23,6 +23,10 @@
 - ✅ Network capture: 2 hours before/after incident
 - ✅ Router logs
 
+> **Fixture policy:** PCAP-Fixtures werden nicht als Binärdateien im Repository
+> mitgeliefert. Stattdessen erzeugt der Walkthrough sie zur Laufzeit über den
+> Synthesizer oder greift auf JSON-Fallbacks zurück.
+
 ---
 
 ## 🚀 Investigation Steps
@@ -39,7 +43,7 @@ cd CASE_20251008_MALWARE_001
 source ~/forensic-venv/bin/activate
 
 # 3. Verify tools
-./scripts/forensic-cli.py check-tools
+forensic-cli check-tools
 ```
 
 **Output:**
@@ -74,7 +78,7 @@ Timeline:
 
 ```bash
 # Create forensic case
-./scripts/forensic-cli.py case create \
+forensic-cli case create \
     "Ransomware Investigation - Workstation JDoe" \
     --investigator "John Smith" \
     --description "Suspected ransomware infection with file encryption"
@@ -102,7 +106,7 @@ Timeline:
 
 ```bash
 # Image the SSD (evidence drive: /dev/sdb)
-sudo ./scripts/forensic-cli.py module run disk_imaging \
+sudo forensic-cli module run disk_imaging \
     --param source=/dev/sdb \
     --param output=evidence/disk_jdoe_workstation.img \
     --param tool=ddrescue \
@@ -132,13 +136,13 @@ Verification: PASSED
 
 ```bash
 # Register disk image as evidence
-./scripts/forensic-cli.py evidence add \
+forensic-cli evidence add \
     evidence/disk_jdoe_workstation.img \
     --type disk \
     --description "Primary SSD from infected workstation"
 
 # Register memory dump
-./scripts/forensic-cli.py evidence add \
+forensic-cli evidence add \
     evidence/memory_dump.dmp \
     --type memory \
     --description "RAM capture at time of incident"
@@ -154,7 +158,7 @@ sudo mkdir /mnt/evidence_ro
 sudo mount -o ro,loop,offset=$((2048*512)) evidence/disk_jdoe_workstation.img /mnt/evidence_ro
 
 # Run quick triage
-./scripts/forensic-cli.py module run quick_triage \
+forensic-cli module run quick_triage \
     --param target=/mnt/evidence_ro
 ```
 
@@ -218,7 +222,7 @@ cat > config/iocs/ransomware_iocs.json << 'EOF'
 EOF
 
 # Run IoC scan
-./scripts/forensic-cli.py module run ioc_scan \
+forensic-cli module run ioc_scan \
     --param path=/mnt/evidence_ro \
     --param ioc_file=config/iocs/ransomware_iocs.json \
     --param timeline=true \
@@ -264,7 +268,7 @@ EOF
 
 ```bash
 # Generate comprehensive timeline
-./scripts/forensic-cli.py module run timeline \
+forensic-cli module run timeline \
     --param source=/mnt/evidence_ro \
     --param format=l2tcsv \
     --param type=plaso \
@@ -291,7 +295,7 @@ EOF
 
 ```bash
 # Analyze memory dump
-./scripts/forensic-cli.py module run memory_analysis \
+forensic-cli module run memory_analysis \
     --param dump=evidence/memory_dump.dmp \
     --param processes=true \
     --param network=true \
@@ -325,7 +329,7 @@ Code Injection Detected:
 
 ```bash
 # Detailed filesystem analysis
-./scripts/forensic-cli.py module run filesystem_analysis \
+forensic-cli module run filesystem_analysis \
     --param image=evidence/disk_jdoe_workstation.img \
     --param partition=1 \
     --param include_deleted=true \
@@ -351,7 +355,7 @@ Deleted Files (423 total):
 
 ```bash
 # Run automated malware analysis pipeline
-./scripts/forensic-cli.py pipeline pipelines/malware_analysis.yaml
+forensic-cli pipeline pipelines/malware_analysis.yaml
 ```
 
 **Pipeline Execution:**
@@ -372,7 +376,7 @@ Pipeline complete: 6/6 modules succeeded
 
 ```bash
 # Generate comprehensive HTML report
-./scripts/forensic-cli.py report --format html
+forensic-cli report --format html
 ```
 
 **Report Contents:**
