@@ -862,14 +862,24 @@ class TimelineModule(AnalysisModule):
 
         fieldnames = ["timestamp", "source", "type", "summary", "details_ref"]
 
+        sorted_events = sorted(
+            events,
+            key=lambda item: (
+                item.get("timestamp") or "",
+                item.get("source") or "",
+                item.get("type") or "",
+                item.get("summary") or "",
+            ),
+        )
+
         with csv_path.open("w", encoding="utf-8", newline="") as handle:
             writer = csv.DictWriter(handle, fieldnames=fieldnames)
             writer.writeheader()
-            for event in events:
+            for event in sorted_events:
                 writer.writerow({field: event.get(field, "") for field in fieldnames})
 
         with json_path.open("w", encoding="utf-8") as handle:
-            json.dump(events, handle, indent=2, ensure_ascii=False)
+            json.dump(sorted_events, handle, indent=2, ensure_ascii=False, sort_keys=True)
 
         return csv_path, json_path
 

@@ -169,7 +169,7 @@ class FilesystemAnalysisModule(AnalysisModule):
             # Save file list
             file_list_file = self.output_dir / "file_list.json"
             with open(file_list_file, "w") as f:
-                json.dump(file_list, f, indent=2)
+                json.dump(file_list, f, indent=2, sort_keys=True)
 
             findings.append(
                 {
@@ -222,7 +222,7 @@ class FilesystemAnalysisModule(AnalysisModule):
 
                 hash_file = self.output_dir / "file_hashes.json"
                 with open(hash_file, "w") as f:
-                    json.dump(hash_results, f, indent=2)
+                    json.dump(hash_results, f, indent=2, sort_keys=True)
 
                 findings.append(
                     {
@@ -400,7 +400,13 @@ class FilesystemAnalysisModule(AnalysisModule):
         except Exception as e:
             self.logger.warning(f"fls failed: {e}")
 
-        return files
+        return sorted(
+            files,
+            key=lambda item: (
+                item.get("name") or "",
+                item.get("inode", 0),
+            ),
+        )
 
     def _extract_strings(self, image: Path, partition: Optional[int]) -> Optional[Path]:
         """Extract strings from filesystem"""
@@ -493,4 +499,10 @@ class FilesystemAnalysisModule(AnalysisModule):
                 self.logger.debug(f"Hash computation failed for inode {inode}: {e}")
                 continue
 
-        return hash_results
+        return sorted(
+            hash_results,
+            key=lambda item: (
+                item.get("name") or "",
+                item.get("inode", 0),
+            ),
+        )

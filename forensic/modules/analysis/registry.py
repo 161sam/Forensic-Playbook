@@ -212,7 +212,12 @@ class RegistryAnalysisModule(AnalysisModule):
             # Generate comprehensive report
             report_file = self.output_dir / "registry_analysis_report.json"
             with open(report_file, "w") as f:
-                json.dump({"metadata": metadata, "findings": findings}, f, indent=2)
+                json.dump(
+                    {"metadata": metadata, "findings": findings},
+                    f,
+                    indent=2,
+                    sort_keys=True,
+                )
 
         except Exception as e:
             self.logger.error(f"Registry analysis failed: {e}")

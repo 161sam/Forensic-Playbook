@@ -147,7 +147,7 @@ class AuditLogger:
 
         message = f"{event}"
         if details:
-            message += f" | Details: {json.dumps(details)}"
+            message += f" | Details: {json.dumps(details, sort_keys=True)}"
 
         self.logger.info(message)
 

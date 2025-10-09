@@ -238,7 +238,7 @@ class ForensicFramework:
                 case.investigator,
                 case.created_at,
                 str(case.case_dir),
-                json.dumps(case.metadata),
+            json.dumps(case.metadata, sort_keys=True),
             ),
         )
         conn.commit()
@@ -339,7 +339,7 @@ class ForensicFramework:
                 description,
                 evidence.collected_at,
                 evidence.hash_sha256,
-                json.dumps(evidence.metadata),
+                json.dumps(evidence.metadata, sort_keys=True),
             ),
         )
         conn.commit()
@@ -428,7 +428,7 @@ class ForensicFramework:
                     result.timestamp,
                     result.status,
                     str(result.output_path) if result.output_path else None,
-                    json.dumps(result.metadata),
+                    json.dumps(result.metadata, sort_keys=True),
                 ),
             )
             conn.commit()

@@ -243,7 +243,9 @@ class NetworkCaptureModule(AcquisitionModule):
         metadata["sha256"] = self._compute_hash(output_path)
 
         meta_path = self._ensure_unique_meta(meta_path)
-        meta_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+        meta_path.write_text(
+            json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8"
+        )
 
         self._log_chain_of_custody(
             metadata["sha256"], output_path, meta_path, tool_name

@@ -205,7 +205,7 @@ class TestIoCScanner:
         # Save IoCs to file
         ioc_file = temp_case_dir / "iocs.json"
         with open(ioc_file, "w") as f:
-            json.dump(sample_iocs, f)
+            json.dump(sample_iocs, f, sort_keys=True)
 
         # Load IoCs
         loaded = module._load_iocs(str(ioc_file))
@@ -221,7 +221,7 @@ class TestIoCScanner:
         # Save IoCs
         ioc_file = temp_case_dir / "iocs.json"
         with open(ioc_file, "w") as f:
-            json.dump(sample_iocs, f)
+            json.dump(sample_iocs, f, sort_keys=True)
 
         result = module.run(
             None,
@@ -246,7 +246,7 @@ class TestIoCScanner:
         # Save IoCs
         ioc_file = temp_case_dir / "iocs.json"
         with open(ioc_file, "w") as f:
-            json.dump(sample_iocs, f)
+            json.dump(sample_iocs, f, sort_keys=True)
 
         result = module.run(
             None,

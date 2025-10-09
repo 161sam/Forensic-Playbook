@@ -25,7 +25,7 @@ def write_text(path: Path, content: str, encoding: str = "utf-8") -> None:
 def write_json(path: Path, data: Dict[str, Any]) -> None:
     """Persist ``data`` as pretty printed JSON."""
 
-    write_text(path, json.dumps(data, indent=2, default=str))
+    write_text(path, json.dumps(data, indent=2, default=str, sort_keys=True))
 
 
 __all__ = ["read_text", "write_json", "write_text"]
