@@ -447,7 +447,9 @@ class QuickTriageModule(TriageModule):
                     }
                 )
 
-        matches.sort(key=lambda item: (-self._parse_epoch(item["modified"]), item["path"]))
+        matches.sort(
+            key=lambda item: (-self._parse_epoch(item["modified"]), item["path"])
+        )
 
         truncated = bool(limit and len(matches) > limit)
         reported = matches[:limit] if limit else matches
@@ -747,9 +749,7 @@ class QuickTriageModule(TriageModule):
         candidates = self._candidate_paths(rel, path)
         return any(self._pure_match(candidate, normalised) for candidate in candidates)
 
-    def _glob_included(
-        self, path: Path, patterns: Sequence[str], root: Path
-    ) -> bool:
+    def _glob_included(self, path: Path, patterns: Sequence[str], root: Path) -> bool:
         if not patterns:
             return True
         rel = self._relativise(path, root)
@@ -762,9 +762,7 @@ class QuickTriageModule(TriageModule):
                 return True
         return False
 
-    def _glob_excluded(
-        self, path: Path, patterns: Sequence[str], root: Path
-    ) -> bool:
+    def _glob_excluded(self, path: Path, patterns: Sequence[str], root: Path) -> bool:
         if not patterns:
             return False
         rel = self._relativise(path, root)
@@ -795,7 +793,9 @@ class QuickTriageModule(TriageModule):
         with path.open("w", newline="", encoding="utf-8") as handle:
             writer = csv.DictWriter(handle, fieldnames=CSV_HEADERS)
             writer.writeheader()
-            for record in sorted(records, key=lambda item: (item["check"], item["path"])):
+            for record in sorted(
+                records, key=lambda item: (item["check"], item["path"])
+            ):
                 writer.writerow({key: record.get(key, "") for key in CSV_HEADERS})
 
     def _stable_json(self, data: Mapping[str, Any]) -> str:
@@ -813,7 +813,9 @@ class QuickTriageModule(TriageModule):
             items = raw
         else:
             return ()
-        patterns = [self._normalise_glob(str(item)) for item in items if str(item).strip()]
+        patterns = [
+            self._normalise_glob(str(item)) for item in items if str(item).strip()
+        ]
         unique = dict.fromkeys(pattern for pattern in patterns if pattern)
         return tuple(unique.keys())
 
@@ -883,4 +885,3 @@ class QuickTriageModule(TriageModule):
 
 
 __all__ = ["QuickTriageModule"]
-

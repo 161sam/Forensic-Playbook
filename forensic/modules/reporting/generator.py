@@ -219,8 +219,7 @@ class ReportGenerator(ReportingModule):
                                 )
                         else:
                             html_candidate = self._ensure_unique_path(
-                                self.output_dir
-                                / f"{metadata['base_name']}.html"
+                                self.output_dir / f"{metadata['base_name']}.html"
                             )
                         html_path = self._generate_html_report(
                             report_data, html_candidate, alerts, metadata
@@ -250,20 +249,15 @@ class ReportGenerator(ReportingModule):
                             metadata["output_path"] = str(output_path)
                     else:
                         fallback_target = (
-                            target_path.with_suffix(".html")
-                            if output_file
-                            else None
+                            target_path.with_suffix(".html") if output_file else None
                         )
                         if fallback_target is not None and fallback_target.exists():
-                            fallback_target = self._ensure_unique_path(
-                                fallback_target
-                            )
+                            fallback_target = self._ensure_unique_path(fallback_target)
                         html_target = (
                             fallback_target
                             if fallback_target is not None
                             else self._ensure_unique_path(
-                                self.output_dir
-                                / f"{metadata['base_name']}.html"
+                                self.output_dir / f"{metadata['base_name']}.html"
                             )
                         )
                         self._append_alert(
@@ -560,7 +554,9 @@ class ReportGenerator(ReportingModule):
         if not timeline_root.exists():
             messages.append("Timeline artefacts were not found for this case.")
         elif not events:
-            messages.append("Timeline artefacts were available but contained no events.")
+            messages.append(
+                "Timeline artefacts were available but contained no events."
+            )
 
         sources = sorted(dict.fromkeys(sources))
         errors = sorted(dict.fromkeys(errors))
@@ -977,9 +973,7 @@ class ReportGenerator(ReportingModule):
         try:
             export_report(data, "html", target)
         except Exception as exc:  # pragma: no cover - guarded fallback
-            message = (
-                "HTML template rendering failed; generated minimal HTML instead."
-            )
+            message = "HTML template rendering failed; generated minimal HTML instead."
             self.logger.warning("%s (%s)", message, exc)
             self._append_alert(alerts, message)
             target.write_text(self._render_minimal_html(data), encoding="utf-8")
@@ -1106,7 +1100,10 @@ class ReportGenerator(ReportingModule):
             if not candidate.suffix:
                 candidate = candidate.with_suffix(ext)
             if candidate.exists():
-                return None, f"Output file {candidate} already exists; refusing to overwrite."
+                return (
+                    None,
+                    f"Output file {candidate} already exists; refusing to overwrite.",
+                )
             return candidate, None
 
         default_candidate = self.output_dir / f"{base_name}{ext}"
@@ -1122,7 +1119,9 @@ class ReportGenerator(ReportingModule):
             counter += 1
         return path
 
-    def _collect_section_alerts(self, report_data: Dict[str, Any], alerts: List[str]) -> None:
+    def _collect_section_alerts(
+        self, report_data: Dict[str, Any], alerts: List[str]
+    ) -> None:
         """Collect informational alerts for missing sections."""
 
         timeline = report_data.get("timeline")
@@ -1218,7 +1217,7 @@ class ReportGenerator(ReportingModule):
         if alerts:
             items = "".join(f"<li>{escape(str(item))}</li>" for item in alerts)
             alert_html = (
-                "<section><h2>Notices</h2><ul class=\"notices\">"
+                '<section><h2>Notices</h2><ul class="notices">'
                 f"{items}</ul></section>"
             )
 
@@ -1230,12 +1229,12 @@ class ReportGenerator(ReportingModule):
                 for key, value in sorted(statistics.items())
             )
             stats_html = (
-                "<section><h2>At a Glance</h2><ul class=\"stats\">"
+                '<section><h2>At a Glance</h2><ul class="stats">'
                 f"{stats_items}</ul></section>"
             )
 
         description_html = (
-            f"<p class=\"case-description\">{escape(description)}</p>"
+            f'<p class="case-description">{escape(description)}</p>'
             if description
             else ""
         )

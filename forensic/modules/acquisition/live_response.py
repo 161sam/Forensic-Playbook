@@ -80,7 +80,9 @@ class LiveResponseModule(AcquisitionModule):
             message = "No live response commands selected after validation."
             return self.guard_result(
                 message,
-                hints=["Specify at least one allow-listed command via --param commands"],
+                hints=[
+                    "Specify at least one allow-listed command via --param commands"
+                ],
                 status="skipped",
                 metadata={"commands": []},
                 result_id=result_id,

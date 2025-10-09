@@ -104,7 +104,9 @@ class SystemInfoModule(TriageModule):
         if not fields:
             return self.guard_result(
                 "No valid system information fields were provided.",
-                hints=["Update triage.system_info.fields to include supported entries."],
+                hints=[
+                    "Update triage.system_info.fields to include supported entries."
+                ],
                 metadata={"fields": []},
                 result_id=result_id,
                 timestamp=timestamp,
@@ -217,7 +219,9 @@ class SystemInfoModule(TriageModule):
             )
 
         info: Dict[str, Any] = {}
-        for line in release_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        for line in release_path.read_text(
+            encoding="utf-8", errors="ignore"
+        ).splitlines():
             if "=" not in line:
                 continue
             key, value = line.split("=", 1)
@@ -226,7 +230,9 @@ class SystemInfoModule(TriageModule):
             info[key] = value
 
         result = {
-            "name": info.get("pretty_name") or info.get("name") or self._platform_system(),
+            "name": info.get("pretty_name")
+            or info.get("name")
+            or self._platform_system(),
             "id": info.get("id"),
             "version": info.get("version_id"),
             "build": info.get("build_id"),
@@ -275,18 +281,22 @@ class SystemInfoModule(TriageModule):
             mtu_path = iface_path / "mtu"
 
             if mac_path.exists():
-                info["mac"] = mac_path.read_text(encoding="utf-8", errors="ignore").strip()
+                info["mac"] = mac_path.read_text(
+                    encoding="utf-8", errors="ignore"
+                ).strip()
             if state_path.exists():
-                info["state"] = (
-                    state_path.read_text(encoding="utf-8", errors="ignore").strip()
-                )
+                info["state"] = state_path.read_text(
+                    encoding="utf-8", errors="ignore"
+                ).strip()
             if mtu_path.exists():
                 try:
                     info["mtu"] = int(
                         mtu_path.read_text(encoding="utf-8", errors="ignore").strip()
                     )
                 except ValueError:
-                    info["mtu"] = mtu_path.read_text(encoding="utf-8", errors="ignore").strip()
+                    info["mtu"] = mtu_path.read_text(
+                        encoding="utf-8", errors="ignore"
+                    ).strip()
 
             entries.append(info)
 
@@ -298,7 +308,9 @@ class SystemInfoModule(TriageModule):
             return ([], "/proc/mounts not available; mount information unavailable.")
 
         records: List[Dict[str, Any]] = []
-        for line in mounts_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        for line in mounts_path.read_text(
+            encoding="utf-8", errors="ignore"
+        ).splitlines():
             if not line.strip():
                 continue
             parts = line.split()
