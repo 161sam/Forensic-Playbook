@@ -6,7 +6,7 @@ import subprocess
 import sys
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator, Tuple, TextIO
+from typing import Iterator, TextIO, Tuple
 
 from .pcap_synth import MINIMAL_PCAP_NAME
 
