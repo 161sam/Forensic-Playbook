@@ -353,7 +353,7 @@ class PersistenceModule(TriageModule):
                 entries = self._normalise_path_list(value)
                 if entries:
                     result[normalised_category] = entries
-        elif isinstance(raw, (list, tuple, set)):
+        elif isinstance(raw, list | tuple | set):
             entries = self._normalise_path_list(raw)
             if entries:
                 result["custom"] = entries

@@ -6,8 +6,8 @@ import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Optional
 from types import SimpleNamespace
+from typing import Dict, Optional
 
 import pytest
 from click.testing import CliRunner
@@ -19,10 +19,9 @@ from forensic.core.framework import ForensicFramework
 from forensic.modules.analysis.network import NetworkAnalysisModule
 from forensic.modules.reporting.generator import ReportGenerator
 from forensic.utils import cmd as cmd_utils
-from forensic.utils import hashing
+from forensic.utils import hashing, timefmt
 from forensic.utils import io as io_utils
 from forensic.utils import paths as paths_utils
-from forensic.utils import timefmt
 from tests.utils import invoke_pcap_synth, redirect_stdin
 
 

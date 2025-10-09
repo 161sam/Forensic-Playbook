@@ -261,7 +261,7 @@ class LiveResponseModule(AcquisitionModule):
         if isinstance(value, str):
             entries = [item.strip() for item in value.split(",")]
             return [item for item in entries if item]
-        if isinstance(value, (list, tuple, set)):
+        if isinstance(value, list | tuple | set):
             normalised: List[str] = []
             for item in value:
                 if item is None:
