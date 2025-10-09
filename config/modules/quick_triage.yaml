@@ -1,0 +1,68 @@
+modules:
+  triage:
+    quick_triage:
+      dry_run: false
+      max_results: 50
+      since_days: 7
+      exports:
+        json: true
+        csv: true
+      checks:
+        suid_sgid:
+          enabled: true
+          max_results: 50
+          suspicious_globs:
+            - tmp/**
+            - var/tmp/**
+            - dev/shm/**
+        recent_files:
+          enabled: true
+          since_days: 7
+          max_results: 75
+          include_globs:
+            - '**'
+          exclude_globs:
+            - var/log/wtmp
+            - var/log/btmp
+        suspicious_paths:
+          enabled: true
+          max_results: 50
+          glob_patterns:
+            - etc/ld.so.preload
+            - etc/cron.d/**
+            - etc/rc.local
+            - var/spool/cron/**
+            - tmp/**/.ssh
+  quick_triage:
+    dry_run: false
+    max_results: 50
+    since_days: 7
+    exports:
+      json: true
+      csv: true
+    checks:
+      suid_sgid:
+        enabled: true
+        max_results: 50
+        suspicious_globs:
+          - tmp/**
+          - var/tmp/**
+          - dev/shm/**
+      recent_files:
+        enabled: true
+        since_days: 7
+        max_results: 75
+        include_globs:
+          - '**'
+        exclude_globs:
+          - var/log/wtmp
+          - var/log/btmp
+      suspicious_paths:
+        enabled: true
+        max_results: 50
+        glob_patterns:
+          - etc/ld.so.preload
+          - etc/cron.d/**
+          - etc/rc.local
+          - var/spool/cron/**
+          - tmp/**/.ssh
