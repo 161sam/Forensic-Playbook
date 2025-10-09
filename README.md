@@ -181,7 +181,7 @@ black --check .
 | Kategorie | Modul | Status | Backend/Extra | Guard | Notizen |
 | --- | --- | --- | --- | --- | --- |
 | Acquisition | `disk_imaging` | Guarded | ddrescue / ewfacquire | Root + block device access | Requires ddrescue, ewfacquire (missing locally) |
-| Acquisition | `live_response` | Guarded | coreutils (uname, ps, netstat) | — | Requires netstat, ss (missing locally) |
+| Acquisition | `live_response` | Guarded | coreutils (uname, ps, netstat) | — | Requires netstat, ss (all available) |
 | Acquisition | `memory_dump` | Guarded | avml | --enable-live-capture (Linux) | Requires avml (missing locally) |
 | Acquisition | `network_capture` | MVP | tcpdump / dumpcap | --enable-live-capture + root | MVP baseline implementation |
 | Analysis | `filesystem` | Guarded | sleuthkit (fls, blkcat) | — | Requires fls (missing locally) |
