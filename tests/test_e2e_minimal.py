@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import io
 import json
+import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Optional
 
+import pytest
 from click.testing import CliRunner
 
 from forensic.cli import cli
@@ -12,6 +15,11 @@ from forensic.core.evidence import EvidenceType
 from forensic.core.framework import ForensicFramework
 from forensic.modules.analysis.network import NetworkAnalysisModule
 from forensic.modules.reporting.generator import ReportGenerator
+from forensic.utils import cmd as cmd_utils
+from forensic.utils import hashing
+from forensic.utils import io as io_utils
+from forensic.utils import paths as paths_utils
+from forensic.utils import timefmt
 from tests.utils import invoke_pcap_synth, redirect_stdin
 
 
@@ -121,3 +129,49 @@ def test_minimal_end_to_end_flow(tmp_path: Path) -> None:
 
     reports_root = case.case_dir / "reports"
     assert reports_root in report_result.output_path.parents
+
+    # Exercise lightweight utility helpers to improve coverage of critical modules.
+    utility_root = workspace / "utility-checks"
+    resolved_workspace = paths_utils.resolve_workspace(workspace, "utility-checks")
+    assert resolved_workspace == utility_root
+    sample_text = resolved_workspace / "sample.txt"
+    io_utils.write_text(sample_text, "utility data")
+    assert io_utils.read_text(sample_text) == "utility data"
+    assert io_utils.read_text(resolved_workspace / "missing.txt") == ""
+
+    json_target = resolved_workspace / "data.json"
+    io_utils.write_json(json_target, {"b": 1, "a": 2})
+    resolved_paths = list(
+        paths_utils.resolve_config_paths(
+            resolved_workspace, [sample_text.name, json_target.name, "missing.json"]
+        )
+    )
+    assert resolved_paths == [sample_text, json_target]
+
+    optional_result = paths_utils.optional_path(str(json_target))
+    assert optional_result == json_target
+    assert paths_utils.optional_path(None) is None
+
+    naive_timestamp = timefmt.to_iso(datetime(2024, 1, 1, 12, 0, 0))
+    aware_timestamp = timefmt.to_iso(datetime(2024, 1, 1, 14, 0, 0, tzinfo=timezone.utc))
+    current_timestamp = timefmt.utcnow_iso()
+    assert naive_timestamp == "2024-01-01T12:00:00Z"
+    assert aware_timestamp == "2024-01-01T14:00:00Z"
+    assert current_timestamp.endswith("Z")
+
+    hashes = hashing.compute_hashes(sample_text, ["md5", "sha1", "sha256"])
+    assert hashes["sha256"]
+    with pytest.raises(ValueError):
+        hashing.compute_stream_hash(io.BytesIO(b"x"), chunk_size=0)
+    with pytest.raises(ValueError):
+        hashing.compute_stream_hash(io.BytesIO(b"x"), algorithm="sha512")
+
+    python_exec = sys.executable
+    resolved_python = cmd_utils.ensure_tool(python_exec)
+    assert Path(resolved_python).exists()
+    run_result = cmd_utils.run([python_exec, "-c", "print('ok')"], timeout=10)
+    assert run_result.stdout.strip() == "ok"
+    with pytest.raises(TypeError):
+        cmd_utils.run("echo invalid")
+    with pytest.raises(ValueError):
+        cmd_utils.run([], timeout=10)
