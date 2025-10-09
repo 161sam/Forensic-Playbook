@@ -59,6 +59,9 @@ jobs:
           python-version: "3.11"
       - name: Install dependencies
         run: pip install .[dev]
+      - name: Install optional Scapy dependency
+        run: pip install "scapy>=2.5" -q
+        continue-on-error: true
       - name: Run minimal end-to-end flow
         run: python tools/run_minimal_flow.py --workspace out/workspace --report out/report.html
       - name: Execute minimal pytest suite with coverage
@@ -70,6 +73,12 @@ jobs:
         with:
           name: minimal-html-report
           path: out/report.html
+      - name: Upload PDF report (if available)
+        if: ${{ hashFiles('out/report.pdf') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: minimal-pdf-report
+          path: out/report.pdf
       - name: Upload coverage XML
         uses: actions/upload-artifact@v4
         with:
