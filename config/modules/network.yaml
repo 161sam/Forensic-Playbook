@@ -1,0 +1,7 @@
+modules:
+  network:
+    # Default parser preference: auto, scapy or pyshark
+    prefer_parser: auto
+    # Optional default locations for PCAP or JSON artefacts
+    pcap: null
+    pcap_json: null

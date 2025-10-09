@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-"""Network analysis module with optional PCAP extra.
+"""Network analysis module with guarded PCAP handling.
 
-This module expands the network analysis capabilities by extracting
-flow, DNS and HTTP information from a PCAP file. The heavy lifting is
-performed by optional dependencies which are exposed through the
-``pcap`` extra (``pip install forensic-playbook[pcap]``). When the
-extra is not installed the module emits a warning and exits
-successfully without doing any intensive processing, satisfying the
-"optional extra" requirement.
+The module extracts flow, DNS and HTTP information either from raw PCAP
+captures (when the optional :mod:`scapy`/``pyshark`` dependencies are
+available) or from pre-generated JSON payloads supplied via
+``--pcap-json``.  When the optional dependencies are missing the module
+enters a guarded state and guides the operator towards the JSON
+fallback, ensuring deterministic outputs without unexpected tracebacks.
 """
 
 from __future__ import annotations
@@ -24,9 +23,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+from ...core.chain_of_custody import ChainOfCustody
 from ...core.evidence import Evidence
 from ...core.module import AnalysisModule, ModuleResult
 from ...core.time_utils import utc_isoformat, utc_slug
+from ...utils.hashing import compute_hash
 
 try:  # pragma: no cover - optional dependency
     import pyshark  # type: ignore
@@ -104,33 +105,34 @@ class NetworkAnalysisModule(AnalysisModule):
     def validate_params(self, params: Dict) -> bool:
         defaults = self._config_defaults()
 
+        resolved: Dict[str, Any] = dict(params)
+        self._param_sources: Dict[str, str] = {}
+
+        def _normalise(value: Any) -> Optional[str]:
+            if value in (None, ""):
+                return None
+            if isinstance(value, str):
+                trimmed = value.strip()
+                return trimmed or None
+            text = str(value).strip()
+            return text or None
+
         for key in ("pcap", "pcap_json"):
-            if params.get(key):
+            cli_value = _normalise(resolved.get(key))
+            if cli_value is not None:
+                resolved[key] = cli_value
+                self._param_sources[key] = "cli"
                 continue
-            default_value = defaults.get(key)
-            if default_value:
-                params[key] = default_value
 
-        has_pcap = "pcap" in params and params["pcap"]
-        has_pcap_json = "pcap_json" in params and params["pcap_json"]
+            resolved.pop(key, None)
 
-        if not has_pcap and not has_pcap_json:
-            self.logger.error("Missing required parameter: pcap or pcap_json")
-            return False
+            default_value = _normalise(defaults.get(key))
+            if default_value is not None:
+                resolved[key] = default_value
+                self._param_sources[key] = "config"
 
-        if has_pcap:
-            pcap_path = Path(params["pcap"])
-            if not pcap_path.exists():
-                self.logger.error(f"PCAP file does not exist: {pcap_path}")
-                return False
-
-        if has_pcap_json:
-            json_source = params["pcap_json"]
-            if json_source != "-":
-                json_path = Path(json_source)
-                if not json_path.exists():
-                    self.logger.error(f"PCAP JSON file does not exist: {json_path}")
-                    return False
+        params.clear()
+        params.update(resolved)
 
         return True
 
@@ -139,26 +141,109 @@ class NetworkAnalysisModule(AnalysisModule):
         timestamp = utc_isoformat()
         slug = utc_slug()
 
-        pcap_path = params.get("pcap")
-        pcap_file = Path(pcap_path) if pcap_path else None
-        pcap_json_source = params.get("pcap_json")
+        defaults = self._config_defaults()
+        prefer_parser = str(defaults.get("prefer_parser", "auto") or "auto").strip().lower()
 
-        output_root = self.output_dir / slug
-        metadata: Dict[str, Any] = {"generated_at": timestamp}
+        parameter_sources = dict(getattr(self, "_param_sources", {}))
+        metadata: Dict[str, Any] = {
+            "generated_at": timestamp,
+            "parameter_sources": dict(sorted(parameter_sources.items())),
+            "prefer_parser": prefer_parser,
+        }
 
-        if pcap_file is not None:
-            metadata["pcap_file"] = str(pcap_file)
+        def _stringify(value: Any) -> Optional[str]:
+            if value in (None, ""):
+                return None
+            if isinstance(value, str):
+                trimmed = value.strip()
+                return trimmed or None
+            text = str(value).strip()
+            return text or None
+
+        pcap_value = _stringify(params.get("pcap"))
+        pcap_json_value = _stringify(params.get("pcap_json"))
+
+        pcap_file = Path(pcap_value).expanduser() if pcap_value else None
+        pcap_json_source = pcap_json_value
+        metadata["pcap_file"] = str(pcap_file) if pcap_file else None
+        metadata["pcap_size"] = None
+        metadata["pcap_json_requested"] = pcap_json_source
+        metadata["pcap_json_mode"] = False
+
+        extras_available = bool(rdpcap is not None or pyshark is not None)
+        metadata["pcap_extra_available"] = extras_available
+
+        if not pcap_file and not pcap_json_source:
+            hints = [
+                "Provide a PCAP via --pcap or a JSON export via --pcap-json.",
+            ]
+            return self.guard_result(
+                "No capture input provided for network analysis.",
+                hints,
+                metadata=metadata,
+                result_id=result_id,
+                timestamp=timestamp,
+            )
+
+        if pcap_file:
+            if not pcap_file.exists():
+                metadata["pcap_exists"] = False
+                hints = [
+                    f"Verify the PCAP path: {pcap_file}",
+                ]
+                return self.guard_result(
+                    f"PCAP file does not exist: {pcap_file}",
+                    hints,
+                    status="failed",
+                    metadata=metadata,
+                    result_id=result_id,
+                    timestamp=timestamp,
+                )
+
+            metadata["pcap_exists"] = True
             try:
                 metadata["pcap_size"] = pcap_file.stat().st_size
-            except FileNotFoundError:
+            except OSError:
                 metadata["pcap_size"] = None
-        else:
-            metadata["pcap_file"] = None
-            metadata["pcap_size"] = None
 
-        fallback_used = False
-        has_extra = rdpcap is not None or pyshark is not None
-        metadata["pcap_extra_available"] = has_extra
+        json_path: Optional[Path] = None
+        if pcap_json_source:
+            if pcap_json_source == "-":
+                metadata["pcap_json_path"] = "stdin"
+            else:
+                json_path = Path(pcap_json_source).expanduser()
+                metadata["pcap_json_path"] = str(json_path)
+                if not json_path.exists():
+                    metadata["pcap_json_exists"] = False
+                    hints = [f"Verify the JSON path: {json_path}"]
+                    return self.guard_result(
+                        f"PCAP JSON file does not exist: {json_path}",
+                        hints,
+                        status="failed",
+                        metadata=metadata,
+                        result_id=result_id,
+                        timestamp=timestamp,
+                    )
+                metadata["pcap_json_exists"] = True
+
+        if pcap_file and not extras_available and not pcap_json_source:
+            hints = [
+                "Install the optional 'pcap' extra via `pip install forensic-playbook[pcap]`.",
+                "Alternatively, provide pre-parsed data using --pcap-json.",
+            ]
+            return self.guard_result(
+                "PCAP parsing requires the optional 'pcap' extra or a JSON fallback.",
+                hints,
+                metadata=metadata,
+                result_id=result_id,
+                timestamp=timestamp,
+            )
+
+        flows_list: List[Dict[str, Any]]
+        dns_summary: Dict[str, Any]
+        http_summary: Dict[str, Any]
+        analysis_mode: str
+        json_hash: Optional[str] = None
 
         if pcap_json_source:
             try:
@@ -169,75 +254,88 @@ class NetworkAnalysisModule(AnalysisModule):
                     json_origin,
                 ) = self._load_pcap_json_input(pcap_json_source)
             except ValueError as exc:
-                message = f"Failed to load PCAP JSON input: {exc}"
                 metadata["pcap_json_error"] = str(exc)
-                return ModuleResult(
-                    result_id=result_id,
-                    module_name=self.name,
+                hints = ["Ensure the JSON payload matches the forensic-playbook schema."]
+                return self.guard_result(
+                    f"Failed to load PCAP JSON input: {exc}",
+                    hints,
                     status="failed",
-                    timestamp=timestamp,
                     metadata=metadata,
-                    errors=[message],
+                    result_id=result_id,
+                    timestamp=timestamp,
                 )
 
             metadata["pcap_json_source"] = json_origin
             metadata["pcap_json_mode"] = True
 
+            if json_path and json_path.exists():
+                try:
+                    json_hash = compute_hash(json_path)
+                except OSError:
+                    json_hash = None
+                if json_hash:
+                    metadata["pcap_json_sha256"] = json_hash
+
             flows_list = self._sort_flow_records(json_flows)
             dns_summary = self._summarise_dns(json_dns)
             http_summary = self._summarise_http(json_http)
+            analysis_mode = "pcap-json"
         else:
-            if pcap_file is None:
-                message = "PCAP file is required when no PCAP JSON is provided"
-                metadata["pcap_error"] = message
-                return ModuleResult(
-                    result_id=result_id,
-                    module_name=self.name,
-                    status="failed",
-                    timestamp=timestamp,
-                    metadata=metadata,
-                    errors=[message],
-                )
-
             flows: Dict[
                 Tuple[str, str, Optional[int], Optional[int], str], FlowAccumulator
             ] = defaultdict(FlowAccumulator)
             dns_queries: List[Dict[str, Any]] = []
             http_requests: List[Dict[str, Any]] = []
 
+            parser_errors: List[str] = []
+            parser_used: Optional[str] = None
+
+            parser_candidates: List[str] = []
+            if prefer_parser == "pyshark" and pyshark is not None:
+                parser_candidates.append("pyshark")
             if rdpcap is not None:
-                packets = rdpcap(str(pcap_file))
-                self._process_scapy_packets(packets, flows, dns_queries, http_requests)
-            elif pyshark is not None:
-                self._process_pyshark_capture(
-                    str(pcap_file), flows, dns_queries, http_requests
-                )
-            else:
-                fallback_used = True
-                metadata["fallback_parser"] = "builtin"
+                parser_candidates.append("scapy")
+            if pyshark is not None and "pyshark" not in parser_candidates:
+                parser_candidates.append("pyshark")
+
+            for parser_name in parser_candidates:
                 try:
-                    self._process_builtin_packets(
-                        pcap_file, flows, dns_queries, http_requests
-                    )
+                    if parser_name == "scapy":
+                        assert rdpcap is not None  # for type checking
+                        packets = rdpcap(str(pcap_file))
+                        self._process_scapy_packets(
+                            packets, flows, dns_queries, http_requests
+                        )
+                    else:
+                        assert pyshark is not None  # for type checking
+                        self._process_pyshark_capture(
+                            str(pcap_file), flows, dns_queries, http_requests
+                        )
+                    parser_used = parser_name
+                    break
                 except Exception as exc:  # pragma: no cover - defensive path
-                    message = (
-                        "Failed to analyse PCAP without optional dependencies:"
-                        f" {exc}"
-                    )
-                    metadata["fallback_error"] = str(exc)
-                    return ModuleResult(
-                        result_id=result_id,
-                        module_name=self.name,
-                        status="failed",
-                        timestamp=timestamp,
-                        metadata=metadata,
-                        errors=[message],
-                    )
+                    parser_errors.append(f"{parser_name}: {exc}")
+
+            if parser_used is None:
+                metadata["pcap_errors"] = parser_errors
+                hints = ["Retry with --pcap-json to bypass live parsing."]
+                return self.guard_result(
+                    "Failed to parse PCAP with the available parsers.",
+                    hints,
+                    status="failed",
+                    metadata=metadata,
+                    result_id=result_id,
+                    timestamp=timestamp,
+                )
+
+            metadata["pcap_parser"] = parser_used
 
             flows_list = self._serialise_flows(flows)
             dns_summary = self._summarise_dns(dns_queries)
             http_summary = self._summarise_http(http_requests)
+            analysis_mode = f"pcap-{parser_used}"
 
+        output_root = self.output_dir / slug
         output_root.mkdir(parents=True, exist_ok=True)
         output_file = output_root / "network.json"
         payload = {
@@ -250,6 +348,26 @@ class NetworkAnalysisModule(AnalysisModule):
         with output_file.open("w", encoding="utf-8") as handle:
             json.dump(payload, handle, indent=2, sort_keys=True)
 
+        try:
+            output_hash = compute_hash(output_file)
+        except OSError:
+            output_hash = ""
+
+        if output_hash:
+            metadata["output_sha256"] = output_hash
+
+        metadata["analysis_mode"] = analysis_mode
+        metadata["flow_count"] = len(flows_list)
+        metadata["dns_query_count"] = len(dns_summary.get("queries", []))
+        metadata["http_request_count"] = len(http_summary.get("requests", []))
+
+        self._log_chain_of_custody(
+            input_path=json_path if metadata.get("pcap_json_mode") and json_path else None,
+            input_hash=json_hash,
+            output_path=output_file,
+            output_hash=output_hash,
+        )
+
         findings = [
             {
                 "type": "network_analysis",
@@ -257,18 +375,10 @@ class NetworkAnalysisModule(AnalysisModule):
                 "flow_count": len(flows_list),
                 "dns_query_count": len(dns_summary["queries"]),
                 "http_request_count": len(http_summary["requests"]),
+                "analysis_mode": analysis_mode,
                 "output_file": str(output_file),
             }
         ]
-
-        if fallback_used:
-            findings.append(
-                {
-                    "type": "info",
-                    "severity": "info",
-                    "description": "Parsed PCAP using built-in lightweight parser",
-                }
-            )
 
         return ModuleResult(
             result_id=result_id,
@@ -279,6 +389,48 @@ class NetworkAnalysisModule(AnalysisModule):
             findings=findings,
             metadata=metadata,
         )
+
+    def _log_chain_of_custody(
+        self,
+        *,
+        input_path: Optional[Path],
+        input_hash: Optional[str],
+        output_path: Path,
+        output_hash: str,
+    ) -> None:
+        """Record artefact details in the chain of custody if enabled."""
+
+        if not self.config.get("enable_coc", True):
+            return
+
+        workspace = self.case_dir.parent.parent
+        coc_db = workspace / "chain_of_custody.db"
+
+        try:
+            coc = ChainOfCustody(coc_db)
+            metadata = {
+                "module": self.name,
+                "output_path": str(output_path),
+            }
+            if output_hash:
+                metadata["output_sha256"] = output_hash
+            if input_path is not None:
+                metadata["input_path"] = str(input_path)
+            if input_hash:
+                metadata["input_sha256"] = input_hash
+
+            coc.log_event(
+                event_type="ANALYSIS_COMPLETED",
+                actor=self.config.get("coc_actor", "Forensic-Playbook"),
+                case_id=self.case_dir.name,
+                description="Network analysis artefact generated",
+                metadata=metadata,
+                integrity_hash=output_hash or None,
+            )
+        except Exception:  # pragma: no cover - best effort logging
+            self.logger.warning(
+                "Failed to record network analysis artefact in chain of custody."
+            )
 
     # ------------------------------------------------------------------
     # JSON/utility helpers
