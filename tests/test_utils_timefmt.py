@@ -6,7 +6,6 @@ import pytest
 
 from forensic.utils import timefmt
 
-
 try:  # pragma: no cover - zoneinfo optional on some platforms
     import zoneinfo  # type: ignore  # noqa: F401
 
