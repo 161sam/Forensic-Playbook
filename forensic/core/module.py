@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
-"""
-Forensic Module Base Class
-All forensic modules inherit from this base
-"""
+"""Forensic module base classes and guard helpers."""
+
+from __future__ import annotations
 
 import logging
+import os
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from forensic.utils.hashing import compute_hash
 
 from .evidence import Evidence
-from .time_utils import utc_isoformat, utc_slug
+from .time_utils import isoformat_with_timezone, utc_slug
 
 
 @dataclass
@@ -90,6 +90,13 @@ class ForensicModule(ABC):
         """List of supported evidence types"""
         return []
 
+    @property
+    def timezone(self) -> str:
+        """Return the configured timezone for timestamp formatting."""
+
+        tz_value = self.config.get("timezone") if isinstance(self.config, dict) else None
+        return str(tz_value) if tz_value else "UTC"
+
     def tool_versions(self) -> Dict[str, str]:
         """Return tool version metadata for provenance logging."""
 
@@ -145,19 +152,15 @@ class ForensicModule(ABC):
                 result_id=self._generate_result_id(),
                 module_name=self.name,
                 status="failed",
-                timestamp=utc_isoformat(),
+                timestamp=self.current_timestamp(),
                 errors=["Parameter validation failed"],
             )
 
         # Check root requirement
-        if self.requires_root and not self._is_root():
-            return ModuleResult(
-                result_id=self._generate_result_id(),
-                module_name=self.name,
-                status="failed",
-                timestamp=utc_isoformat(),
-                errors=["Module requires root privileges"],
-            )
+        if self.requires_root:
+            guard = self.require_root()
+            if guard is not None:
+                return guard
 
         # Pre-execution hook
         self.pre_execute(evidence, params)
@@ -175,7 +178,7 @@ class ForensicModule(ABC):
                 result_id=self._generate_result_id(),
                 module_name=self.name,
                 status="failed",
-                timestamp=utc_isoformat(),
+                timestamp=self.current_timestamp(),
                 errors=[str(e)],
             )
 
@@ -246,11 +249,142 @@ class ForensicModule(ABC):
         """Generate unique result ID"""
         return f"{self.name}_{utc_slug()}_{uuid.uuid4().hex[:8]}"
 
+    def current_timestamp(self) -> str:
+        """Return an ISO-8601 timestamp respecting the configured timezone."""
+
+        return isoformat_with_timezone(self.timezone)
+
     def _is_root(self) -> bool:
         """Check if running as root"""
-        import os
-
         return os.geteuid() == 0
+
+    def resolve_param(
+        self,
+        name: str,
+        *paths: str,
+        params: Optional[Mapping[str, Any]] = None,
+        default: Any = None,
+    ) -> Any:
+        """Resolve ``name`` honouring CLI parameters before configuration.
+
+        Args:
+            name: Parameter name to resolve.
+            *paths: Optional configuration section aliases passed to
+                :meth:`_module_config`.
+            params: Explicit CLI parameters provided to the module.
+            default: Default value returned when no overrides are present.
+
+        Returns:
+            The resolved parameter value following the precedence rules.
+        """
+
+        params = params or {}
+        if name in params and params[name] is not None:
+            return params[name]
+
+        config_defaults = self._module_config(*paths)
+        if name in config_defaults:
+            return config_defaults[name]
+
+        return default
+
+    def dry_run_notice(self, steps: Sequence[str] | None = None) -> Dict[str, Any]:
+        """Log the steps that would be executed during a dry-run."""
+
+        step_list = [step for step in list(steps or []) if step]
+        if step_list:
+            self.logger.info("Dry-run mode active. Planned steps:")
+            for step in step_list:
+                self.logger.info("  • %s", step)
+        else:
+            self.logger.info("Dry-run mode active. No actions will be performed.")
+
+        return {"dry_run": True, "planned_steps": step_list}
+
+    def guard_result(
+        self,
+        message: str,
+        hints: Optional[Sequence[str]] = None,
+        *,
+        status: str = "skipped",
+        metadata: Optional[Dict[str, Any]] = None,
+        result_id: Optional[str] = None,
+        timestamp: Optional[str] = None,
+    ) -> ModuleResult:
+        """Return a friendly guard result without raising errors."""
+
+        hint_list = [hint for hint in (hints or []) if hint]
+        diagnostics_hint = "Run `forensic-cli diagnostics` to inspect guard status."
+        if diagnostics_hint not in hint_list:
+            hint_list.append(diagnostics_hint)
+
+        self.logger.warning(message)
+        for hint in hint_list:
+            self.logger.info("Hint: %s", hint)
+
+        guard_meta = {
+            "message": message,
+            "hints": hint_list,
+        }
+
+        meta = dict(metadata or {})
+        existing_guard = meta.get("guard")
+        if isinstance(existing_guard, dict):
+            guard_meta = {**existing_guard, **guard_meta}
+        resolved_timestamp = timestamp or self.current_timestamp()
+        guard_meta.setdefault("timestamp", resolved_timestamp)
+        meta["guard"] = guard_meta
+
+        return ModuleResult(
+            result_id=result_id or self._generate_result_id(),
+            module_name=self.name,
+            status=status,
+            timestamp=resolved_timestamp,
+            findings=[],
+            metadata=meta,
+            errors=[],
+        )
+
+    def require_tools(
+        self,
+        tools: Sequence[str] | str,
+        *,
+        guidance: Optional[str] = None,
+        status: str = "skipped",
+    ) -> Optional[ModuleResult]:
+        """Verify external tooling is available and return a guard result when missing."""
+
+        tool_names = [tools] if isinstance(tools, str) else list(tools)
+        missing = sorted(tool for tool in tool_names if not self._verify_tool(tool))
+        if not missing:
+            return None
+
+        hints: list[str] = []
+        if guidance:
+            hints.append(guidance)
+        hints.append(f"Install or expose the tool(s): {', '.join(missing)}")
+
+        metadata = {"missing_tools": missing}
+        return self.guard_result(
+            f"Missing required tool(s): {', '.join(missing)}",
+            hints=hints,
+            status=status,
+            metadata=metadata,
+        )
+
+    def require_root(self) -> Optional[ModuleResult]:
+        """Ensure the module is executed with root privileges when required."""
+
+        if self._is_root():
+            return None
+
+        hints = ["Re-run the command with elevated privileges (e.g. sudo)."]
+        metadata = {"requires_root": True}
+        return self.guard_result(
+            "Module requires root privileges to continue.",
+            hints=hints,
+            metadata=metadata,
+        )
 
     def _run_command(self, cmd: List[str], timeout: int = 300) -> tuple:
         """
@@ -306,14 +440,18 @@ class ForensicModule(ABC):
         message = guidance or f"Missing required tool(s): {', '.join(tool_list)}"
         meta = dict(metadata or {})
         meta.setdefault("missing_tools", tool_list)
-        return ModuleResult(
-            result_id=result_id,
-            module_name=self.name,
+        hints: list[str] = []
+        if guidance:
+            hints.append(guidance)
+        hints.append(f"Install or expose the tool(s): {', '.join(tool_list)}")
+
+        return self.guard_result(
+            message,
+            hints=hints,
             status=status,
-            timestamp=timestamp or utc_isoformat(),
-            findings=[],
             metadata=meta,
-            errors=[message],
+            result_id=result_id,
+            timestamp=timestamp,
         )
 
     def save_result(self, result: ModuleResult, filename: str = "result.json"):
