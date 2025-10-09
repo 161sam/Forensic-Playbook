@@ -407,7 +407,9 @@ class TestIntegration:
         coc_events = framework.coc.get_case_chain(case.case_id)
         assert len(coc_events) > 0
         completion_events = [
-            event for event in coc_events if event["event_type"] == "MODULE_EXECUTION_COMPLETE"
+            event
+            for event in coc_events
+            if event["event_type"] == "MODULE_EXECUTION_COMPLETE"
         ]
         assert completion_events
         artifacts = completion_events[-1]["metadata"].get("artifacts", [])
@@ -449,7 +451,11 @@ class TestIntegration:
         provenance_file = case.case_dir / "meta" / "provenance.jsonl"
         assert provenance_file.exists()
 
-        records = [json.loads(line) for line in provenance_file.read_text().splitlines() if line]
+        records = [
+            json.loads(line)
+            for line in provenance_file.read_text().splitlines()
+            if line
+        ]
         assert len(records) == 2
         assert len({record["result_id"] for record in records}) == len(records)
 

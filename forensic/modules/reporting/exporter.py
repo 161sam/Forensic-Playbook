@@ -165,15 +165,15 @@ def _fallback_html(data: Dict[str, Any]) -> str:
     title = case.get("name") or case.get("case_id") or "Case Overview"
     subtitle = html.escape(str(title))
 
-    return """<!DOCTYPE html>
+    return f"""<!DOCTYPE html>
 <html lang=\"en\">
   <head>
     <meta charset=\"utf-8\">
     <title>Forensic Investigation Report</title>
     <style>
-      body { font-family: Arial, sans-serif; margin: 2rem; }
-      h1 { color: #1f2933; }
-      .marker { color: #52606d; font-size: 0.95rem; }
+      body {{ font-family: Arial, sans-serif; margin: 2rem; }}
+      h1 {{ color: #1f2933; }}
+      .marker {{ color: #52606d; font-size: 0.95rem; }}
     </style>
   </head>
   <body>

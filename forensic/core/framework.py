@@ -7,9 +7,9 @@ Central orchestrator for forensic investigations
 import json
 import sqlite3
 import sys
-from time import perf_counter
 from dataclasses import dataclass, field
 from pathlib import Path
+from time import perf_counter
 from typing import Any, Dict, Iterable, List, Optional, Set, Type
 
 # ``PyYAML`` is optional at runtime. Import lazily and provide a helpful
@@ -19,13 +19,14 @@ try:  # pragma: no cover - behaviour depends on environment
 except ModuleNotFoundError:  # pragma: no cover - environment dependent
     yaml = None  # type: ignore[assignment]
 
+from forensic.utils.hashing import compute_hash
+
 from .chain_of_custody import ChainOfCustody
 from .config import FrameworkConfig, get_config, load_yaml
 from .evidence import Evidence, EvidenceType
 from .logger import setup_logging
 from .module import ForensicModule, ModuleResult
 from .time_utils import utc_isoformat, utc_slug
-from forensic.utils.hashing import compute_hash
 
 
 @dataclass
@@ -435,7 +436,8 @@ class ForensicFramework:
 
             artifact_paths = self._collect_artifact_paths(result)
             artifact_records = [
-                {"path": str(path), "sha256": compute_hash(path)} for path in artifact_paths
+                {"path": str(path), "sha256": compute_hash(path)}
+                for path in artifact_paths
             ]
 
             # Log to CoC
@@ -608,7 +610,7 @@ class ForensicFramework:
         metadata = result.metadata or {}
         for key in ("artifacts", "outputs", "files"):
             value = metadata.get(key)
-            if isinstance(value, (list, tuple, set)):
+            if isinstance(value, list | tuple | set):
                 for item in value:
                     resolved = self._resolve_artifact_path(item)
                     if resolved:

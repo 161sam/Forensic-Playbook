@@ -146,10 +146,7 @@ class NetworkAnalysisModule(AnalysisModule):
                     pcap_file, flows, dns_queries, http_requests
                 )
             except Exception as exc:  # pragma: no cover - defensive path
-                message = (
-                    "Failed to analyse PCAP without optional dependencies: "
-                    f"{exc}"
-                )
+                message = f"Failed to analyse PCAP without optional dependencies: {exc}"
                 metadata["fallback_error"] = str(exc)
                 return ModuleResult(
                     result_id=result_id,
@@ -313,9 +310,7 @@ class NetworkAnalysisModule(AnalysisModule):
                     timestamp, length, frame[14:], flows, dns_queries, http_requests
                 )
 
-    def _iter_pcap_packets(
-        self, pcap_file: Path
-    ) -> Iterable[Tuple[float, int, bytes]]:
+    def _iter_pcap_packets(self, pcap_file: Path) -> Iterable[Tuple[float, int, bytes]]:
         """Yield ``(timestamp, length, frame)`` tuples from ``pcap_file``."""
 
         with pcap_file.open("rb") as handle:
@@ -339,9 +334,7 @@ class NetworkAnalysisModule(AnalysisModule):
                 endian = ">"
                 ts_divisor = 1_000_000_000
             else:
-                raise ValueError(
-                    f"Unsupported PCAP magic value: {header[:4].hex()}"
-                )
+                raise ValueError(f"Unsupported PCAP magic value: {header[:4].hex()}")
 
             while True:
                 packet_header = handle.read(16)
@@ -545,7 +538,9 @@ class NetworkAnalysisModule(AnalysisModule):
             qtype, qclass = struct.unpack("!HH", payload[offset : offset + 4])
             offset += 4
 
-            queries.append({"name": ".".join(filter(None, labels)), "type": qtype, "class": qclass})
+            queries.append(
+                {"name": ".".join(filter(None, labels)), "type": qtype, "class": qclass}
+            )
 
         return queries
 

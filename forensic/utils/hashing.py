@@ -11,7 +11,7 @@ SUPPORTED_ALGORITHMS = {"md5", "sha1", "sha256"}
 _DEFAULT_CHUNK_SIZE = 1024 * 1024  # 1 MiB
 
 
-def _get_hasher(algorithm: str) -> "hashlib._Hash":
+def _get_hasher(algorithm: str) -> hashlib._Hash:
     """Return a configured :mod:`hashlib` object for ``algorithm``."""
 
     algorithm = algorithm.lower()
@@ -21,7 +21,10 @@ def _get_hasher(algorithm: str) -> "hashlib._Hash":
 
 
 def compute_stream_hash(
-    stream: BinaryIO, *, algorithm: str = "sha256", chunk_size: int = _DEFAULT_CHUNK_SIZE
+    stream: BinaryIO,
+    *,
+    algorithm: str = "sha256",
+    chunk_size: int = _DEFAULT_CHUNK_SIZE,
 ) -> str:
     """Hash the contents of ``stream`` in a memory efficient manner.
 
@@ -38,7 +41,9 @@ def compute_stream_hash(
     return hasher.hexdigest()
 
 
-def compute_hash(path: Path, algorithm: str = "sha256", *, chunk_size: int = _DEFAULT_CHUNK_SIZE) -> str:
+def compute_hash(
+    path: Path, algorithm: str = "sha256", *, chunk_size: int = _DEFAULT_CHUNK_SIZE
+) -> str:
     """Compute the hash of ``path`` using ``algorithm`` with streaming I/O."""
 
     with Path(path).open("rb") as handle:

@@ -208,6 +208,7 @@ def init_case(
     click.echo(f"✓ Case initialised: {case.case_id}")
     click.echo(f"  Directory: {case.case_dir}")
 
+
 @case.command("list")
 @click.pass_context
 def list_cases(ctx: click.Context) -> None:

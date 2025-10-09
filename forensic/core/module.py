@@ -11,9 +11,10 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
+from forensic.utils.hashing import compute_hash
+
 from .evidence import Evidence
 from .time_utils import utc_isoformat, utc_slug
-from forensic.utils.hashing import compute_hash
 
 
 @dataclass
