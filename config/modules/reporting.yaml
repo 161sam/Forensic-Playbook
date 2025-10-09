@@ -1,1 +1,3 @@
-default_format: json
+default_format: html
+output_dir: reports
+template: report.html
