@@ -12,6 +12,33 @@ from typing import Any, Dict, List
 from forensic.core.time_utils import utc_isoformat
 
 
+def append_coc(log_file: Path, path: str, sha256: str) -> None:
+    """Append an artifact record to ``log_file`` unless it already exists."""
+
+    log_file = Path(log_file)
+    entry = {"path": str(Path(path)), "sha256": sha256}
+    canonical = json.dumps(entry, sort_keys=True)
+
+    if log_file.exists():
+        with log_file.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    existing = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if (
+                    existing.get("path") == entry["path"]
+                    and existing.get("sha256") == entry["sha256"]
+                ):
+                    return
+
+    with log_file.open("a", encoding="utf-8") as handle:
+        handle.write(canonical + "\n")
+
+
 class ChainOfCustody:
     """
     Chain of Custody tracker

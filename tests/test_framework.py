@@ -468,6 +468,67 @@ class TestIntegration:
                 assert hash_path.exists()
                 assert entry["sha256"] == compute_hash(hash_path)
 
+    def test_append_provenance_idempotent(self, framework):
+        """Direct provenance appends skip duplicates by result identifier."""
+
+        case = framework.create_case(
+            name="Dup Case",
+            description="Ensure provenance deduplication",
+            investigator="Tester",
+        )
+
+        record = {
+            "ts": utc_isoformat(),
+            "module": "dummy",
+            "params": {},
+            "tool_versions": {},
+            "inputs": {},
+            "outputs": [],
+            "sha256": [],
+            "duration": 0.1,
+            "exit_code": 0,
+            "result_id": "RESULT-123",
+        }
+
+        framework.append_provenance(record)
+        framework.append_provenance(record | {"duration": 0.2})
+
+        provenance_file = case.case_dir / "meta" / "provenance.jsonl"
+        records = [
+            json.loads(line)
+            for line in provenance_file.read_text().splitlines()
+            if line.strip()
+        ]
+
+        assert len(records) == 1
+        assert records[0]["result_id"] == "RESULT-123"
+
+    def test_append_coc_idempotent(self, framework, temp_workspace):
+        """Artifact logging skips duplicate path/hash pairs."""
+
+        case = framework.create_case(
+            name="CoC Case",
+            description="Ensure CoC dedup",
+            investigator="Tester",
+        )
+
+        artifact = case.case_dir / "analysis" / "artifact.txt"
+        artifact.write_text("artifact content")
+        sha256 = compute_hash(artifact)
+
+        framework.append_coc(artifact, sha256)
+        framework.append_coc(str(artifact), sha256)
+
+        coc_file = case.case_dir / "meta" / "chain_of_custody.jsonl"
+        entries = [
+            json.loads(line)
+            for line in coc_file.read_text().splitlines()
+            if line.strip()
+        ]
+
+        assert len(entries) == 1
+        assert entries[0] == {"path": str(artifact), "sha256": sha256}
+
 
 # ============================================================================
 # Run Tests
