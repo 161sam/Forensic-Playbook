@@ -1,0 +1,20 @@
+modules:
+  network_analysis:
+    output_filename: network.json
+    http_methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - HEAD
+      - OPTIONS
+      - PATCH
+      - TRACE
+      - CONNECT
+    suspicious_user_agents:
+      - curl
+      - python-requests
+      - wget
+      - powershell
+    encoded_uri_regex: "[A-Za-z0-9+/]{24,}={0,2}"
+    enable_builtin_parser: true
