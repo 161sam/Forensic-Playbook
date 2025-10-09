@@ -319,7 +319,7 @@ class NetworkAnalysisModule(AnalysisModule):
             return []
         if isinstance(value, dict):
             return [dict(value)]
-        if isinstance(value, (str, bytes)):
+        if isinstance(value, str | bytes):
             return []
         if not isinstance(value, IterableABC):
             return []
