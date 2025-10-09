@@ -85,9 +85,24 @@ def test_malware_module_hash_only(tmp_path, temp_case, monkeypatch):
 def test_system_info_outputs_json(temp_case):
     module = SystemInfoModule(case_dir=temp_case, config={})
     result = module.run(None, {})
+    assert result.output_path is not None
     assert result.output_path.exists()
+    assert result.output_path.name == "system.json"
+    assert result.output_path.parent.parent.name == "system_info"
     data = json.loads(result.output_path.read_text())
-    assert data["hostname"]
+    assert "hostname" in data
+    assert "os" in data
+    assert data["fields"]
+
+
+def test_system_info_dry_run(temp_case):
+    module = SystemInfoModule(case_dir=temp_case, config={})
+    result = module.run(None, {"dry_run": True})
+    assert result.status == "success"
+    assert result.output_path is None
+    assert result.metadata.get("dry_run") is True
+    artifacts = list((temp_case / "triage").rglob("system.json"))
+    assert not artifacts
 
 
 def test_persistence_handles_missing_paths(temp_case, monkeypatch):

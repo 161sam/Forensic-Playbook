@@ -1,1 +1,18 @@
-include_environment: true
+modules:
+  triage:
+    system_info:
+      fields:
+        - os
+        - kernel
+        - hostname
+        - timezone
+        - interfaces
+        - mounts
+  system_info:
+    fields:
+      - os
+      - kernel
+      - hostname
+      - timezone
+      - interfaces
+      - mounts
