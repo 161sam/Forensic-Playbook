@@ -4,6 +4,7 @@ Test Suite for Forensic Framework Core
 Unit and integration tests for core framework components
 """
 
+import json
 import tempfile
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from forensic.core.evidence import Evidence, EvidenceState, EvidenceType
 from forensic.core.framework import ForensicFramework
 from forensic.core.module import ForensicModule, ModuleResult
 from forensic.core.time_utils import utc_isoformat
+from forensic.utils.hashing import compute_hash
 
 # ============================================================================
 # Fixtures
@@ -311,12 +313,22 @@ class DummyModule(ForensicModule):
         return "required_param" in params
 
     def run(self, evidence, params):
+        output_file = self.output_dir / "dummy_output.txt"
+        output_file.write_text("dummy output")
         return ModuleResult(
             result_id=self._generate_result_id(),
             module_name=self.name,
             status="success",
             timestamp=utc_isoformat(),
-            findings=[{"type": "test", "description": "Test finding"}],
+            output_path=output_file,
+            findings=[
+                {
+                    "type": "test",
+                    "description": "Test finding",
+                    "output_file": str(output_file),
+                }
+            ],
+            metadata={"artifacts": [str(output_file)]},
         )
 
 
@@ -394,10 +406,61 @@ class TestIntegration:
         # Verify CoC events logged
         coc_events = framework.coc.get_case_chain(case.case_id)
         assert len(coc_events) > 0
+        completion_events = [
+            event for event in coc_events if event["event_type"] == "MODULE_EXECUTION_COMPLETE"
+        ]
+        assert completion_events
+        artifacts = completion_events[-1]["metadata"].get("artifacts", [])
+        assert artifacts
+        artifact_entry = artifacts[0]
+        artifact_path = Path(artifact_entry["path"])
+        assert artifact_path.exists()
+        assert artifact_entry["sha256"] == compute_hash(artifact_path)
 
         # Check case can be listed
         cases = framework.list_cases()
         assert any(c["case_id"] == case.case_id for c in cases)
+
+    def test_provenance_logging_no_duplicates(self, framework, temp_workspace):
+        """Ensure provenance records are created once per execution."""
+
+        case = framework.create_case(
+            name="Provenance Case",
+            description="Test provenance handling",
+            investigator="Tester",
+        )
+
+        evidence_file = temp_workspace / "evidence.txt"
+        evidence_file.write_text("Evidence content")
+
+        evidence = framework.add_evidence(
+            evidence_type=EvidenceType.FILE,
+            source_path=evidence_file,
+            description="Test evidence",
+        )
+
+        framework.register_module("dummy", DummyModule)
+
+        for _ in range(2):
+            framework.execute_module(
+                "dummy", evidence=evidence, params={"required_param": "value"}
+            )
+
+        provenance_file = case.case_dir / "meta" / "provenance.jsonl"
+        assert provenance_file.exists()
+
+        records = [json.loads(line) for line in provenance_file.read_text().splitlines() if line]
+        assert len(records) == 2
+        assert len({record["result_id"] for record in records}) == len(records)
+
+        for record in records:
+            assert record["module"] == "dummy"
+            assert record["outputs"], "Expected output paths in provenance record"
+            assert record["sha256"], "Expected SHA entries in provenance record"
+            for entry in record["sha256"]:
+                hash_path = Path(entry["path"])
+                assert hash_path.exists()
+                assert entry["sha256"] == compute_hash(hash_path)
 
 
 # ============================================================================

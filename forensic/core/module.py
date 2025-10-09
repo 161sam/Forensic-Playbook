@@ -5,6 +5,7 @@ All forensic modules inherit from this base
 """
 
 import logging
+import uuid
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -12,6 +13,7 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from .evidence import Evidence
 from .time_utils import utc_isoformat, utc_slug
+from forensic.utils.hashing import compute_hash
 
 
 @dataclass
@@ -86,6 +88,11 @@ class ForensicModule(ABC):
     def supported_evidence_types(self) -> List[str]:
         """List of supported evidence types"""
         return []
+
+    def tool_versions(self) -> Dict[str, str]:
+        """Return tool version metadata for provenance logging."""
+
+        return {}
 
     @abstractmethod
     def validate_params(self, params: Dict) -> bool:
@@ -188,7 +195,7 @@ class ForensicModule(ABC):
 
     def _generate_result_id(self) -> str:
         """Generate unique result ID"""
-        return f"{self.name}_{utc_slug()}"
+        return f"{self.name}_{utc_slug()}_{uuid.uuid4().hex[:8]}"
 
     def _is_root(self) -> bool:
         """Check if running as root"""
@@ -225,15 +232,8 @@ class ForensicModule(ABC):
 
     def _compute_hash(self, file_path: Path, algorithm: str = "sha256") -> str:
         """Compute file hash"""
-        import hashlib
 
-        h = getattr(hashlib, algorithm)()
-
-        with open(file_path, "rb") as f:
-            for chunk in iter(lambda: f.read(65536), b""):
-                h.update(chunk)
-
-        return h.hexdigest()
+        return compute_hash(Path(file_path), algorithm)
 
     def _verify_tool(self, tool_name: str) -> bool:
         """Verify that required tool is installed"""
