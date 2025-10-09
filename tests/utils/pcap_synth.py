@@ -11,10 +11,19 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Iterable, List
+from typing import Iterable
 
 try:
-    from scapy.all import DNS, DNSQR, Ether, IP, Raw, TCP, UDP, wrpcap  # type: ignore
+    from scapy.all import (  # type: ignore
+        DNS,
+        DNSQR,
+        IP,
+        TCP,
+        UDP,
+        Ether,
+        Raw,
+        wrpcap,
+    )
 
     SCAPY_AVAILABLE = True
 except ImportError:  # pragma: no cover - exercised when scapy is absent in env
@@ -25,7 +34,7 @@ except ImportError:  # pragma: no cover - exercised when scapy is absent in env
 MINIMAL_PCAP_NAME = "minimal.pcap"
 
 
-def _build_packets() -> List["Ether"]:
+def _build_packets() -> list[Ether]:
     """Construct a minimal sequence of packets for the generated PCAP."""
 
     if not SCAPY_AVAILABLE or Ether is None:  # Defensive, should not happen here
