@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Execute the minimal end-to-end flow used in CI."""
-
 from __future__ import annotations
 
 import argparse
-import importlib.util
+import io
+import json
 from pathlib import Path
-from typing import Callable
+from typing import Dict, Optional, Tuple
 
 from click.testing import CliRunner
 
@@ -15,22 +15,26 @@ from forensic.core.evidence import EvidenceType
 from forensic.core.framework import ForensicFramework
 from forensic.modules.analysis.network import NetworkAnalysisModule
 from forensic.modules.reporting.generator import ReportGenerator
+from tests.utils import invoke_pcap_synth, redirect_stdin
 
 
-def _load_fixture_writer() -> Callable[[Path], Path]:
-    """Load the ``write_minimal_pcap`` helper from the test fixtures."""
+def _synthesise_network_fixture(
+    out_dir: Path,
+) -> Tuple[Path, Dict[str, str], Optional[str]]:
+    """Generate the network fixture and return the source path, params and STDIN."""
 
-    fixture_path = Path("tests/data/pcap/__init__.py")
-    spec = importlib.util.spec_from_file_location("tests.data.pcap", fixture_path)
-    if spec is None or spec.loader is None:  # pragma: no cover - safety net
-        raise RuntimeError("Unable to load minimal PCAP fixture helper")
+    pcap_path, synth_stdout = invoke_pcap_synth(out_dir)
+    if pcap_path is not None:
+        return pcap_path, {"pcap": str(pcap_path)}, None
 
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    writer = getattr(module, "write_minimal_pcap", None)
-    if writer is None:  # pragma: no cover - safety net
-        raise RuntimeError("Fixture module did not expose write_minimal_pcap")
-    return writer
+    if not synth_stdout:
+        raise RuntimeError("Synthesizer returned no fixture data")
+
+    payload = json.loads(synth_stdout)
+    json_fixture = out_dir / "minimal_pcap.json"
+    json_payload = json.dumps(payload, indent=2, sort_keys=True)
+    json_fixture.write_text(json_payload, encoding="utf-8")
+    return json_fixture, {"pcap_json": "-"}, json_payload
 
 
 def run_minimal_flow(workspace: Path, report_path: Path) -> Path:
@@ -66,18 +70,22 @@ def run_minimal_flow(workspace: Path, report_path: Path) -> Path:
     framework.register_module("network", NetworkAnalysisModule)
     case = framework.load_case("demo")
 
-    fixture_writer = _load_fixture_writer()
-    pcap_path = fixture_writer(workspace / "fixtures" / "minimal.pcap")
+    fixtures_dir = workspace / "fixtures"
+    fixture_path, analysis_params, stdin_payload = _synthesise_network_fixture(
+        fixtures_dir
+    )
 
     framework.add_evidence(
         EvidenceType.NETWORK,
-        pcap_path,
-        description="Minimal PCAP fixture",
+        fixture_path,
+        description="Synthesised network fixture",
     )
 
-    analysis_result = framework.execute_module(
-        "network", params={"pcap": str(pcap_path)}
-    )
+    if analysis_params.get("pcap_json") == "-" and stdin_payload is not None:
+        with redirect_stdin(io.StringIO(stdin_payload)):
+            analysis_result = framework.execute_module("network", params=analysis_params)
+    else:
+        analysis_result = framework.execute_module("network", params=analysis_params)
     if analysis_result.status != "success":
         raise RuntimeError(
             "Network analysis failed:"
