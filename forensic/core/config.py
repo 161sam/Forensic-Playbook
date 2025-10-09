@@ -42,6 +42,14 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "hash_algorithm": "sha256",
     "timezone": "UTC",
     "workspace_name": "forensic_workspace",
+    "network": {
+        "default_tool": "tcpdump",
+        "default_interface": "any",
+        "default_duration": 300,
+        "default_bpf": "not port 22",
+    },
+    "timeline": {"timezone": "UTC"},
+    "reports": {"output_dir": "reports"},
 }
 
 

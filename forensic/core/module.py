@@ -184,6 +184,54 @@ class ForensicModule(ABC):
 
         return result
 
+    def _module_config(self, *aliases: str) -> Dict[str, Any]:
+        """Return merged configuration defaults for the module.
+
+        The configuration precedence is::
+
+            modules.<alias>
+            modules.<module-name>
+            <alias>
+            <module-name>
+
+        Earlier lookups in the list provide the baseline while later
+        lookups override previously discovered defaults.  This enables a
+        shared section such as ``network`` to provide organisation-wide
+        defaults while module specific sections (for example
+        ``network_capture``) can refine individual parameters.
+        """
+
+        config: Dict[str, Any] = dict(self.config or {})
+        modules_section = config.get("modules")
+
+        ordered_aliases = list(aliases)
+        if self.name not in ordered_aliases:
+            ordered_aliases.append(self.name)
+
+        def _iter_sections(root: Optional[Dict[str, Any]], keys: list[str]):
+            if not isinstance(root, dict):
+                return
+            for key in keys:
+                section = root.get(key)
+                if isinstance(section, dict):
+                    yield section
+
+        sections = []
+        # Shared ``modules`` section first so module specific overrides
+        # replace organisation defaults.
+        if isinstance(modules_section, dict):
+            sections.extend(_iter_sections(modules_section, ordered_aliases))
+
+        # Top-level aliases allow referencing sections without the
+        # ``modules`` indirection.
+        sections.extend(_iter_sections(config, ordered_aliases))
+
+        merged: Dict[str, Any] = {}
+        for section in sections:
+            merged.update(section)
+
+        return merged
+
     def pre_execute(self, evidence: Optional[Evidence], params: Dict) -> None:
         """Pre-execution hook (can be overridden)."""
         _ = (evidence, params)

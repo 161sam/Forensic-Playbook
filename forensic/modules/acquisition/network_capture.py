@@ -8,7 +8,7 @@ import signal
 import socket
 import subprocess
 from pathlib import Path
-from typing import Dict, Optional, Sequence
+from typing import Any, Dict, Optional, Sequence
 
 from ...core.chain_of_custody import ChainOfCustody
 from ...core.evidence import Evidence
@@ -40,12 +40,34 @@ class NetworkCaptureModule(AcquisitionModule):
     def supported_evidence_types(self) -> list[str]:
         return ["network"]
 
+    def _config_defaults(self) -> Dict[str, Any]:
+        defaults = self._module_config("network")
+        # Historical configuration files stored the values at the top-level
+        # using ``default_*`` keys.  Preserve backwards compatibility by
+        # translating them into the new structure.
+        legacy_keys = {key: value for key, value in defaults.items() if key.startswith("default_")}
+        if legacy_keys:
+            defaults = {**defaults}
+            for key, value in legacy_keys.items():
+                normalized = key.replace("default_", "")
+                defaults.setdefault(normalized, value)
+        return defaults
+
     def validate_params(self, params: Dict) -> bool:
-        params.setdefault("duration", 300)
-        params.setdefault("interface", "any")
-        params.setdefault("bpf", "not port 22")
+        defaults = self._config_defaults()
+
+        params.setdefault("duration", defaults.get("duration", defaults.get("default_duration", 300)))
+        params.setdefault(
+            "interface",
+            defaults.get("interface", defaults.get("default_interface", "any")),
+        )
+        params.setdefault("bpf", defaults.get("bpf", defaults.get("default_bpf", "not port 22")))
         params.setdefault("dry_run", False)
         params.setdefault("enable_live_capture", False)
+        if "tool" not in params:
+            tool_default = defaults.get("tool", defaults.get("default_tool"))
+            if tool_default:
+                params["tool"] = tool_default
         return True
 
     def run(self, evidence: Optional[Evidence], params: Dict) -> ModuleResult:
