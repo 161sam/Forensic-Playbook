@@ -16,11 +16,13 @@ import json
 import math
 import re
 import struct
+import sys
 from collections import Counter, defaultdict
+from collections.abc import Iterable as IterableABC
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from ...core.evidence import Evidence
 from ...core.module import AnalysisModule, ModuleResult
@@ -97,14 +99,28 @@ class NetworkAnalysisModule(AnalysisModule):
         return False
 
     def validate_params(self, params: Dict) -> bool:
-        if "pcap" not in params:
-            self.logger.error("Missing required parameter: pcap")
+        has_pcap = "pcap" in params and params["pcap"]
+        has_pcap_json = "pcap_json" in params and params["pcap_json"]
+
+        if not has_pcap and not has_pcap_json:
+            self.logger.error("Missing required parameter: pcap or pcap_json")
             return False
 
-        pcap_path = Path(params["pcap"])
-        if not pcap_path.exists():
-            self.logger.error(f"PCAP file does not exist: {pcap_path}")
-            return False
+        if has_pcap:
+            pcap_path = Path(params["pcap"])
+            if not pcap_path.exists():
+                self.logger.error(f"PCAP file does not exist: {pcap_path}")
+                return False
+
+        if has_pcap_json:
+            json_source = params["pcap_json"]
+            if json_source != "-":
+                json_path = Path(json_source)
+                if not json_path.exists():
+                    self.logger.error(
+                        f"PCAP JSON file does not exist: {json_path}"
+                    )
+                    return False
 
         return True
 
@@ -113,41 +129,38 @@ class NetworkAnalysisModule(AnalysisModule):
         timestamp = utc_isoformat()
         slug = utc_slug()
 
-        pcap_file = Path(params["pcap"])
-        output_root = self.output_dir / slug
-        metadata = {
-            "pcap_file": str(pcap_file),
-            "pcap_size": pcap_file.stat().st_size,
-            "generated_at": timestamp,
-        }
+        pcap_path = params.get("pcap")
+        pcap_file = Path(pcap_path) if pcap_path else None
+        pcap_json_source = params.get("pcap_json")
 
-        flows: Dict[
-            Tuple[str, str, Optional[int], Optional[int], str], FlowAccumulator
-        ] = defaultdict(FlowAccumulator)
-        dns_queries: List[Dict[str, object]] = []
-        http_requests: List[Dict[str, object]] = []
+        output_root = self.output_dir / slug
+        metadata: Dict[str, Any] = {"generated_at": timestamp}
+
+        if pcap_file is not None:
+            metadata["pcap_file"] = str(pcap_file)
+            try:
+                metadata["pcap_size"] = pcap_file.stat().st_size
+            except FileNotFoundError:
+                metadata["pcap_size"] = None
+        else:
+            metadata["pcap_file"] = None
+            metadata["pcap_size"] = None
 
         fallback_used = False
         has_extra = rdpcap is not None or pyshark is not None
         metadata["pcap_extra_available"] = has_extra
 
-        if rdpcap is not None:
-            packets = rdpcap(str(pcap_file))
-            self._process_scapy_packets(packets, flows, dns_queries, http_requests)
-        elif pyshark is not None:
-            self._process_pyshark_capture(
-                str(pcap_file), flows, dns_queries, http_requests
-            )
-        else:
-            fallback_used = True
-            metadata["fallback_parser"] = "builtin"
+        if pcap_json_source:
             try:
-                self._process_builtin_packets(
-                    pcap_file, flows, dns_queries, http_requests
-                )
-            except Exception as exc:  # pragma: no cover - defensive path
-                message = f"Failed to analyse PCAP without optional dependencies: {exc}"
-                metadata["fallback_error"] = str(exc)
+                (
+                    json_flows,
+                    json_dns,
+                    json_http,
+                    json_origin,
+                ) = self._load_pcap_json_input(pcap_json_source)
+            except ValueError as exc:
+                message = f"Failed to load PCAP JSON input: {exc}"
+                metadata["pcap_json_error"] = str(exc)
                 return ModuleResult(
                     result_id=result_id,
                     module_name=self.name,
@@ -157,9 +170,65 @@ class NetworkAnalysisModule(AnalysisModule):
                     errors=[message],
                 )
 
-        flows_list = self._serialise_flows(flows)
-        dns_summary = self._summarise_dns(dns_queries)
-        http_summary = self._summarise_http(http_requests)
+            metadata["pcap_json_source"] = json_origin
+            metadata["pcap_json_mode"] = True
+
+            flows_list = self._sort_flow_records(json_flows)
+            dns_summary = self._summarise_dns(json_dns)
+            http_summary = self._summarise_http(json_http)
+        else:
+            if pcap_file is None:
+                message = "PCAP file is required when no PCAP JSON is provided"
+                metadata["pcap_error"] = message
+                return ModuleResult(
+                    result_id=result_id,
+                    module_name=self.name,
+                    status="failed",
+                    timestamp=timestamp,
+                    metadata=metadata,
+                    errors=[message],
+                )
+
+            flows: Dict[
+                Tuple[str, str, Optional[int], Optional[int], str], FlowAccumulator
+            ] = defaultdict(FlowAccumulator)
+            dns_queries: List[Dict[str, Any]] = []
+            http_requests: List[Dict[str, Any]] = []
+
+            if rdpcap is not None:
+                packets = rdpcap(str(pcap_file))
+                self._process_scapy_packets(
+                    packets, flows, dns_queries, http_requests
+                )
+            elif pyshark is not None:
+                self._process_pyshark_capture(
+                    str(pcap_file), flows, dns_queries, http_requests
+                )
+            else:
+                fallback_used = True
+                metadata["fallback_parser"] = "builtin"
+                try:
+                    self._process_builtin_packets(
+                        pcap_file, flows, dns_queries, http_requests
+                    )
+                except Exception as exc:  # pragma: no cover - defensive path
+                    message = (
+                        "Failed to analyse PCAP without optional dependencies:"
+                        f" {exc}"
+                    )
+                    metadata["fallback_error"] = str(exc)
+                    return ModuleResult(
+                        result_id=result_id,
+                        module_name=self.name,
+                        status="failed",
+                        timestamp=timestamp,
+                        metadata=metadata,
+                        errors=[message],
+                    )
+
+            flows_list = self._serialise_flows(flows)
+            dns_summary = self._summarise_dns(dns_queries)
+            http_summary = self._summarise_http(http_requests)
 
         output_root.mkdir(parents=True, exist_ok=True)
         output_file = output_root / "network.json"
@@ -201,6 +270,125 @@ class NetworkAnalysisModule(AnalysisModule):
             output_path=output_file,
             findings=findings,
             metadata=metadata,
+        )
+
+    # ------------------------------------------------------------------
+    # JSON/utility helpers
+    # ------------------------------------------------------------------
+    def _load_pcap_json_input(
+        self, source: str
+    ) -> Tuple[
+        List[Dict[str, Any]],
+        List[Dict[str, Any]],
+        List[Dict[str, Any]],
+        str,
+    ]:
+        if source == "-":
+            raw = sys.stdin.read()
+            origin = "stdin"
+        else:
+            json_path = Path(source)
+            raw = json_path.read_text(encoding="utf-8")
+            origin = str(json_path)
+
+        try:
+            payload = json.loads(raw or "{}")
+        except json.JSONDecodeError as exc:  # pragma: no cover - defensive path
+            raise ValueError(f"invalid JSON input: {exc}") from exc
+
+        if not isinstance(payload, dict):
+            raise ValueError("JSON payload must be an object")
+
+        flows_raw = payload.get("flows", [])
+        dns_raw = payload.get("dns", [])
+        http_raw = payload.get("http", [])
+
+        if isinstance(dns_raw, dict):
+            dns_raw = dns_raw.get("queries", [])
+        if isinstance(http_raw, dict):
+            http_raw = http_raw.get("requests", [])
+
+        flows = self._ensure_dict_list(flows_raw)
+        dns = self._ensure_dict_list(dns_raw)
+        http = self._ensure_dict_list(http_raw)
+
+        return flows, dns, http, origin
+
+    def _ensure_dict_list(self, value: Any) -> List[Dict[str, Any]]:
+        if value is None:
+            return []
+        if isinstance(value, dict):
+            return [dict(value)]
+        if isinstance(value, (str, bytes)):
+            return []
+        if not isinstance(value, IterableABC):
+            return []
+
+        result: List[Dict[str, Any]] = []
+        for item in value:
+            if isinstance(item, dict):
+                result.append(dict(item))
+        return result
+
+    def _normalise_int(self, value: Any) -> int:
+        if value is None:
+            return -1
+        if isinstance(value, bool):
+            return int(value)
+        if isinstance(value, int):
+            return value
+        try:
+            return int(str(value), 10)
+        except (TypeError, ValueError):
+            return -1
+
+    def _sort_flow_records(
+        self, flows: Iterable[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        return sorted(
+            flows,
+            key=lambda item: (
+                item.get("start_ts") or "",
+                item.get("end_ts") or "",
+                item.get("src") or "",
+                item.get("dst") or "",
+                self._normalise_int(item.get("src_port")),
+                self._normalise_int(item.get("dst_port")),
+                item.get("protocol") or "",
+            ),
+        )
+
+    def _sort_dns_queries(
+        self, queries: Iterable[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        return sorted(
+            queries,
+            key=lambda item: (
+                item.get("timestamp") or "",
+                item.get("query") or "",
+                self._normalise_int(item.get("query_type")),
+                item.get("src") or "",
+                item.get("dst") or "",
+                self._normalise_int(item.get("src_port")),
+                self._normalise_int(item.get("dst_port")),
+            ),
+        )
+
+    def _sort_http_requests(
+        self, requests: Iterable[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        return sorted(
+            requests,
+            key=lambda item: (
+                item.get("timestamp") or "",
+                item.get("method") or "",
+                item.get("host") or "",
+                item.get("uri") or "",
+                item.get("src") or "",
+                item.get("dst") or "",
+                self._normalise_int(item.get("src_port")),
+                self._normalise_int(item.get("dst_port")),
+            ),
         )
 
     # ------------------------------------------------------------------
@@ -614,8 +802,8 @@ class NetworkAnalysisModule(AnalysisModule):
         flows: Dict[
             Tuple[str, str, Optional[int], Optional[int], str], FlowAccumulator
         ],
-    ) -> List[Dict[str, object]]:
-        result: List[Dict[str, object]] = []
+    ) -> List[Dict[str, Any]]:
+        result: List[Dict[str, Any]] = []
         for (src, dst, sport, dport, proto), accumulator in flows.items():
             if accumulator.packets == 0:
                 continue
@@ -634,37 +822,38 @@ class NetworkAnalysisModule(AnalysisModule):
                     "end_ts": end_ts,
                 }
             )
-        result.sort(key=lambda item: item["start_ts"])
-        return result
+        return self._sort_flow_records(result)
 
-    def _summarise_dns(self, queries: List[Dict[str, object]]) -> Dict[str, object]:
+    def _summarise_dns(self, queries: List[Dict[str, Any]]) -> Dict[str, Any]:
+        sorted_queries = self._sort_dns_queries(queries)
         suspicious = [
             query
-            for query in queries
+            for query in sorted_queries
             if query.get("heuristics", {}).get("long_domain")
             or query.get("heuristics", {}).get("high_entropy")
         ]
         return {
-            "queries": queries,
+            "queries": sorted_queries,
             "suspicious": suspicious,
         }
 
-    def _summarise_http(self, requests: List[Dict[str, object]]) -> Dict[str, object]:
+    def _summarise_http(self, requests: List[Dict[str, Any]]) -> Dict[str, Any]:
+        sorted_requests = self._sort_http_requests(requests)
         suspicious_agents = sorted(
             {
                 req["user_agent"].lower()
-                for req in requests
+                for req in sorted_requests
                 if req.get("user_agent")
                 and req.get("indicators", {}).get("suspicious_user_agent")
             }
         )
         encoded_uris = [
             req["uri"]
-            for req in requests
+            for req in sorted_requests
             if req.get("uri") and req.get("indicators", {}).get("encoded_uri")
         ]
         return {
-            "requests": requests,
+            "requests": sorted_requests,
             "indicators": {
                 "suspicious_user_agents": suspicious_agents,
                 "encoded_uris": encoded_uris,
