@@ -46,7 +46,7 @@ pip install -e .
 
 # Verify installation
 forensic-cli version
-forensic-cli check-tools
+forensic-cli diagnostics --summary
 ```
 
 > **Fixture policy:** PCAP-Fixtures werden zur Laufzeit über einen Synthesizer
@@ -67,96 +67,110 @@ Every investigation is organized as a **Case**:
 - Chain of Custody log
 - Reports
 
-### Module Types
+### Module Types & Guard Levels
 
-1. **Acquisition** - Collect evidence (disk imaging, memory dump)
-2. **Analysis** - Examine evidence (filesystem, timeline, IoCs)
-3. **Triage** - Quick assessment (system info, persistence)
-4. **Reporting** - Generate reports (HTML, PDF, JSON)
+1. **Acquisition** – Collect evidence (disk imaging, memory dump, live response)
+2. **Analysis** – Examine evidence (filesystem, timeline, network)
+3. **Triage** – Quick assessment (system info, persistence, quick triage)
+4. **Reporting** – Generate reports (HTML baseline, optional PDF)
+
+Each module advertises a **Guard level** in the CLI. A Guarded module performs
+pre-flight checks (tool availability, privileges, dry-run) before touching
+evidence. Missing prerequisites result in a friendly message instead of a
+traceback.
+
+### Configuration defaults
+
+Parameters come from three tiers: built-in defaults, YAML configuration
+(`config/framework.yaml` and `config/modules/*.yaml`) and CLI `--param` options.
+CLI values always win. The resolved configuration is written to the case
+metadata and to `meta/provenance.jsonl`.
+
+### Dry-run support
+
+Most Guarded modules accept `--dry-run`. In this mode the CLI prints the steps
+that would be executed and exits without producing artefacts. Use this whenever
+you validate configuration or run exercises on development machines.
 
 ---
 
 ## 🎯 Quick Start Workflows
 
-### Scenario 1: Disk Forensics Investigation
+### Scenario 1: Disk & Network Investigation (Guarded Modules)
 
-**Objective:** Analyze a suspect disk image for malware indicators
+**Objective:** Acquire evidence and correlate disk/network artefacts while
+respecting guard rails.
 
 ```bash
-# Step 1: Create case
-forensic-cli case create "Malware Investigation 2025-001" \
+# Step 1: Create workspace + case (records provenance metadata)
+forensic-cli --workspace ~/forensic cases init
+forensic-cli --workspace ~/forensic case create \
+    "Malware Investigation 2025-001" \
     --investigator "John Smith" \
     --description "Suspected ransomware on workstation"
 
-# Step 2: Add evidence (disk image)
-forensic-cli evidence add /path/to/disk.img \
-    --type disk \
-    --description "Suspect workstation C: drive"
+# Step 2: Review module guards and defaults
+forensic-cli --workspace ~/forensic diagnostics
 
-# Step 3: Filesystem analysis
-forensic-cli module run filesystem_analysis \
-    --param image=/path/to/disk.img \
-    --param include_deleted=true \
-    --param compute_hashes=true
+# Step 3: Plan live acquisitions safely
+forensic-cli --workspace ~/forensic modules run live_response \
+    --case Malware\ Investigation\ 2025-001 \
+    --dry-run
 
-# Step 4: IoC scan
-forensic-cli module run ioc_scan \
-    --param path=/mnt/evidence \
-    --param ioc_file=config/iocs/IoCs.json \
-    --param timeline=true \
-    --param scan_npm=true \
-    --param format=json
+forensic-cli --workspace ~/forensic modules run network_capture \
+    --case Malware\ Investigation\ 2025-001 \
+    --dry-run \
+    --param interface=eth0
 
-# Step 5: Generate timeline
-forensic-cli module run timeline \
-    --param source=/path/to/disk.img \
-    --param format=csv \
-    --param type=plaso
+# Step 4: Execute disk imaging when ready
+sudo forensic-cli --workspace ~/forensic modules run disk_imaging \
+    --case Malware\ Investigation\ 2025-001 \
+    --param source=/dev/sdb \
+    --param output=evidence/disk.img
 
-# Step 6: Generate report
-forensic-cli report --format html
+# Step 5: Analyse network data with runtime PCAP fixtures
+forensic-cli --workspace ~/forensic modules run network \
+    --case Malware\ Investigation\ 2025-001 \
+    --param pcap-json=-
+
+# Step 6: Generate HTML report (PDF optional)
+forensic-cli --workspace ~/forensic report generate \
+    --case Malware\ Investigation\ 2025-001 \
+    --fmt html
 ```
 
-**Results Location:**
-```
-forensic_workspace/
-└── cases/
-    └── CASE_20251008_120000/
-        ├── evidence/
-        ├── analysis/
-        │   ├── filesystem_analysis/
-        │   │   ├── file_list.json
-        │   │   └── file_hashes.json
-        │   ├── ioc_scan/
-        │   │   └── ioc_scan_results.json
-        │   └── timeline/
-        │       └── timeline.csv
-        └── reports/
-            └── report_20251008_120500.html
-```
+**Notes:**
+
+- When a native PCAP capture is unavailable the network module accepts JSON
+  flow data via `--param pcap-json=-`. The CLI feeds runtime synthesised data or
+  uses JSON fallbacks in CI.
+- Every module invocation appends a record to `meta/provenance.jsonl`, including
+  resolved parameters and artefact hashes.
+- PDF exports require the optional `report_pdf` extra. Without it the HTML
+  report is still generated and the skipped renderer is documented.
 
 ---
 
-### Scenario 2: Quick Triage (No Case Setup)
+### Scenario 2: Quick Triage Snapshot
 
-**Objective:** Rapid assessment of mounted filesystem
+**Objective:** Capture persistence and system information from a mounted target
+without modifying it.
 
 ```bash
-# Quick triage command
-forensic-cli quick-triage /mnt/suspect_system \
-    --name "Quick Triage 2025-001" \
-    --investigator "Jane Doe"
+forensic-cli --workspace ~/forensic modules run quick_triage \
+  --case Malware\ Investigation\ 2025-001 \
+  --param target=/mnt/suspect_system \
+  --dry-run
+
+# When satisfied with the plan, rerun without --dry-run.
+forensic-cli --workspace ~/forensic modules run quick_triage \
+  --case Malware\ Investigation\ 2025-001 \
+  --param target=/mnt/suspect_system
 ```
 
-**Output:**
-- SUID/SGID binaries
-- User accounts
-- Persistence mechanisms
-- SSH keys
-- Recent files
-- Suspicious files
-- Network config
-- Log summary
+The module consolidates SUID/SGID binaries, suspicious startup entries and
+recent file changes. All artefacts are stored under
+`cases/<case-id>/analysis/quick_triage/` with hashes in the chain-of-custody log.
 
 ---
 

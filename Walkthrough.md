@@ -42,8 +42,8 @@ cd CASE_20251008_MALWARE_001
 # 2. Activate forensic environment
 source ~/forensic-venv/bin/activate
 
-# 3. Verify tools
-forensic-cli check-tools
+# 3. Verify tools & guard status
+forensic-cli diagnostics
 ```
 
 **Output:**
@@ -105,8 +105,16 @@ forensic-cli case create \
 #### 3.1 Disk Imaging
 
 ```bash
+# Preview the imaging plan (no writes performed)
+forensic-cli modules run disk_imaging \
+    --case CASE_20251008_143025 \
+    --dry-run \
+    --param source=/dev/sdb \
+    --param output=evidence/disk_jdoe_workstation.img
+
 # Image the SSD (evidence drive: /dev/sdb)
-sudo forensic-cli module run disk_imaging \
+sudo forensic-cli modules run disk_imaging \
+    --case CASE_20251008_143025 \
     --param source=/dev/sdb \
     --param output=evidence/disk_jdoe_workstation.img \
     --param tool=ddrescue \
@@ -157,8 +165,14 @@ forensic-cli evidence add \
 sudo mkdir /mnt/evidence_ro
 sudo mount -o ro,loop,offset=$((2048*512)) evidence/disk_jdoe_workstation.img /mnt/evidence_ro
 
-# Run quick triage
-forensic-cli module run quick_triage \
+# Run quick triage (guarded, supports dry-run)
+forensic-cli modules run quick_triage \
+    --case CASE_20251008_143025 \
+    --param target=/mnt/evidence_ro \
+    --dry-run
+
+forensic-cli modules run quick_triage \
+    --case CASE_20251008_143025 \
     --param target=/mnt/evidence_ro
 ```
 
@@ -375,8 +389,16 @@ Pipeline complete: 6/6 modules succeeded
 ### Phase 10: Report Generation
 
 ```bash
-# Generate comprehensive HTML report
-forensic-cli report --format html
+# Generate comprehensive HTML report (HTML always, PDF optional)
+forensic-cli report generate \
+  --case CASE_20251008_143025 \
+  --fmt html
+
+# Optional: produce PDF when wkhtmltopdf/report_pdf extra is available
+forensic-cli report generate \
+  --case CASE_20251008_143025 \
+  --fmt pdf \
+  --out reports/CASE_20251008_143025.pdf
 ```
 
 **Report Contents:**

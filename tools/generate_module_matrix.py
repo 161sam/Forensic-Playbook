@@ -51,6 +51,16 @@ BACKEND_HINTS = {
     "forensic.modules.triage.system_info": "platform / socket APIs",
 }
 
+STATUS_OVERRIDES = {
+    "forensic.modules.acquisition.live_response": "Guarded",
+    "forensic.modules.acquisition.network_capture": "Guarded",
+    "forensic.modules.analysis.network": "Guarded",
+    "forensic.modules.reporting.generator": "Guarded",
+    "forensic.modules.triage.persistence": "Guarded",
+    "forensic.modules.triage.quick_triage": "Guarded",
+    "forensic.modules.triage.system_info": "Guarded",
+}
+
 GUARD_HINTS = {
     "forensic.modules.acquisition.disk_imaging": "Root + block device access",
     "forensic.modules.acquisition.memory_dump": "--enable-live-capture (Linux)",
@@ -148,8 +158,12 @@ def build_rows() -> List[ModuleRow]:
         except Exception as exc:  # pragma: no cover - environment dependent
             import_error = exc
 
+        status_override = STATUS_OVERRIDES.get(import_path)
+
         if import_error is not None:
             status = "Missing"
+        elif status_override:
+            status = status_override
         elif tools:
             status = "Guarded"
         else:

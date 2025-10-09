@@ -43,14 +43,17 @@ Configuration is loaded from (in order):
 
 `FORENSIC_CONFIG_DIR` can be used to point at an alternative configuration
 folder. The `config/modules/*.yaml` files capture default parameters for new
-modules.
+modules. When running modules via the CLI the precedence is always **CLI
+parameter > YAML configuration > built-in defaults**. The effective parameters
+are recorded in the provenance log of each run.
 
 ## CLI usage
 
 After installing the package (`pip install -e .`) the CLI is available as
 `forensic-cli`.
 
-List available modules and see which ones are skipped because of missing tools:
+List available modules and see which ones are skipped because of missing tools
+or elevated guard requirements:
 
 ```bash
 forensic-cli modules list
@@ -69,12 +72,22 @@ forensic-cli --workspace /tmp/forensic case create \
     --name "Example" --description "Smoke test" --investigator "Analyst"
 ```
 
-Modules with heavy external dependencies expose `--dry-run` parameters so they
-can be exercised safely. For example:
+Modules with external tooling requirements expose a `--dry-run` flag and
+perform guard checks before any acquisition occurs. This makes it safe to test
+commands without touching live evidence:
 
 ```bash
-forensic-cli modules run network_capture --param dry_run=true
+forensic-cli modules run network_capture \
+  --case CASE123 \
+  --dry-run \
+  --param interface=eth0 \
+  --param duration=60
 ```
+
+CLI parameters that are not provided fall back to the configuration hierarchy
+described above. The `diagnostics` view highlights which modules currently run
+in guarded mode and whether optional extras (e.g. `pcap`, `report_pdf`) are
+installed.
 
 Generate a report preview without writing files:
 
@@ -96,7 +109,8 @@ are:
   returned instead of attempting a capture.
 * `network_capture`: supports `tcpdump` and `dumpcap` backends. The module will
   only capture packets when both root access and `--enable-live-capture` are
-  confirmed.
+  confirmed. `--dry-run` shows the capture command and target files without
+  creating artefacts.
 * `live_response`: executes a controlled set of commands (`uname`, `ps`,
   `netstat`, `mount`) and records stdout/stderr along with metadata for the
   chain of custody.
@@ -133,7 +147,7 @@ framework.execute_module("network", params={"pcap": str(pcap)})
 PY
 
 # Generate a combined CSV timeline
-forensic-cli --workspace /tmp/cases module run timeline \
+forensic-cli --workspace /tmp/cases modules run timeline \
   --case demo --param source=/tmp/cases/cases/demo/analysis/network --param format=csv
 ```
 
@@ -162,7 +176,9 @@ forensic-cli --workspace /tmp/cases report generate --case demo --fmt pdf \
 
 Each run stores structured metadata under `reports/` and records artefact hashes
 for provenance. HTML artefacts can be published directly or bundled into
-incident handover packages.
+incident handover packages. PDF exports are optional in CI; when PDF tooling is
+missing the generator keeps the HTML output and records the skipped renderer in
+the provenance log.
 
 ## Testing and linting
 
@@ -181,20 +197,20 @@ black --check .
 | Kategorie | Modul | Status | Backend/Extra | Guard | Notizen |
 | --- | --- | --- | --- | --- | --- |
 | Acquisition | `disk_imaging` | Guarded | ddrescue / ewfacquire | Root + block device access | Requires ddrescue, ewfacquire (missing locally) |
-| Acquisition | `live_response` | Guarded | coreutils (uname, ps, netstat) | — | Requires netstat, ss (all available) |
+| Acquisition | `live_response` | Guarded | coreutils (uname, ps, netstat) | — | Requires netstat, ss (missing locally) |
 | Acquisition | `memory_dump` | Guarded | avml | --enable-live-capture (Linux) | Requires avml (missing locally) |
-| Acquisition | `network_capture` | MVP | tcpdump / dumpcap | --enable-live-capture + root | MVP baseline implementation |
+| Acquisition | `network_capture` | Guarded | tcpdump / dumpcap | --enable-live-capture + root | — |
 | Analysis | `filesystem` | Guarded | sleuthkit (fls, blkcat) | — | Requires fls (missing locally) |
 | Analysis | `malware` | Guarded | yara extra | — | Requires yara (missing locally) |
 | Analysis | `memory` | Guarded | memory extra (volatility3) | — | Requires vol, vol.py, vol3, volatility (missing locally) |
-| Analysis | `network` | MVP | pcap extra (scapy, pyshark) | — | MVP baseline implementation |
+| Analysis | `network` | Guarded | pcap extra (scapy, pyshark) | — | — |
 | Analysis | `registry` | Guarded | reglookup / rip.pl | — | Requires reglookup, rip.pl (missing locally) |
 | Analysis | `timeline` | Guarded | log2timeline.py / mactime | — | Requires fls, log2timeline.py, mactime (missing locally) |
 | Reporting | `exporter` | Guarded | report_pdf extra (weasyprint) | — | Requires wkhtmltopdf (missing locally) |
-| Reporting | `generator` | MVP | jinja2 templates | — | MVP baseline implementation |
-| Triage | `persistence` | MVP | filesystem inspection | — | MVP baseline implementation |
-| Triage | `quick_triage` | MVP | POSIX utilities | — | MVP baseline implementation |
-| Triage | `system_info` | MVP | platform / socket APIs | — | MVP baseline implementation |
+| Reporting | `generator` | Guarded | jinja2 templates | — | — |
+| Triage | `persistence` | Guarded | filesystem inspection | — | — |
+| Triage | `quick_triage` | Guarded | POSIX utilities | — | — |
+| Triage | `system_info` | Guarded | platform / socket APIs | — | — |
 <!-- MODULE_MATRIX:END -->
 
 ## Legacy / Kompatibilität
