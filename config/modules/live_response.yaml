@@ -1,5 +1,6 @@
 commands:
-  - uname
-  - processes
-  - network
-  - mounts
+  - uname -a
+  - ps -ef
+  - netstat -tulpen
+  - mount
+  - systemctl list-units
