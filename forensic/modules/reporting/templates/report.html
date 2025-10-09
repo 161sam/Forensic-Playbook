@@ -12,6 +12,17 @@
     </p>
   </header>
 
+  {% if alerts %}
+    <section class="section">
+      <h2>Report Notices</h2>
+      <div class="stack">
+        {% for note in alerts %}
+          <div class="info-box">{{ note }}</div>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
+
   <section class="section">
     <h2>Case Details</h2>
     <div class="grid two">
@@ -143,45 +154,52 @@
     </section>
   {% endif %}
 
-  {% if timeline.events %}
+  {% if timeline %}
     <section class="section">
       <h2>Timeline Overview</h2>
-      <div class="timeline">
-        {% for event in timeline.events[:50] %}
-          <div class="timeline-entry">
-            <time>{{ event.timestamp }}</time>
-            <strong>{{ event.summary }}</strong>
-            {% if event.source %}
-              <p class="muted" style="margin: 0.25rem 0 0 0">Source: {{ event.source }}</p>
-            {% endif %}
-          </div>
-        {% endfor %}
-      </div>
-      {% if timeline.events|length > 50 %}
-        <p class="muted" style="margin-top: 0.75rem">
-          Showing first 50 of {{ timeline.events|length }} events.
-        </p>
+      {% if timeline.available and timeline.events %}
+        <div class="timeline">
+          {% for event in timeline.events[:50] %}
+            <div class="timeline-entry">
+              <time>{{ event.timestamp }}</time>
+              <strong>{{ event.summary }}</strong>
+              {% if event.source %}
+                <p class="muted" style="margin: 0.25rem 0 0 0">Source: {{ event.source }}</p>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+        {% if timeline.events|length > 50 %}
+          <p class="muted" style="margin-top: 0.75rem">
+            Showing first 50 of {{ timeline.events|length }} events.
+          </p>
+        {% endif %}
+      {% elif timeline.available %}
+        <div class="empty-state">Timeline artefacts contained no events to display.</div>
       {% endif %}
       {% if timeline.sources %}
         <p class="muted" style="margin-top: 0.75rem">
           Sources: {{ timeline.sources | join(", ") }}
         </p>
       {% endif %}
-      {% if timeline.errors %}
-        <p class="muted" style="margin-top: 0.75rem">Warnings: {{ timeline.errors | join("; ") }}</p>
+      {% set timeline_messages = timeline.messages or [] %}
+      {% if not timeline.available and not timeline_messages %}
+        {% set timeline_messages = ['Timeline artefacts were not provided for this case.'] %}
       {% endif %}
-    </section>
-  {% elif timeline.errors %}
-    <section class="section">
-      <h2>Timeline Overview</h2>
-      <div class="empty-state">No timeline events available.</div>
-      <p class="muted" style="margin-top: 0.75rem">Warnings: {{ timeline.errors | join("; ") }}</p>
+      {% for note in timeline_messages %}
+        <div class="info-box" style="margin-top: 0.75rem">{{ note }}</div>
+      {% endfor %}
+      {% if timeline.errors %}
+        <div class="warning-box" style="margin-top: 0.75rem">
+          Warnings: {{ timeline.errors | join("; ") }}
+        </div>
+      {% endif %}
     </section>
   {% endif %}
 
-  {% if network.available %}
-    <section class="section">
-      <h2>Network Insights</h2>
+  <section class="section">
+    <h2>Network Insights</h2>
+    {% if network.available %}
       {% if network.top_talkers %}
         <h3 style="margin: 0 0 0.5rem 0">Top Talkers</h3>
         <table>
@@ -242,8 +260,20 @@
       {% if not network.top_talkers and not network.dns_findings and not network.http_findings %}
         <div class="empty-state">No notable network activity recorded.</div>
       {% endif %}
-    </section>
-  {% endif %}
+    {% endif %}
+    {% set network_messages = network.messages or [] %}
+    {% if not network.available and not network_messages %}
+      {% set network_messages = ['Network artefacts were not provided for this case.'] %}
+    {% endif %}
+    {% for note in network_messages %}
+      <div class="info-box" style="margin-top: 0.75rem">{{ note }}</div>
+    {% endfor %}
+    {% if network.errors %}
+      <div class="warning-box" style="margin-top: 0.75rem">
+        Warnings: {{ network.errors | join("; ") }}
+      </div>
+    {% endif %}
+  </section>
 
   {% if chain_of_custody %}
     <section class="section">

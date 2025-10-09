@@ -1,23 +1,11 @@
 #!/usr/bin/env python3
-"""
-Report Generation Module
-HTML and PDF report generation from forensic analysis results
-
-Features:
-- HTML report generation with templates
-- PDF export support
-- Timeline visualization
-- Evidence summary
-- Chain of Custody integration
-- Finding severity categorization
-- Interactive charts and graphs
-- Multiple report templates
-"""
+"""Reporting module with guarded fallbacks and deterministic exports."""
 
 import json
 import sqlite3
+from html import escape
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from ...core.evidence import Evidence
 from ...core.module import ModuleResult, ReportingModule
@@ -35,8 +23,8 @@ class ReportGenerator(ReportingModule):
 
     def __init__(self, case_dir: Path, config: Dict):
         super().__init__(case_dir=case_dir, config=config)
-        defaults = self._module_config("reports")
-        configured_output_dir = defaults.get("output_dir")
+        self.defaults = self._module_config("reporting", "reports")
+        configured_output_dir = self.defaults.get("output_dir")
 
         if configured_output_dir:
             candidate_path = Path(configured_output_dir)
@@ -47,6 +35,12 @@ class ReportGenerator(ReportingModule):
             self.output_dir = self.case_dir / "reports"
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.template_name = self.defaults.get("template", "report.html")
+        self.templates_dir = Path(__file__).with_name("templates")
+        self.templates_available = all(
+            (self.templates_dir / name).exists()
+            for name in {"base.html", self.template_name}
+        )
 
     @property
     def name(self) -> str:
@@ -69,8 +63,41 @@ class ReportGenerator(ReportingModule):
         """Generate report"""
         result_id = self._generate_result_id()
         timestamp = utc_isoformat()
+        slug = self._timestamp_to_slug(timestamp)
 
-        report_format = params.get("format", "html").lower()
+        requested_format = (
+            params.get("fmt")
+            or params.get("format")
+            or self.defaults.get("default_format", "html")
+        )
+        report_format = (requested_format or "html").lower()
+        canonical_format = {"markdown": "md"}.get(report_format, report_format)
+
+        supported_formats = {"html", "md", "json", "pdf"}
+        if canonical_format not in supported_formats:
+            errors = [
+                (
+                    "Unsupported report format: "
+                    f"{report_format} (supported: html, md, json, pdf)"
+                )
+            ]
+            metadata = {
+                "requested_format": report_format,
+                "generation_start": timestamp,
+                "output_dir": str(self.output_dir),
+                "template": self.template_name,
+                "templates_available": self.templates_available,
+            }
+            return ModuleResult(
+                result_id=result_id,
+                module_name=self.name,
+                status="failed",
+                timestamp=timestamp,
+                findings=[],
+                metadata=metadata,
+                errors=errors,
+            )
+
         output_file = params.get("output_file")
         dry_run = bool(params.get("dry_run", False))
 
@@ -83,9 +110,17 @@ class ReportGenerator(ReportingModule):
         include_findings = params.get("findings", "true").lower() == "true"
         include_coc = params.get("chain_of_custody", "true").lower() == "true"
 
-        findings = []
-        errors = []
-        metadata = {"requested_format": report_format, "generation_start": timestamp}
+        findings: List[Dict[str, Any]] = []
+        errors: List[str] = []
+        alerts: List[str] = []
+        metadata: Dict[str, Any] = {
+            "requested_format": canonical_format,
+            "generation_start": timestamp,
+            "output_dir": str(self.output_dir),
+            "template": self.template_name,
+            "templates_available": self.templates_available,
+            "base_name": f"report_{slug}",
+        }
 
         self.logger.info(f"Generating {report_format.upper()} report...")
 
@@ -99,83 +134,169 @@ class ReportGenerator(ReportingModule):
                 include_coc,
             )
 
-            metadata["sections"] = list(report_data.keys())
-            metadata["output_format"] = report_format
+            metadata["sections"] = sorted(report_data.keys())
+            metadata["output_format"] = canonical_format
 
-            default_ext = {
-                "html": "html",
-                "pdf": "pdf",
-                "json": "json",
-                "md": "md",
-                "markdown": "md",
-            }.get(report_format, "html")
-            target_path = (
-                Path(output_file)
-                if output_file
-                else self.output_dir / f"report.{default_ext}"
-            )
-            metadata["output_path"] = str(target_path)
+            self._collect_section_alerts(report_data, alerts)
+            report_data["alerts"] = alerts
+
+            output_path: Optional[Path] = None
+            html_path: Optional[Path] = None
+            metadata["alerts"] = alerts
 
             if dry_run:
                 metadata["dry_run"] = True
+                planned_path, collision = self._prepare_output_path(
+                    output_file, metadata["base_name"], canonical_format
+                )
+                if collision:
+                    metadata["output_path_conflict"] = collision
+                if planned_path:
+                    metadata["planned_output"] = str(planned_path)
+                if canonical_format == "pdf":
+                    html_preview, _ = self._prepare_output_path(
+                        None, metadata["base_name"], "html"
+                    )
+                    if html_preview:
+                        metadata["planned_html"] = str(html_preview)
                 findings.append(
                     {
                         "type": "dry_run",
-                        "description": f"Prepared {report_format.upper()} report",
-                        "output_file": str(target_path),
+                        "description": f"Prepared {canonical_format.upper()} report",
+                        "output_file": str(planned_path) if planned_path else None,
                     }
                 )
                 output_path = None
-            elif report_format in {"json", "md", "markdown"}:
-                fmt = "json" if report_format == "json" else "md"
-                output_path = export_report(report_data, fmt, target_path)
-            elif report_format == "html":
-                output_path = self._generate_html_report(report_data, str(target_path))
-            elif report_format == "pdf":
-                renderer = get_pdf_renderer()
-                metadata["pdf_renderer"] = renderer
-                if renderer:
-                    output_path = self._generate_pdf_report(
-                        report_data, str(target_path)
-                    )
-                else:
-                    fallback_target = target_path.with_suffix(".html")
-                    metadata["output_format"] = "html"
-                    metadata["fallback_format"] = "html"
-                    metadata["output_path"] = str(fallback_target)
-                    self.logger.warning(
-                        "PDF renderer not available; generating HTML report instead."
-                    )
-                    output_path = self._generate_html_report(
-                        report_data, str(fallback_target)
-                    )
-                    findings.append(
-                        {
-                            "type": "pdf_renderer_unavailable",
-                            "description": (
-                                "PDF renderer not available; generated HTML report instead."
-                            ),
-                            "output_file": str(output_path),
-                        }
-                    )
-            else:
-                errors.append(f"Unsupported report format: {report_format}")
-                return ModuleResult(
-                    result_id=result_id,
-                    module_name=self.name,
-                    status="failed",
-                    timestamp=timestamp,
-                    findings=findings,
-                    metadata=metadata,
-                    errors=errors,
+            elif canonical_format == "json":
+                target_path, collision = self._prepare_output_path(
+                    output_file, metadata["base_name"], "json"
                 )
+                if collision:
+                    errors.append(collision)
+                    metadata["output_path_conflict"] = collision
+                elif target_path:
+                    output_path = export_report(report_data, "json", target_path)
+                    metadata["output_path"] = str(output_path)
+            elif canonical_format == "md":
+                target_path, collision = self._prepare_output_path(
+                    output_file, metadata["base_name"], "md"
+                )
+                if collision:
+                    errors.append(collision)
+                    metadata["output_path_conflict"] = collision
+                elif target_path:
+                    output_path = export_report(report_data, "md", target_path)
+                    metadata["output_path"] = str(output_path)
+            elif canonical_format == "html":
+                target_path, collision = self._prepare_output_path(
+                    output_file, metadata["base_name"], "html"
+                )
+                if collision:
+                    errors.append(collision)
+                    metadata["output_path_conflict"] = collision
+                elif target_path:
+                    output_path = self._generate_html_report(
+                        report_data, target_path, alerts, metadata
+                    )
+                    html_path = output_path
+                    metadata["output_path"] = str(output_path)
+            elif canonical_format == "pdf":
+                target_path, collision = self._prepare_output_path(
+                    output_file, metadata["base_name"], "pdf"
+                )
+                if collision:
+                    errors.append(collision)
+                    metadata["output_path_conflict"] = collision
+                elif target_path:
+                    renderer = get_pdf_renderer()
+                    metadata["pdf_renderer"] = renderer
+                    if renderer:
+                        if output_file:
+                            html_candidate = target_path.with_suffix(".html")
+                            if html_candidate.exists():
+                                html_candidate = self._ensure_unique_path(
+                                    html_candidate
+                                )
+                        else:
+                            html_candidate = self._ensure_unique_path(
+                                self.output_dir
+                                / f"{metadata['base_name']}.html"
+                            )
+                        html_path = self._generate_html_report(
+                            report_data, html_candidate, alerts, metadata
+                        )
+                        metadata["html_intermediate"] = str(html_path)
+                        pdf_result = self._generate_pdf_report(
+                            html_path, target_path, alerts, metadata
+                        )
+                        if pdf_result is None:
+                            output_path = html_path
+                            metadata["output_format"] = "html"
+                            self._append_alert(
+                                alerts,
+                                "PDF conversion failed; delivered HTML report instead.",
+                            )
+                            findings.append(
+                                {
+                                    "type": "pdf_conversion_failed",
+                                    "description": (
+                                        "PDF conversion failed; delivered HTML report instead."
+                                    ),
+                                    "output_file": str(html_path),
+                                }
+                            )
+                        else:
+                            output_path = pdf_result
+                            metadata["output_path"] = str(output_path)
+                    else:
+                        fallback_target = (
+                            target_path.with_suffix(".html")
+                            if output_file
+                            else None
+                        )
+                        if fallback_target is not None and fallback_target.exists():
+                            fallback_target = self._ensure_unique_path(
+                                fallback_target
+                            )
+                        html_target = (
+                            fallback_target
+                            if fallback_target is not None
+                            else self._ensure_unique_path(
+                                self.output_dir
+                                / f"{metadata['base_name']}.html"
+                            )
+                        )
+                        self._append_alert(
+                            alerts,
+                            "PDF renderer not available; generated HTML report instead.",
+                        )
+                        metadata["output_format"] = "html"
+                        metadata["fallback_format"] = "html"
+                        html_path = self._generate_html_report(
+                            report_data, html_target, alerts, metadata
+                        )
+                        output_path = html_path
+                        metadata["output_path"] = str(output_path)
+                        findings.append(
+                            {
+                                "type": "pdf_renderer_unavailable",
+                                "description": (
+                                    "PDF renderer not available; generated HTML report instead."
+                                ),
+                                "output_file": str(output_path),
+                            }
+                        )
 
-            if output_path:
+            if output_path and metadata.get("output_path") is None:
                 metadata["output_path"] = str(output_path)
+            if dry_run:
+                metadata.setdefault("output_path", None)
+            elif output_path is None and not errors:
+                errors.append("Report generation did not produce an output artefact")
 
-            result_format = metadata.get("output_format", report_format)
+            result_format = metadata.get("output_format", canonical_format)
 
-            if not dry_run:
+            if not dry_run and output_path is not None:
                 findings.append(
                     {
                         "type": "report_generated",
@@ -197,6 +318,7 @@ class ReportGenerator(ReportingModule):
                 errors=errors,
             )
 
+        metadata["alerts"] = alerts
         metadata["generation_end"] = utc_isoformat()
 
         return ModuleResult(
@@ -428,10 +550,18 @@ class ReportGenerator(ReportingModule):
         # Sort and limit the number of events exposed to the report
         events.sort(key=lambda e: e.get("timestamp", ""))
 
+        messages: List[str] = []
+        if not timeline_root.exists():
+            messages.append("Timeline artefacts were not found for this case.")
+        elif not events:
+            messages.append("Timeline artefacts were available but contained no events.")
+
         return {
             "events": events[:1000],
             "sources": sources,
             "errors": errors,
+            "available": bool(events),
+            "messages": messages,
         }
 
     def _normalise_timeline_events(
@@ -483,10 +613,14 @@ class ReportGenerator(ReportingModule):
             "dns_findings": [],
             "http_findings": [],
             "errors": [],
+            "messages": [],
         }
 
         if not network_root.exists():
             summary["available"] = False
+            summary["messages"].append(
+                "Network analysis artefacts were not found for this case."
+            )
             return summary
 
         flow_accumulator: Dict[tuple, Dict[str, Any]] = {}
@@ -522,6 +656,18 @@ class ReportGenerator(ReportingModule):
 
         summary["top_talkers"] = self._finalise_top_talkers(flow_accumulator)
         summary["available"] = bool(summary["artifacts"])
+        if not summary["artifacts"]:
+            summary["messages"].append(
+                "Network module did not produce artefacts for this case."
+            )
+        elif (
+            not summary["top_talkers"]
+            and not summary["dns_findings"]
+            and not summary["http_findings"]
+        ):
+            summary["messages"].append(
+                "Network artefacts contained no notable findings."
+            )
         summary["artifacts"].sort()
         summary["dns_findings"].sort(
             key=lambda item: (
@@ -791,39 +937,67 @@ class ReportGenerator(ReportingModule):
 
         return stats
 
-    def _generate_html_report(self, data: Dict, output_file: Optional[str]) -> Path:
+    def _generate_html_report(
+        self,
+        data: Dict,
+        output_path: Path,
+        alerts: List[str],
+        metadata: Dict[str, Any],
+    ) -> Path:
         """Generate HTML report"""
-        target = (
-            self.output_dir / f"report_{utc_slug()}.html"
-            if not output_file
-            else Path(output_file)
-        )
-
+        target = output_path
         target.parent.mkdir(parents=True, exist_ok=True)
 
-        export_report(data, "html", target)
+        metadata["html_template"] = self.template_name
+        metadata["html_template_available"] = self.templates_available
+
+        if not self.templates_available:
+            alerts_message = (
+                "Report templates missing; generated minimal HTML output instead."
+            )
+            self.logger.warning(alerts_message)
+            self._append_alert(alerts, alerts_message)
+            target.write_text(self._render_minimal_html(data), encoding="utf-8")
+            metadata["html_template_fallback"] = True
+            self.logger.info(f"HTML report generated with fallback template: {target}")
+            return target
+
+        try:
+            export_report(data, "html", target)
+        except Exception as exc:  # pragma: no cover - guarded fallback
+            message = (
+                "HTML template rendering failed; generated minimal HTML instead."
+            )
+            self.logger.warning("%s (%s)", message, exc)
+            self._append_alert(alerts, message)
+            target.write_text(self._render_minimal_html(data), encoding="utf-8")
+            metadata["html_template_fallback"] = True
+        else:
+            metadata["html_template_fallback"] = False
 
         self.logger.info(f"HTML report generated: {target}")
         return target
 
-    def _generate_pdf_report(self, data: Dict, output_file: Optional[str]) -> Path:
-        """Generate PDF report"""
-        # First generate HTML
-        html_file = self._generate_html_report(data, None)
+    def _generate_pdf_report(
+        self,
+        html_path: Path,
+        output_path: Path,
+        alerts: List[str],
+        metadata: Dict[str, Any],
+    ) -> Optional[Path]:
+        """Convert an existing HTML report to PDF with graceful fallbacks."""
 
-        if not output_file:
-            output_file = self.output_dir / f"report_{utc_slug()}.pdf"
-        else:
-            output_file = Path(output_file)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Convert HTML to PDF using available renderer
         try:
-            export_pdf(html_file, output_file)
-        except Exception as e:  # pragma: no cover - passthrough for conversion errors
-            raise RuntimeError(f"PDF generation failed: {e}") from e
+            export_pdf(html_path, output_path)
+        except Exception as exc:  # pragma: no cover - optional dependency failures
+            self.logger.warning("PDF conversion failed: %s", exc)
+            metadata["pdf_error"] = str(exc)
+            return None
 
-        self.logger.info(f"PDF report generated: {output_file}")
-        return output_file
+        self.logger.info(f"PDF report generated: {output_path}")
+        return output_path
 
     def _generate_json_report(self, data: Dict, output_file: Optional[str]) -> Path:
         """Generate JSON report"""
@@ -902,3 +1076,130 @@ class ReportGenerator(ReportingModule):
 
         self.logger.info(f"Markdown report generated: {output_file}")
         return output_file
+
+    def _prepare_output_path(
+        self,
+        output_file: Optional[str],
+        base_name: str,
+        extension: str,
+    ) -> Tuple[Optional[Path], Optional[str]]:
+        """Resolve the output path honouring config defaults and collisions."""
+
+        ext = extension if extension.startswith(".") else f".{extension}"
+
+        if output_file:
+            candidate = Path(output_file)
+            if not candidate.is_absolute():
+                candidate = self.output_dir / candidate
+            if not candidate.suffix:
+                candidate = candidate.with_suffix(ext)
+            if candidate.exists():
+                return None, f"Output file {candidate} already exists; refusing to overwrite."
+            return candidate, None
+
+        default_candidate = self.output_dir / f"{base_name}{ext}"
+        return self._ensure_unique_path(default_candidate), None
+
+    def _ensure_unique_path(self, candidate: Path) -> Path:
+        """Ensure ``candidate`` does not collide with an existing artefact."""
+
+        path = candidate
+        counter = 1
+        while path.exists():
+            path = candidate.with_name(f"{candidate.stem}_{counter}{candidate.suffix}")
+            counter += 1
+        return path
+
+    def _collect_section_alerts(self, report_data: Dict[str, Any], alerts: List[str]) -> None:
+        """Collect informational alerts for missing sections."""
+
+        timeline = report_data.get("timeline")
+        if isinstance(timeline, dict):
+            for message in timeline.get("messages", []) or []:
+                self._append_alert(alerts, message)
+
+        network = report_data.get("network")
+        if isinstance(network, dict):
+            for message in network.get("messages", []) or []:
+                self._append_alert(alerts, message)
+
+    def _append_alert(self, alerts: List[str], message: str) -> None:
+        """Append ``message`` to ``alerts`` without duplicates."""
+
+        if message and message not in alerts:
+            alerts.append(message)
+
+    def _timestamp_to_slug(self, timestamp: str) -> str:
+        """Create a deterministic slug from an ISO-8601 timestamp."""
+
+        safe = timestamp.replace(":", "").replace("-", "")
+        safe = safe.replace("T", "_").replace(".", "")
+        safe = safe.replace("+", "p").replace("Z", "z")
+        return safe
+
+    def _render_minimal_html(self, data: Dict[str, Any]) -> str:
+        """Render a minimal HTML report without external templates."""
+
+        case = data.get("case", {}) if isinstance(data, dict) else {}
+        alerts = data.get("alerts") if isinstance(data, dict) else None
+        statistics = data.get("statistics") if isinstance(data, dict) else None
+
+        title = escape(case.get("name") or case.get("case_id") or "Forensic Report")
+        investigator = escape(case.get("investigator", "n/a"))
+        created_at = escape(case.get("created_at", "n/a"))
+        description = case.get("description")
+
+        alert_html = ""
+        if alerts:
+            items = "".join(f"<li>{escape(str(item))}</li>" for item in alerts)
+            alert_html = (
+                "<section><h2>Notices</h2><ul class=\"notices\">"
+                f"{items}</ul></section>"
+            )
+
+        stats_html = ""
+        if isinstance(statistics, dict) and statistics:
+            stats_items = "".join(
+                f"<li><strong>{escape(str(key))}:</strong> "
+                f"{escape(str(value))}</li>"
+                for key, value in sorted(statistics.items())
+            )
+            stats_html = (
+                "<section><h2>At a Glance</h2><ul class=\"stats\">"
+                f"{stats_items}</ul></section>"
+            )
+
+        description_html = (
+            f"<p class=\"case-description\">{escape(description)}</p>"
+            if description
+            else ""
+        )
+
+        return f"""<!DOCTYPE html>
+<html lang=\"en\">
+  <head>
+    <meta charset=\"utf-8\">
+    <title>Forensic Investigation Report — {title}</title>
+    <style>
+      body {{ font-family: system-ui, sans-serif; margin: 2rem; color: #111827; }}
+      header {{ margin-bottom: 1.5rem; }}
+      h1 {{ font-size: 2rem; margin: 0; }}
+      .metadata {{ color: #4b5563; margin: 0.35rem 0 0 0; }}
+      section {{ margin-top: 1.5rem; }}
+      ul.notices, ul.stats {{ padding-left: 1.25rem; }}
+      ul.notices li {{ background: #e0f2fe; border-left: 4px solid #0284c7; padding: 0.5rem 0.75rem; margin-bottom: 0.5rem; list-style: none; }}
+      ul.stats li {{ margin-bottom: 0.35rem; }}
+      .case-description {{ margin-top: 0.75rem; color: #374151; }}
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Forensic Investigation Report</h1>
+      <p class=\"metadata\">Investigator: {investigator} · Created: {created_at}</p>
+      {description_html}
+    </header>
+    {alert_html}
+    {stats_html}
+  </body>
+</html>
+"""
