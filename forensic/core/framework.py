@@ -238,7 +238,7 @@ class ForensicFramework:
                 case.investigator,
                 case.created_at,
                 str(case.case_dir),
-            json.dumps(case.metadata, sort_keys=True),
+                json.dumps(case.metadata, sort_keys=True),
             ),
         )
         conn.commit()

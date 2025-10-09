@@ -5,6 +5,7 @@ packets that exercise DNS and HTTP/TCP parsing logic. When Scapy is not
 available, the module falls back to emitting a JSON representation of the
 intended traffic shape so that callers still receive structured fixture data.
 """
+
 from __future__ import annotations
 
 import argparse

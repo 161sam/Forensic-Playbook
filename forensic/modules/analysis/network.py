@@ -129,9 +129,7 @@ class NetworkAnalysisModule(AnalysisModule):
             if json_source != "-":
                 json_path = Path(json_source)
                 if not json_path.exists():
-                    self.logger.error(
-                        f"PCAP JSON file does not exist: {json_path}"
-                    )
+                    self.logger.error(f"PCAP JSON file does not exist: {json_path}")
                     return False
 
         return True
@@ -209,9 +207,7 @@ class NetworkAnalysisModule(AnalysisModule):
 
             if rdpcap is not None:
                 packets = rdpcap(str(pcap_file))
-                self._process_scapy_packets(
-                    packets, flows, dns_queries, http_requests
-                )
+                self._process_scapy_packets(packets, flows, dns_queries, http_requests)
             elif pyshark is not None:
                 self._process_pyshark_capture(
                     str(pcap_file), flows, dns_queries, http_requests
@@ -287,9 +283,7 @@ class NetworkAnalysisModule(AnalysisModule):
     # ------------------------------------------------------------------
     # JSON/utility helpers
     # ------------------------------------------------------------------
-    def _load_pcap_json_input(
-        self, source: str
-    ) -> Tuple[
+    def _load_pcap_json_input(self, source: str) -> Tuple[
         List[Dict[str, Any]],
         List[Dict[str, Any]],
         List[Dict[str, Any]],

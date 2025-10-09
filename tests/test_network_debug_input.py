@@ -128,7 +128,5 @@ def test_run_with_pcap_json_stdin(monkeypatch, tmp_path):
 
     http_requests = payload["http"]["requests"]
     assert [req["method"] for req in http_requests] == ["POST", "GET"]
-    assert payload["http"]["indicators"]["suspicious_user_agents"] == [
-        "curl/7.88.1"
-    ]
+    assert payload["http"]["indicators"]["suspicious_user_agents"] == ["curl/7.88.1"]
     assert payload["http"]["indicators"]["encoded_uris"] == ["/encoded%2fvalue"]
