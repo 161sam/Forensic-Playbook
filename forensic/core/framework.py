@@ -7,9 +7,10 @@ Central orchestrator for forensic investigations
 import json
 import sqlite3
 import sys
+from time import perf_counter
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, Dict, Iterable, List, Optional, Set, Type
 
 # ``PyYAML`` is optional at runtime. Import lazily and provide a helpful
 # message if pipeline definitions rely on it while the dependency is missing.
@@ -24,6 +25,7 @@ from .evidence import Evidence, EvidenceType
 from .logger import setup_logging
 from .module import ForensicModule, ModuleResult
 from .time_utils import utc_isoformat, utc_slug
+from forensic.utils.hashing import compute_hash
 
 
 @dataclass
@@ -209,6 +211,7 @@ class ForensicFramework:
         (case_dir / "analysis").mkdir(exist_ok=True)
         (case_dir / "reports").mkdir(exist_ok=True)
         (case_dir / "logs").mkdir(exist_ok=True)
+        (case_dir / "meta").mkdir(exist_ok=True)
 
         case = Case(
             case_id=case_id,
@@ -380,9 +383,18 @@ class ForensicFramework:
         if module_name not in self._modules:
             raise ValueError(f"Module not registered: {module_name}")
 
+        params = params or {}
+
         # Instantiate module
         module_class = self._modules[module_name]
         module = module_class(case_dir=self.current_case.case_dir, config=self.config)
+
+        module_versions = self._resolve_tool_versions(module)
+        start_ts = utc_isoformat()
+        start_time = perf_counter()
+        result: Optional[ModuleResult] = None
+        artifact_records: List[Dict[str, str]] = []
+        error: Optional[Exception] = None
 
         self.logger.info(f"Executing module: {module_name}")
 
@@ -395,9 +407,8 @@ class ForensicFramework:
                 actor=self.current_case.investigator,
             )
 
-        # Execute
         try:
-            result = module.execute(evidence=evidence, params=params or {})
+            result = module.execute(evidence=evidence, params=params)
 
             # Save result to database
             conn = sqlite3.connect(self.db_path)
@@ -422,21 +433,29 @@ class ForensicFramework:
             conn.commit()
             conn.close()
 
+            artifact_paths = self._collect_artifact_paths(result)
+            artifact_records = [
+                {"path": str(path), "sha256": compute_hash(path)} for path in artifact_paths
+            ]
+
             # Log to CoC
             if self.config.get("enable_coc"):
+                metadata = {"result_id": result.result_id}
+                if artifact_records:
+                    metadata["artifacts"] = artifact_records
                 self.coc.log_event(
                     event_type="MODULE_EXECUTION_COMPLETE",
                     case_id=self.current_case.case_id,
                     description=f"Module execution completed: {module_name} - {result.status}",
                     actor=self.current_case.investigator,
-                    metadata={"result_id": result.result_id},
+                    metadata=metadata,
                 )
 
             self.logger.info(f"Module executed: {module_name} - {result.status}")
 
             return result
-
         except Exception as e:
+            error = e
             self.logger.error(f"Module execution failed: {module_name} - {e}")
 
             if self.config.get("enable_coc"):
@@ -448,6 +467,25 @@ class ForensicFramework:
                 )
 
             raise
+        finally:
+            duration = perf_counter() - start_time
+            try:
+                self._record_provenance(
+                    ts=start_ts,
+                    module=module_name,
+                    params=params,
+                    tool_versions=module_versions,
+                    inputs=self._build_input_metadata(evidence),
+                    outputs=[entry["path"] for entry in artifact_records],
+                    sha256=artifact_records,
+                    duration=duration,
+                    exit_code=self._status_to_exit_code(result, error),
+                    result=result,
+                )
+            except Exception as provenance_error:  # pragma: no cover - defensive
+                self.logger.warning(
+                    f"Failed to record provenance for {module_name}: {provenance_error}"
+                )
 
     def execute_pipeline(self, pipeline_file: Path):
         """
@@ -507,17 +545,148 @@ class ForensicFramework:
         # TODO: Implement report generation with Jinja2 templates
         self.logger.info(f"Generating report: {output_path}")
 
+    def _resolve_tool_versions(self, module: ForensicModule) -> Dict[str, str]:
+        versions: Dict[str, str] = {}
+        try:
+            reported = module.tool_versions()
+        except Exception:  # pragma: no cover - defensive
+            reported = {}
+
+        if isinstance(reported, dict):
+            for key, value in reported.items():
+                versions[str(key)] = str(value)
+
+        versions.setdefault(module.name, getattr(module, "version", ""))
+        return versions
+
+    def _build_input_metadata(self, evidence: Optional[Evidence]) -> Dict[str, Any]:
+        if evidence is None:
+            return {}
+
+        payload: Dict[str, Any] = {}
+        evidence_id = getattr(evidence, "evidence_id", None)
+        if evidence_id:
+            payload["evidence_id"] = evidence_id
+
+        source_path = getattr(evidence, "source_path", None)
+        if source_path:
+            payload["source_path"] = str(source_path)
+
+        evidence_type = getattr(evidence, "evidence_type", None)
+        if evidence_type is not None:
+            payload["type"] = getattr(evidence_type, "value", str(evidence_type))
+
+        return payload
+
+    def _resolve_artifact_path(self, value: Any) -> Optional[Path]:
+        if not value or not self.current_case:
+            return None
+
+        try:
+            candidate = Path(value)
+        except TypeError:
+            return None
+
+        candidate = candidate.expanduser()
+        if not candidate.is_absolute():
+            candidate = (self.current_case.case_dir / candidate).resolve()
+        else:
+            candidate = candidate.resolve()
+
+        if candidate.exists() and candidate.is_file():
+            return candidate
+        return None
+
+    def _collect_artifact_paths(self, result: ModuleResult) -> List[Path]:
+        paths: Set[Path] = set()
+
+        if result.output_path:
+            resolved = self._resolve_artifact_path(result.output_path)
+            if resolved:
+                paths.add(resolved)
+
+        metadata = result.metadata or {}
+        for key in ("artifacts", "outputs", "files"):
+            value = metadata.get(key)
+            if isinstance(value, (list, tuple, set)):
+                for item in value:
+                    resolved = self._resolve_artifact_path(item)
+                    if resolved:
+                        paths.add(resolved)
+            else:
+                resolved = self._resolve_artifact_path(value)
+                if resolved:
+                    paths.add(resolved)
+
+        for finding in result.findings:
+            if not isinstance(finding, dict):
+                continue
+            for key in ("output_file", "artifact", "path", "file"):
+                resolved = self._resolve_artifact_path(finding.get(key))
+                if resolved:
+                    paths.add(resolved)
+
+        return sorted(paths, key=lambda item: str(item))
+
+    def _status_to_exit_code(
+        self, result: Optional[ModuleResult], error: Optional[Exception]
+    ) -> int:
+        if result is None:
+            return -1 if error else 1
+
+        mapping = {"success": 0, "partial": 2, "failed": 1}
+        return mapping.get(result.status.lower(), 1)
+
+    def _record_provenance(
+        self,
+        *,
+        ts: str,
+        module: str,
+        params: Dict[str, Any],
+        tool_versions: Dict[str, str],
+        inputs: Dict[str, Any],
+        outputs: Iterable[str],
+        sha256: Iterable[Dict[str, str]],
+        duration: float,
+        exit_code: int,
+        result: Optional[ModuleResult],
+    ) -> None:
+        if not self.current_case:
+            return
+
+        provenance_dir = self.current_case.case_dir / "meta"
+        provenance_dir.mkdir(exist_ok=True)
+        provenance_file = provenance_dir / "provenance.jsonl"
+
+        outputs_list = sorted({str(path) for path in outputs})
+        sha_entries = sorted(
+            ({"path": entry["path"], "sha256": entry["sha256"]} for entry in sha256),
+            key=lambda item: item["path"],
+        )
+
+        record: Dict[str, Any] = {
+            "ts": ts,
+            "module": module,
+            "params": params,
+            "tool_versions": dict(sorted(tool_versions.items())),
+            "inputs": inputs,
+            "outputs": outputs_list,
+            "sha256": sha_entries,
+            "duration": round(duration, 6),
+            "exit_code": exit_code,
+        }
+
+        if result is not None:
+            record["result_id"] = result.result_id
+            record["status"] = result.status
+
+        with provenance_file.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, sort_keys=True) + "\n")
+
     def _compute_hash(self, file_path: Path, algorithm: str = "sha256") -> str:
         """Compute file hash"""
-        import hashlib
 
-        h = hashlib.sha256() if algorithm == "sha256" else hashlib.md5()
-
-        with open(file_path, "rb") as f:
-            for chunk in iter(lambda: f.read(65536), b""):
-                h.update(chunk)
-
-        return h.hexdigest()
+        return compute_hash(Path(file_path), algorithm)
 
     def list_cases(self) -> List[Dict]:
         """List all cases"""

@@ -304,6 +304,7 @@ class ReportGenerator(ReportingModule):
                    collected_at, hash_sha256, metadata
             FROM evidence
             WHERE case_id = ?
+            ORDER BY evidence_id ASC
         """,
             (case_id,),
         )
@@ -334,12 +335,12 @@ class ReportGenerator(ReportingModule):
         if not analysis_dir.exists():
             return findings
 
-        for module_dir in analysis_dir.iterdir():
+        for module_dir in sorted(analysis_dir.iterdir(), key=lambda p: p.name):
             if not module_dir.is_dir():
                 continue
 
             # Look for result files
-            for result_file in module_dir.glob("*.json"):
+            for result_file in sorted(module_dir.glob("*.json")):
                 try:
                     with open(result_file) as f:
                         result_data = json.load(f)
@@ -356,7 +357,14 @@ class ReportGenerator(ReportingModule):
 
         # Sort by severity
         severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
-        findings.sort(key=lambda f: severity_order.get(f.get("severity", "info"), 99))
+        findings.sort(
+            key=lambda f: (
+                severity_order.get(f.get("severity", "info"), 99),
+                f.get("module", ""),
+                f.get("description", ""),
+                f.get("source_file", ""),
+            )
+        )
 
         return findings
 
@@ -392,7 +400,7 @@ class ReportGenerator(ReportingModule):
                 if not timeline_dir.exists():
                     continue
 
-                for timeline_file in timeline_dir.glob("*.csv"):
+                for timeline_file in sorted(timeline_dir.glob("*.csv")):
                     try:
                         import csv
 
@@ -504,6 +512,21 @@ class ReportGenerator(ReportingModule):
 
         summary["top_talkers"] = self._finalise_top_talkers(flow_accumulator)
         summary["available"] = bool(summary["artifacts"])
+        summary["artifacts"].sort()
+        summary["dns_findings"].sort(
+            key=lambda item: (
+                item.get("timestamp", ""),
+                item.get("query", ""),
+                item.get("src", ""),
+            )
+        )
+        summary["http_findings"].sort(
+            key=lambda item: (
+                item.get("timestamp", ""),
+                item.get("destination", ""),
+                item.get("method", ""),
+            )
+        )
 
         return summary
 
@@ -554,8 +577,13 @@ class ReportGenerator(ReportingModule):
     ) -> List[Dict[str, Any]]:
         talkers = list(accumulator.values())
         talkers.sort(
-            key=lambda item: (item.get("bytes", 0), item.get("packets", 0)),
-            reverse=True,
+            key=lambda item: (
+                -int(item.get("bytes", 0) or 0),
+                -int(item.get("packets", 0) or 0),
+                item.get("src", ""),
+                item.get("dst", ""),
+                item.get("protocol", ""),
+            )
         )
         return talkers[:10]
 
@@ -586,7 +614,13 @@ class ReportGenerator(ReportingModule):
                 }
             )
 
-        findings.sort(key=lambda item: item.get("timestamp", ""))
+        findings.sort(
+            key=lambda item: (
+                item.get("timestamp", ""),
+                item.get("query", ""),
+                item.get("src", ""),
+            )
+        )
         return findings[:20]
 
     def _collect_http_findings(
@@ -634,7 +668,13 @@ class ReportGenerator(ReportingModule):
                 }
             )
 
-        findings.sort(key=lambda item: item.get("timestamp", ""))
+        findings.sort(
+            key=lambda item: (
+                item.get("timestamp", ""),
+                item.get("destination", ""),
+                item.get("method", ""),
+            )
+        )
         return findings[:20]
 
     def _get_coc_events(self) -> List[Dict]:
