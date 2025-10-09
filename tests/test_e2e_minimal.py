@@ -2,15 +2,18 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Optional
+from types import SimpleNamespace
 
 import pytest
 from click.testing import CliRunner
 
 from forensic.cli import cli
+from forensic.core import config as config_module
 from forensic.core.evidence import EvidenceType
 from forensic.core.framework import ForensicFramework
 from forensic.modules.analysis.network import NetworkAnalysisModule
@@ -152,9 +155,78 @@ def test_minimal_end_to_end_flow(tmp_path: Path) -> None:
     assert optional_result == json_target
     assert paths_utils.optional_path(None) is None
 
+    python_tool = Path(sys.executable).name
+    resolved_python = cmd_utils.ensure_tool(python_tool)
+    assert resolved_python.endswith(python_tool)
+    command_result = cmd_utils.run(
+        [Path(resolved_python), "-c", "print('cmd util coverage')"]
+    )
+    assert "cmd util coverage" in command_result.stdout
+    with pytest.raises(TypeError):
+        cmd_utils.run("not a sequence")
+    with pytest.raises(cmd_utils.CommandError):
+        cmd_utils.ensure_tool("forensic-tool-that-should-not-exist")
+
+    hash_target = resolved_workspace / "hash-target.txt"
+    io_utils.write_text(hash_target, "hash me")
+    hashes = hashing.compute_hashes(hash_target, ["md5", "sha1"])
+    assert set(hashes) == {"md5", "sha1"}
+
+    config_dir = resolved_workspace / "config-demo"
+    config_dir.mkdir()
+    config_file = config_dir / "framework.yaml"
+    config_file.write_text("log_level: DEBUG\nmax_workers: 3", encoding="utf-8")
+
+    assert config_module.load_yaml(config_dir / "missing.yaml") == {}
+    original_yaml = config_module.yaml
+    with pytest.warns(RuntimeWarning):
+        assert config_module.load_yaml(config_file) == {}
+
+    error_yaml = SimpleNamespace(safe_load=lambda handle: [1, 2, 3])
+    config_module.yaml = error_yaml
+    with pytest.raises(TypeError):
+        config_module.load_yaml(config_file)
+
+    stub_yaml = SimpleNamespace(
+        safe_load=lambda handle: {
+            line.split(":", 1)[0].strip(): line.split(":", 1)[1].strip()
+            for line in handle.read().splitlines()
+            if ":" in line
+        }
+    )
+    config_module.yaml = stub_yaml
+    os.environ["FORENSIC_MAX_WORKERS"] = "6"
+    os.environ["FORENSIC_ENABLE_COC"] = "FALSE"
+    os.environ["FORENSIC_CONFIG_DIR"] = str(config_dir)
+    try:
+        loaded = config_module.load_yaml(config_file)
+        assert loaded["log_level"] == "DEBUG"
+        merged_config = config_module.merge_dicts(
+            {"network": {"interface": "eth0", "timeout": 3}},
+            {"network": {"timeout": 10}},
+        )
+        assert merged_config["network"]["timeout"] == 10
+        cfg = config_module.get_config(
+            config_root=None, overrides={"workspace_name": "demo-case"}
+        )
+        resolved_root = config_module._resolve_config_root(None)
+        assert resolved_root == config_dir
+    finally:
+        config_module.yaml = original_yaml
+        os.environ.pop("FORENSIC_MAX_WORKERS", None)
+        os.environ.pop("FORENSIC_ENABLE_COC", None)
+        os.environ.pop("FORENSIC_CONFIG_DIR", None)
+
+    assert cfg.log_level == "DEBUG"
+    assert cfg.max_workers == 6
+    assert cfg.enable_coc is False
+    assert cfg.workspace_name == "demo-case"
+    assert cfg.as_dict()["log_level"] == "DEBUG"
+
     naive_timestamp = timefmt.to_iso(datetime(2024, 1, 1, 12, 0, 0))
     aware_timestamp = timefmt.to_iso(datetime(2024, 1, 1, 14, 0, 0, tzinfo=timezone.utc))
     current_timestamp = timefmt.utcnow_iso()
+    assert timefmt.to_iso(None) is None
     assert naive_timestamp == "2024-01-01T12:00:00Z"
     assert aware_timestamp == "2024-01-01T14:00:00Z"
     assert current_timestamp.endswith("Z")
