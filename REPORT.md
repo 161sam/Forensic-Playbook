@@ -71,11 +71,19 @@ successfully. Reporting exporter round-trips are covered in
 * Disk imaging, timeline and other heavy modules still rely on external tooling
   and provide guidance instead of automated execution.
 
-## Phase-3 to-do
+## Phase-3 status
 
-* Implement real memory capture/network capture backends with safe feature
-  flags.
-* Expand PCAP parsing + timeline generation once external tooling is available
-  on runners.
-* Introduce PDF/HTML report renderer compatible with exporter pipeline.
-* Add end-to-end tests covering diagnostics output and report generation CLI.
+| Bereich | Vorher | Nachher |
+| --- | --- | --- |
+| CI (E2E) | Kein End-to-end-Job, nur Unit Tests | Minimalflow in GitHub Actions mit HTML-Report + Coverage-Artefakten |
+| Dokumentation | README ohne Real-Backend-/Report-Anleitungen | Ergänzte Sektionen zu Acquisition, Netzwerk/Timeline-Walkthrough und Reports |
+| Modul-Matrix | Manuelle Nachpflege, ohne Guard/Backend-Spalten | Generator erweitert um „Backend/Extra“ & „Guard“, README synchronisiert |
+
+### Phase-3 nächste Schritte
+
+* Testsuite ausweiten, um zusätzliche Module und reale Tool-Pfade im E2E-Job zu
+  validieren.
+* PDF-Renderer in CI verfügbar machen (z. B. über `report_pdf`-Extra) und
+  Artefakte automatisch publizieren.
+* Netzwerk- und Timeline-Korrelation um weitere Datenquellen erweitern, sobald
+  optionale Tools auf Runners bereitstehen.
