@@ -207,7 +207,9 @@ class PersistenceModule(TriageModule):
 
                 if base_path.is_dir():
                     try:
-                        entries = sorted(base_path.iterdir(), key=lambda item: item.name)
+                        entries = sorted(
+                            base_path.iterdir(), key=lambda item: item.name
+                        )
                     except PermissionError:
                         warnings.append(
                             f"Unable to enumerate directory contents: {base_path}"

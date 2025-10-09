@@ -225,7 +225,9 @@ def test_minimal_end_to_end_flow(tmp_path: Path) -> None:
     assert cfg.as_dict()["log_level"] == "DEBUG"
 
     naive_timestamp = timefmt.to_iso(datetime(2024, 1, 1, 12, 0, 0))
-    aware_timestamp = timefmt.to_iso(datetime(2024, 1, 1, 14, 0, 0, tzinfo=timezone.utc))
+    aware_timestamp = timefmt.to_iso(
+        datetime(2024, 1, 1, 14, 0, 0, tzinfo=timezone.utc)
+    )
     current_timestamp = timefmt.utcnow_iso()
     assert timefmt.to_iso(None) is None
     assert naive_timestamp == "2024-01-01T12:00:00Z"
