@@ -75,7 +75,9 @@ def run_minimal_flow(workspace: Path, report_path: Path) -> Path:
         description="Minimal PCAP fixture",
     )
 
-    analysis_result = framework.execute_module("network", params={"pcap": str(pcap_path)})
+    analysis_result = framework.execute_module(
+        "network", params={"pcap": str(pcap_path)}
+    )
     if analysis_result.status != "success":
         raise RuntimeError(
             "Network analysis failed:"
@@ -83,14 +85,19 @@ def run_minimal_flow(workspace: Path, report_path: Path) -> Path:
         )
 
     report_module = ReportGenerator(case_dir=case.case_dir, config=framework.config)
-    report_result = report_module.run(None, {"format": "html", "output_file": str(report_path)})
+    report_result = report_module.run(
+        None, {"format": "html", "output_file": str(report_path)}
+    )
     if report_result.status != "success":
         raise RuntimeError(
             "Report generation failed:"
             f" {report_result.status} | {report_result.errors}"
         )
 
-    if report_result.output_path is None or not Path(report_result.output_path).exists():
+    if (
+        report_result.output_path is None
+        or not Path(report_result.output_path).exists()
+    ):
         raise RuntimeError("Report was not written to disk")
 
     return Path(report_result.output_path)
