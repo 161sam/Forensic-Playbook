@@ -84,7 +84,10 @@ def export_report(data: Dict[str, Any], fmt: str, outpath: Path) -> Path:
     outpath.parent.mkdir(parents=True, exist_ok=True)
 
     if fmt == "json":
-        outpath.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
+        outpath.write_text(
+            json.dumps(data, indent=2, default=str, sort_keys=True),
+            encoding="utf-8",
+        )
     elif fmt in {"md", "markdown"}:
         outpath.write_text(_to_markdown(data), encoding="utf-8")
     elif fmt == "html":

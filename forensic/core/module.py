@@ -328,7 +328,7 @@ class ForensicModule(ABC):
 
         output_file = self.output_dir / filename
         with open(output_file, "w") as f:
-            json.dump(asdict(result), f, indent=2, default=str)
+            json.dump(asdict(result), f, indent=2, default=str, sort_keys=True)
 
         self.logger.info(f"Result saved: {output_file}")
 

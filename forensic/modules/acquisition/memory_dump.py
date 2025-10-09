@@ -198,7 +198,9 @@ class MemoryDumpModule(AcquisitionModule):
         metadata["size_bytes"] = output_path.stat().st_size
 
         meta_path = self._ensure_unique_meta(meta_path)
-        meta_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+        meta_path.write_text(
+            json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8"
+        )
 
         self._log_chain_of_custody(hash_value, output_path, meta_path)
 

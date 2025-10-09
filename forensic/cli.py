@@ -73,7 +73,9 @@ def _emit_status(
 
     if json_mode:
         indent = None if quiet else 2
-        click.echo(json.dumps(payload, indent=indent, default=_json_default))
+        click.echo(
+            json.dumps(payload, indent=indent, default=_json_default, sort_keys=True)
+        )
     else:
         if message and (not quiet or status != "success"):
             click.echo(message, err=status == "error")
@@ -654,7 +656,7 @@ def run_module(
         for finding in module_payload["findings"]:
             if isinstance(finding, dict):
                 description = finding.get("description") or json.dumps(
-                    finding, default=_json_default
+                    finding, default=_json_default, sort_keys=True
                 )
             else:
                 description = str(finding)
@@ -762,7 +764,7 @@ def generate_report(
         for finding in payload["findings"]:
             if isinstance(finding, dict):
                 description = finding.get("description") or json.dumps(
-                    finding, default=_json_default
+                    finding, default=_json_default, sort_keys=True
                 )
             else:
                 description = str(finding)

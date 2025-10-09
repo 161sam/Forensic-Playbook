@@ -171,7 +171,12 @@ class MemoryAnalysisModule(AnalysisModule):
         # Save comprehensive report
         report_file = self.output_dir / "memory_analysis_report.json"
         with open(report_file, "w") as f:
-            json.dump({"metadata": metadata, "findings": findings}, f, indent=2)
+            json.dump(
+                {"metadata": metadata, "findings": findings},
+                f,
+                indent=2,
+                sort_keys=True,
+            )
 
         status = "success" if not errors else "partial"
 
@@ -268,7 +273,7 @@ class MemoryAnalysisModule(AnalysisModule):
             # Save process list
             process_file = self.output_dir / "processes.json"
             with open(process_file, "w") as f:
-                json.dump(processes, f, indent=2)
+                json.dump(processes, f, indent=2, sort_keys=True)
 
             findings.append(
                 {
@@ -330,7 +335,7 @@ class MemoryAnalysisModule(AnalysisModule):
                 except (ValueError, IndexError):
                     continue
 
-        return processes
+        return sorted(processes, key=lambda proc: (proc.get("pid", 0), proc.get("name", "")))
 
     def _detect_suspicious_processes(self, processes: List[Dict]) -> List[Dict]:
         """Detect suspicious process patterns"""
@@ -381,7 +386,7 @@ class MemoryAnalysisModule(AnalysisModule):
             # Save connections
             network_file = self.output_dir / "network_connections.json"
             with open(network_file, "w") as f:
-                json.dump(connections, f, indent=2)
+                json.dump(connections, f, indent=2, sort_keys=True)
 
             findings.append(
                 {

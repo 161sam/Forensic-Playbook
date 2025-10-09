@@ -554,7 +554,19 @@ def scan_pnpm_lock(file_path: Path) -> List[Dict[str, str]]:
 
 def format_json(result: ScanResult) -> str:
     """Format results as JSON"""
-    return json.dumps(asdict(result), indent=2, default=str)
+    result_dict = asdict(result)
+    matches = result_dict.get("matches")
+    if isinstance(matches, list):
+        result_dict["matches"] = sorted(
+            matches,
+            key=lambda item: (
+                item.get("ioc", {}).get("type", ""),
+                item.get("ioc", {}).get("value", ""),
+                item.get("file_path") or "",
+                item.get("line_number") or 0,
+            ),
+        )
+    return json.dumps(result_dict, indent=2, default=str, sort_keys=True)
 
 
 def format_csv(result: ScanResult) -> str:
@@ -576,7 +588,15 @@ def format_csv(result: ScanResult) -> str:
     )
 
     # Data rows
-    for match in result.matches:
+    for match in sorted(
+        result.matches,
+        key=lambda item: (
+            getattr(item.ioc, "type", ""),
+            getattr(item.ioc, "value", ""),
+            item.file_path or "",
+            item.line_number or 0,
+        ),
+    ):
         writer.writerow(
             [
                 match.ioc.type,
@@ -622,7 +642,15 @@ def format_sarif(result: ScanResult) -> str:
         ],
     }
 
-    for match in result.matches:
+    for match in sorted(
+        result.matches,
+        key=lambda item: (
+            getattr(item.ioc, "type", ""),
+            getattr(item.ioc, "value", ""),
+            item.file_path or "",
+            item.line_number or 0,
+        ),
+    ):
         sarif["runs"][0]["results"].append(
             {
                 "ruleId": "IOC_MATCH",
@@ -648,7 +676,7 @@ def format_sarif(result: ScanResult) -> str:
             }
         )
 
-    return json.dumps(sarif, indent=2)
+    return json.dumps(sarif, indent=2, sort_keys=True)
 
 
 # ============================================================================

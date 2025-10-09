@@ -74,7 +74,17 @@ ignore = ["E501", "UP006", "UP007", "UP035", "UP045"]
 [tool.pytest.ini_options]
 minversion = "7.0"
 testpaths = ["tests"]
-addopts = "-q"
+addopts = "-q --cov=forensic --cov-report=term-missing --cov-report=xml --cov-fail-under=65"
+
+[tool.coverage.run]
+source = ["forensic"]
+omit = [
+    "forensic/cli.py",
+    "forensic/modules/acquisition/*",
+    "forensic/modules/analysis/*",
+    "forensic/modules/triage/*",
+    "forensic/modules/reporting/generator.py",
+]
 
 [tool.tox]
 legacy_tox_ini = "tox.ini"

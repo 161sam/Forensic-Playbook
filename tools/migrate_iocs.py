@@ -32,7 +32,7 @@ def main():
                 )
 
     with open(output_file, "w") as f:
-        json.dump(iocs, f, indent=2)
+        json.dump(iocs, f, indent=2, sort_keys=True)
 
     print(f"Migrated {len(iocs)} IoCs to {output_file}")
 

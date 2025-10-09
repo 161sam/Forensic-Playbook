@@ -252,7 +252,7 @@ class NetworkAnalysisModule(AnalysisModule):
         }
 
         with output_file.open("w", encoding="utf-8") as handle:
-            json.dump(payload, handle, indent=2)
+            json.dump(payload, handle, indent=2, sort_keys=True)
 
         findings = [
             {

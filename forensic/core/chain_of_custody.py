@@ -144,7 +144,7 @@ class ChainOfCustody:
                 actor,
                 action,
                 description,
-                json.dumps(metadata) if metadata else None,
+                json.dumps(metadata, sort_keys=True) if metadata else None,
                 integrity_hash,
                 previous_event_id,
             ),
@@ -316,8 +316,16 @@ class ChainOfCustody:
         else:
             raise ValueError("Must provide either case_id or evidence_id")
 
+        events_sorted = sorted(
+            events,
+            key=lambda item: (
+                item.get("timestamp") or "",
+                item.get("event_id") or "",
+            ),
+        )
+
         if format == "json":
-            output = json.dumps(events, indent=2)
+            output = json.dumps(events_sorted, indent=2, sort_keys=True)
         elif format == "csv":
             import csv
             import io
@@ -335,7 +343,7 @@ class ChainOfCustody:
                 ],
             )
             writer.writeheader()
-            for event in events:
+            for event in events_sorted:
                 writer.writerow({k: event.get(k, "") for k in writer.fieldnames})
             output = output_buffer.getvalue()
         elif format == "html":

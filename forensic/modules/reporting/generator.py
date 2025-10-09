@@ -834,7 +834,7 @@ class ReportGenerator(ReportingModule):
 
         output_file.parent.mkdir(parents=True, exist_ok=True)
         with open(output_file, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, default=str)
+            json.dump(data, f, indent=2, default=str, sort_keys=True)
 
         self.logger.info(f"JSON report generated: {output_file}")
         return output_file
