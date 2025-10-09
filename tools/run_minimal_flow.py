@@ -25,10 +25,19 @@ def _synthesise_network_fixture(
 
     pcap_path, synth_stdout = invoke_pcap_synth(out_dir)
     if pcap_path is not None:
+        print(
+            f"[e2e] Synthesizer produced PCAP fixture at {pcap_path}",
+            flush=True,
+        )
         return pcap_path, {"pcap": str(pcap_path)}, None
 
     if not synth_stdout:
         raise RuntimeError("Synthesizer returned no fixture data")
+
+    print(
+        "[e2e] Synthesizer returned JSON fallback; using --pcap-json - via STDIN",
+        flush=True,
+    )
 
     payload = json.loads(synth_stdout)
     json_fixture = out_dir / "minimal_pcap.json"
