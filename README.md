@@ -141,6 +141,11 @@ The walkthrough runs entirely on local fixtures and relies on safe fallbacks
 when optional extras (such as `scapy`, `pyshark` or `log2timeline.py`) are not
 available.
 
+> **Fixture policy:** PCAP-Fixtures werden zur Laufzeit über einen kleinen
+> Synthesizer erzeugt oder – falls das nicht möglich ist – aus JSON-Fallbacks
+> gespeist. Dadurch liegen keine Binär-Fixtures im Repository und das Setup
+> bleibt deterministisch.
+
 ## Reports (HTML/PDF)
 
 Reporting is handled by `report_generator`, which renders HTML by default and
