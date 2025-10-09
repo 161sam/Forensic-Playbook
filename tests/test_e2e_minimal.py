@@ -179,6 +179,8 @@ def test_minimal_end_to_end_flow(tmp_path: Path) -> None:
 
     assert config_module.load_yaml(config_dir / "missing.yaml") == {}
     original_yaml = config_module.yaml
+    if original_yaml is not None:
+        config_module.yaml = None
     with pytest.warns(RuntimeWarning):
         assert config_module.load_yaml(config_file) == {}
 
