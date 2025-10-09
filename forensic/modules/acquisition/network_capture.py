@@ -23,6 +23,7 @@ class NetworkCaptureModule(AcquisitionModule):
         super().__init__(case_dir=case_dir, config=config)
         self.output_dir = self.case_dir / "acq" / "pcap"
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        self._param_sources: Dict[str, str] = {}
 
     @property
     def name(self) -> str:
@@ -58,22 +59,72 @@ class NetworkCaptureModule(AcquisitionModule):
     def validate_params(self, params: Dict) -> bool:
         defaults = self._config_defaults()
 
-        params.setdefault(
-            "duration", defaults.get("duration", defaults.get("default_duration", 300))
-        )
-        params.setdefault(
-            "interface",
-            defaults.get("interface", defaults.get("default_interface", "any")),
-        )
-        params.setdefault(
-            "bpf", defaults.get("bpf", defaults.get("default_bpf", "not port 22"))
-        )
-        params.setdefault("dry_run", False)
-        params.setdefault("enable_live_capture", False)
-        if "tool" not in params:
-            tool_default = defaults.get("tool", defaults.get("default_tool"))
-            if tool_default:
-                params["tool"] = tool_default
+        original_params = dict(params)
+        resolved: Dict[str, Any] = {}
+        self._param_sources = {}
+
+        def _resolve(
+            key: str,
+            *,
+            builtin: Any = None,
+            fallback_keys: Optional[Sequence[str]] = None,
+        ) -> Any:
+            if key in original_params:
+                raw_value = original_params[key]
+                if isinstance(raw_value, str):
+                    trimmed = raw_value.strip()
+                    if trimmed:
+                        resolved[key] = trimmed
+                        self._param_sources[key] = "cli"
+                        return trimmed
+                elif raw_value is not None:
+                    resolved[key] = raw_value
+                    self._param_sources[key] = "cli"
+                    return raw_value
+
+            search_keys: list[str] = [key]
+            if fallback_keys:
+                search_keys.extend(list(fallback_keys))
+            search_keys.append(f"default_{key}")
+
+            seen: set[str] = set()
+            for candidate in search_keys:
+                if candidate in seen:
+                    continue
+                seen.add(candidate)
+                config_value = defaults.get(candidate)
+                if isinstance(config_value, str):
+                    config_value = config_value.strip()
+                if config_value in (None, ""):
+                    continue
+                resolved[key] = config_value
+                self._param_sources[key] = "config"
+                return config_value
+
+            if builtin is not None:
+                resolved[key] = builtin
+                self._param_sources[key] = "default"
+                return builtin
+
+            return None
+
+        _resolve("duration", builtin=300)
+        _resolve("interface", builtin="any")
+        _resolve("bpf", builtin="not port 22")
+        _resolve("count", builtin=None)
+        _resolve("dry_run", builtin=False)
+        _resolve("enable_live_capture", builtin=False)
+        _resolve("tool", builtin="dumpcap", fallback_keys=["default_tool"])
+
+        params.clear()
+        params.update(resolved)
+
+        for key, value in original_params.items():
+            if key in params:
+                continue
+            params[key] = value
+            self._param_sources.setdefault(key, "cli")
+
         return True
 
     def run(self, evidence: Optional[Evidence], params: Dict) -> ModuleResult:
@@ -81,24 +132,37 @@ class NetworkCaptureModule(AcquisitionModule):
 
         result_id = self._generate_result_id()
         timestamp = utc_isoformat()
-        dry_run = bool(params.get("dry_run", False))
-        enable_live_capture = bool(params.get("enable_live_capture", False))
+        parameter_sources = dict(getattr(self, "_param_sources", {}))
+
+        def _to_bool(value: Any) -> bool:
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, str):
+                lowered = value.strip().lower()
+                if lowered in {"1", "true", "yes", "on"}:
+                    return True
+                if lowered in {"0", "false", "no", "off"}:
+                    return False
+            return bool(value)
+
+        dry_run = _to_bool(params.get("dry_run", False))
+        enable_live_capture = _to_bool(params.get("enable_live_capture", False))
 
         try:
             duration = int(params.get("duration", 300))
             if duration <= 0:
                 raise ValueError
         except (TypeError, ValueError):
-            return ModuleResult(
-                result_id=result_id,
-                module_name=self.name,
+            metadata = {
+                "duration": params.get("duration"),
+                "parameter_sources": parameter_sources,
+            }
+            return self.guard_result(
+                "Invalid duration specified. Duration must be a positive integer.",
                 status="failed",
+                metadata=metadata,
+                result_id=result_id,
                 timestamp=timestamp,
-                findings=[],
-                metadata={},
-                errors=[
-                    "Invalid duration specified. Duration must be a positive integer."
-                ],
             )
 
         count_param = params.get("count")
@@ -111,43 +175,42 @@ class NetworkCaptureModule(AcquisitionModule):
                 if packet_count <= 0:
                     raise ValueError
             except (TypeError, ValueError):
-                return ModuleResult(
-                    result_id=result_id,
-                    module_name=self.name,
+                metadata = {
+                    "count": count_param,
+                    "parameter_sources": parameter_sources,
+                }
+                return self.guard_result(
+                    "Invalid packet count specified. Count must be a positive integer.",
                     status="failed",
+                    metadata=metadata,
+                    result_id=result_id,
                     timestamp=timestamp,
-                    findings=[],
-                    metadata={},
-                    errors=[
-                        "Invalid packet count specified. Count must be a positive integer.",
-                    ],
                 )
 
         interface = str(params.get("interface", "any"))
         bpf_filter = str(params.get("bpf", "not port 22"))
         hostname = params.get("hostname") or socket.gethostname() or "localhost"
 
-        selection = self._select_capture_tool(params.get("tool"))
+        selection = self._select_capture_tool(
+            params.get("tool"), parameter_sources.get("tool") == "cli"
+        )
         if not selection:
-            message = (
-                "Neither dumpcap nor tcpdump is available. Install one of them to "
-                "perform network captures."
-            )
             metadata = {
                 "missing_tools": ["dumpcap", "tcpdump"],
                 "interface": interface,
                 "bpf": bpf_filter,
                 "duration": duration,
                 "count": packet_count,
+                "parameter_sources": parameter_sources,
             }
-            return ModuleResult(
-                result_id=result_id,
-                module_name=self.name,
-                status="skipped",
-                timestamp=timestamp,
-                findings=[],
+            guidance = "Install dumpcap or tcpdump to enable network captures."
+            return self.guard_result(
+                "Neither dumpcap nor tcpdump is available. Capture skipped.",
+                hints=[guidance],
                 metadata=metadata,
-                errors=[message],
+                status="skipped",
+                result_id=result_id,
+                timestamp=timestamp,
             )
 
         tool_name, tool_path = selection
@@ -178,7 +241,9 @@ class NetworkCaptureModule(AcquisitionModule):
             "tool_path": tool_path,
             "command": command,
             "dry_run": dry_run,
+            "parameter_sources": parameter_sources,
             "output": str(output_path),
+            "enable_live_capture": enable_live_capture,
         }
 
         if dry_run:
@@ -188,6 +253,7 @@ class NetworkCaptureModule(AcquisitionModule):
                     "description": "Dry-run enabled. Capture command prepared.",
                     "command": " ".join(command),
                     "output": str(output_path),
+                    "parameter_sources": parameter_sources,
                 }
             ]
             return ModuleResult(
@@ -206,14 +272,13 @@ class NetworkCaptureModule(AcquisitionModule):
                 "Live capture is disabled. Re-run with --enable-live-capture to confirm "
                 "intentional packet acquisition."
             )
-            return ModuleResult(
-                result_id=result_id,
-                module_name=self.name,
-                status="failed",
-                timestamp=timestamp,
-                findings=[],
+            return self.guard_result(
+                message,
+                hints=["Pass --enable-live-capture to acknowledge live packet capture."],
                 metadata=metadata,
-                errors=[message],
+                status="skipped",
+                result_id=result_id,
+                timestamp=timestamp,
             )
 
         try:
@@ -247,6 +312,13 @@ class NetworkCaptureModule(AcquisitionModule):
 
         metadata["size_bytes"] = output_path.stat().st_size
         metadata["sha256"] = self._compute_hash(output_path)
+        hash_path = self._ensure_unique_path(
+            output_path.with_suffix(f"{output_path.suffix}.sha256")
+        )
+        hash_path.write_text(
+            f"{metadata['sha256']}  {output_path.name}\n", encoding="utf-8"
+        )
+        metadata["sha256_file"] = str(hash_path)
 
         meta_path = self._ensure_unique_meta(meta_path)
         meta_path.write_text(
@@ -254,7 +326,7 @@ class NetworkCaptureModule(AcquisitionModule):
         )
 
         self._log_chain_of_custody(
-            metadata["sha256"], output_path, meta_path, tool_name
+            metadata["sha256"], output_path, meta_path, tool_name, hash_path
         )
 
         findings = [
@@ -280,14 +352,18 @@ class NetworkCaptureModule(AcquisitionModule):
         )
 
     def _select_capture_tool(
-        self, requested: Optional[str]
+        self, requested: Optional[str], prefer_requested: bool
     ) -> Optional[tuple[str, str]]:
         candidates: list[str] = []
-        if requested:
+        if requested and prefer_requested:
             candidates.append(str(requested))
+
         for tool in ("dumpcap", "tcpdump"):
             if tool not in candidates:
                 candidates.append(tool)
+
+        if requested and not prefer_requested and requested not in candidates:
+            candidates.append(str(requested))
 
         for tool in candidates:
             if not self._verify_tool(tool):
@@ -371,7 +447,12 @@ class NetworkCaptureModule(AcquisitionModule):
         return candidate
 
     def _log_chain_of_custody(
-        self, hash_value: str, output_path: Path, meta_path: Path, tool_name: str
+        self,
+        hash_value: str,
+        output_path: Path,
+        meta_path: Path,
+        tool_name: str,
+        hash_file: Path,
     ) -> None:
         if not self.config.get("enable_coc", True):
             return
@@ -390,6 +471,7 @@ class NetworkCaptureModule(AcquisitionModule):
                     "path": str(output_path),
                     "metadata_file": str(meta_path),
                     "hash_sha256": hash_value,
+                    "hash_file": str(hash_file),
                     "tool": tool_name,
                 },
                 integrity_hash=hash_value,
