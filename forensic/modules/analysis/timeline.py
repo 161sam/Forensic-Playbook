@@ -149,6 +149,7 @@ class TimelineModule(AnalysisModule):
                     include_usnjrnl,
                     include_browser,
                     include_logs,
+                    effective_timezone,
                 )
             elif timeline_type == "mactime":
                 timeline_file, stats = self._generate_mactime_timeline(
@@ -278,6 +279,7 @@ class TimelineModule(AnalysisModule):
         include_usnjrnl: bool,
         include_browser: bool,
         include_logs: bool,
+        effective_timezone: str,
     ) -> Tuple[Path, Dict]:
         """Generate timeline using plaso/log2timeline"""
         self.logger.info("Using plaso/log2timeline for timeline generation")
