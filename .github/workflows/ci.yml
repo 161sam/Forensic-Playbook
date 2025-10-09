@@ -49,3 +49,29 @@ jobs:
         with:
           name: pytest-report
           path: pytest-report.txt
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install .[dev]
+      - name: Run minimal end-to-end flow
+        run: python tools/run_minimal_flow.py --workspace out/workspace --report out/report.html
+      - name: Execute minimal pytest suite with coverage
+        run: |
+          pytest tests/test_e2e_minimal.py --maxfail=1 --disable-warnings \
+            --cov=forensic --cov-report=term --cov-report=xml:coverage.xml
+      - name: Upload HTML report
+        uses: actions/upload-artifact@v4
+        with:
+          name: minimal-html-report
+          path: out/report.html
+      - name: Upload coverage XML
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-coverage
+          path: coverage.xml

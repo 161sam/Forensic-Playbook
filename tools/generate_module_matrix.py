@@ -33,6 +33,30 @@ STATIC_TOOL_HINTS = {
     "forensic.modules.acquisition.disk_imaging": ["ddrescue", "ewfacquire"],
 }
 
+BACKEND_HINTS = {
+    "forensic.modules.acquisition.disk_imaging": "ddrescue / ewfacquire",
+    "forensic.modules.acquisition.live_response": "coreutils (uname, ps, netstat)",
+    "forensic.modules.acquisition.memory_dump": "avml",
+    "forensic.modules.acquisition.network_capture": "tcpdump / dumpcap",
+    "forensic.modules.analysis.filesystem": "sleuthkit (fls, blkcat)",
+    "forensic.modules.analysis.malware": "yara extra",
+    "forensic.modules.analysis.memory": "memory extra (volatility3)",
+    "forensic.modules.analysis.network": "pcap extra (scapy, pyshark)",
+    "forensic.modules.analysis.registry": "reglookup / rip.pl",
+    "forensic.modules.analysis.timeline": "log2timeline.py / mactime",
+    "forensic.modules.reporting.exporter": "report_pdf extra (weasyprint)",
+    "forensic.modules.reporting.generator": "jinja2 templates",
+    "forensic.modules.triage.persistence": "filesystem inspection",
+    "forensic.modules.triage.quick_triage": "POSIX utilities",
+    "forensic.modules.triage.system_info": "platform / socket APIs",
+}
+
+GUARD_HINTS = {
+    "forensic.modules.acquisition.disk_imaging": "Root + block device access",
+    "forensic.modules.acquisition.memory_dump": "--enable-live-capture (Linux)",
+    "forensic.modules.acquisition.network_capture": "--enable-live-capture + root",
+}
+
 
 @dataclass
 class ModuleRow:
@@ -40,6 +64,8 @@ class ModuleRow:
     module: str
     status: str
     notes: str
+    backend: str
+    guard: str
 
 
 def iter_module_files() -> Iterable[Tuple[str, Path]]:
@@ -131,16 +157,25 @@ def build_rows() -> List[ModuleRow]:
 
         notes = format_notes(status, tools, import_error)
         label = CATEGORY_LABELS.get(category, category.title())
-        rows.append(ModuleRow(label, module_name, status, notes))
+        backend = BACKEND_HINTS.get(import_path, "")
+        guard = GUARD_HINTS.get(import_path, "")
+        rows.append(ModuleRow(label, module_name, status, notes, backend, guard))
 
     return rows
 
 
 def render_table(rows: Sequence[ModuleRow]) -> str:
-    lines = ["| Kategorie | Modul | Status | Notizen |", "| --- | --- | --- | --- |"]
+    lines = [
+        "| Kategorie | Modul | Status | Backend/Extra | Guard | Notizen |",
+        "| --- | --- | --- | --- | --- | --- |",
+    ]
     for row in rows:
         notes = row.notes if row.notes else "—"
-        lines.append(f"| {row.category} | `{row.module}` | {row.status} | {notes} |")
+        backend = row.backend if row.backend else "—"
+        guard = row.guard if row.guard else "—"
+        lines.append(
+            f"| {row.category} | `{row.module}` | {row.status} | {backend} | {guard} | {notes} |"
+        )
     return "\n".join(lines)
 
 
