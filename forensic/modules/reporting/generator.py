@@ -35,7 +35,17 @@ class ReportGenerator(ReportingModule):
 
     def __init__(self, case_dir: Path, config: Dict):
         super().__init__(case_dir=case_dir, config=config)
-        self.output_dir = self.case_dir / "reports"
+        defaults = self._module_config("reports")
+        configured_output_dir = defaults.get("output_dir")
+
+        if configured_output_dir:
+            candidate_path = Path(configured_output_dir)
+            if not candidate_path.is_absolute():
+                candidate_path = self.case_dir / configured_output_dir
+            self.output_dir = candidate_path
+        else:
+            self.output_dir = self.case_dir / "reports"
+
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
     @property

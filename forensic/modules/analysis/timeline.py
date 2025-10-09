@@ -49,6 +49,22 @@ class TimelineModule(AnalysisModule):
     def requires_root(self) -> bool:
         return False
 
+    def _config_defaults(self) -> Dict[str, Any]:
+        return self._module_config("timeline")
+
+    def _effective_timezone(self, params: Dict) -> str:
+        if params.get("timezone"):
+            return str(params["timezone"])
+
+        defaults = self._config_defaults()
+        if defaults.get("timezone"):
+            return str(defaults["timezone"])
+
+        if self.config.get("timezone"):
+            return str(self.config["timezone"])
+
+        return "UTC"
+
     def validate_params(self, params: Dict) -> bool:
         """Validate parameters"""
         if "source" not in params:
@@ -82,6 +98,8 @@ class TimelineModule(AnalysisModule):
         include_browser = params.get("include_browser", "true").lower() == "true"
         include_logs = params.get("include_logs", "true").lower() == "true"
 
+        effective_timezone = self._effective_timezone(params)
+
         findings = []
         errors = []
         metadata = {
@@ -89,6 +107,7 @@ class TimelineModule(AnalysisModule):
             "timeline_type": timeline_type,
             "output_format": output_format,
             "start": timestamp,
+            "timezone": effective_timezone,
         }
 
         self.logger.info(f"Generating timeline from: {source}")
@@ -328,7 +347,7 @@ class TimelineModule(AnalysisModule):
         psort_cmd = [
             "psort.py",
             "--output_time_zone",
-            "UTC",
+            effective_timezone,
             "-o",
             output_arg,
             "-w",

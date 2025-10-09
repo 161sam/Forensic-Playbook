@@ -98,7 +98,19 @@ class NetworkAnalysisModule(AnalysisModule):
     def requires_root(self) -> bool:
         return False
 
+    def _config_defaults(self) -> Dict[str, Any]:
+        return self._module_config("network")
+
     def validate_params(self, params: Dict) -> bool:
+        defaults = self._config_defaults()
+
+        for key in ("pcap", "pcap_json"):
+            if params.get(key):
+                continue
+            default_value = defaults.get(key)
+            if default_value:
+                params[key] = default_value
+
         has_pcap = "pcap" in params and params["pcap"]
         has_pcap_json = "pcap_json" in params and params["pcap_json"]
 
