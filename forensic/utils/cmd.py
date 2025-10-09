@@ -6,9 +6,9 @@ import shlex
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Iterable, Mapping, Optional, Sequence, Union
+from typing import Iterable, Mapping, Optional, Sequence
 
-Command = Sequence[Union[str, Path]]
+Command = Sequence[str | Path]
 
 
 class CommandError(RuntimeError):
@@ -30,15 +30,17 @@ def ensure_tool(tool: str) -> str:
     return resolved
 
 
-def _normalise_command(cmd: Iterable[Union[str, Path]]) -> list[str]:
-    if isinstance(cmd, (str, bytes)):
-        raise TypeError("Command must be an iterable of path/str components, not a string")
+def _normalise_command(cmd: Iterable[str | Path]) -> list[str]:
+    if isinstance(cmd, str | bytes):
+        raise TypeError(
+            "Command must be an iterable of path/str components, not a string"
+        )
 
     normalised: list[str] = []
     for part in cmd:
         if isinstance(part, Path):
             normalised.append(str(part))
-        elif isinstance(part, (str, bytes)):
+        elif isinstance(part, str | bytes):
             normalised.append(str(part))
         else:
             raise TypeError(f"Unsupported command argument type: {type(part)!r}")

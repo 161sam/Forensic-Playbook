@@ -334,6 +334,7 @@ def init_case(
         data=data,
     )
 
+
 @case.command("list")
 @click.pass_context
 def list_cases(ctx: click.Context) -> None:
