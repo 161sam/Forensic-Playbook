@@ -65,7 +65,7 @@ class MemoryDumpModule(AcquisitionModule):
             return ModuleResult(
                 result_id=result_id,
                 module_name=self.name,
-                status="failed",
+                status="skipped",
                 timestamp=timestamp,
                 findings=[],
                 metadata={"enable_live_capture": enable_live_capture},
@@ -99,8 +99,7 @@ class MemoryDumpModule(AcquisitionModule):
                 errors=["Memory acquisition is only supported on Linux hosts."],
             )
 
-        avml_path = shutil.which("avml")
-        if not avml_path:
+        if not self._verify_tool("avml"):
             guidance = (
                 "avml is not available in the environment. Install Microsoft's AVML "
                 "utility or perform the capture manually."
@@ -114,6 +113,8 @@ class MemoryDumpModule(AcquisitionModule):
                 metadata={"platform": system, "missing_tools": ["avml"]},
                 errors=[guidance],
             )
+
+        avml_path = shutil.which("avml") or "avml"
 
         hostname = params.get("hostname") or socket.gethostname() or "localhost"
         slug = utc_slug()

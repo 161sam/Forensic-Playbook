@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import html
 import importlib
 import json
 import shutil
@@ -87,8 +88,12 @@ def export_report(data: Dict[str, Any], fmt: str, outpath: Path) -> Path:
     elif fmt in {"md", "markdown"}:
         outpath.write_text(_to_markdown(data), encoding="utf-8")
     elif fmt == "html":
-        _ensure_jinja2()
-        outpath.write_text(_to_html(data), encoding="utf-8")
+        try:
+            _ensure_jinja2()
+        except RuntimeError:
+            outpath.write_text(_fallback_html(data), encoding="utf-8")
+        else:
+            outpath.write_text(_to_html(data), encoding="utf-8")
     else:
         raise ValueError(f"Unsupported export format: {fmt}")
 
@@ -151,6 +156,35 @@ def _to_markdown(data: Dict[str, Any], level: int = 1) -> str:
         else:
             lines.append(f"- **{key}**: {value}")
     return "\n".join(lines)
+
+
+def _fallback_html(data: Dict[str, Any]) -> str:
+    """Render a minimal HTML report without optional dependencies."""
+
+    case = data.get("case", {}) if isinstance(data, dict) else {}
+    title = case.get("name") or case.get("case_id") or "Case Overview"
+    subtitle = html.escape(str(title))
+
+    return """<!DOCTYPE html>
+<html lang=\"en\">
+  <head>
+    <meta charset=\"utf-8\">
+    <title>Forensic Investigation Report</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 2rem; }
+      h1 { color: #1f2933; }
+      .marker { color: #52606d; font-size: 0.95rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Forensic Investigation Report</h1>
+    <h2>{subtitle}</h2>
+    <p class=\"marker\" data-marker=\"report-fallback\">
+      HTML rendering via fallback template.
+    </p>
+  </body>
+</html>
+"""
 
 
 __all__ = ["export_report", "export_pdf", "get_pdf_renderer"]

@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import struct
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -120,38 +121,44 @@ class NetworkAnalysisModule(AnalysisModule):
             "generated_at": timestamp,
         }
 
-        has_extra = rdpcap is not None or pyshark is not None
-        if not has_extra:
-            warning = (
-                "PCAP analysis requires the optional 'pcap' extra. "
-                "Install via 'pip install forensic-playbook[pcap]'"
-            )
-            self.logger.warning(warning)
-            metadata["pcap_extra_available"] = False
-            return ModuleResult(
-                result_id=result_id,
-                module_name=self.name,
-                status="success",
-                timestamp=timestamp,
-                metadata=metadata,
-                findings=[{"type": "warning", "message": warning}],
-            )
-
-        metadata["pcap_extra_available"] = True
-
         flows: Dict[
             Tuple[str, str, Optional[int], Optional[int], str], FlowAccumulator
         ] = defaultdict(FlowAccumulator)
         dns_queries: List[Dict[str, object]] = []
         http_requests: List[Dict[str, object]] = []
 
+        fallback_used = False
+        has_extra = rdpcap is not None or pyshark is not None
+        metadata["pcap_extra_available"] = has_extra
+
         if rdpcap is not None:
             packets = rdpcap(str(pcap_file))
             self._process_scapy_packets(packets, flows, dns_queries, http_requests)
-        else:
+        elif pyshark is not None:
             self._process_pyshark_capture(
                 str(pcap_file), flows, dns_queries, http_requests
             )
+        else:
+            fallback_used = True
+            metadata["fallback_parser"] = "builtin"
+            try:
+                self._process_builtin_packets(
+                    pcap_file, flows, dns_queries, http_requests
+                )
+            except Exception as exc:  # pragma: no cover - defensive path
+                message = (
+                    "Failed to analyse PCAP without optional dependencies: "
+                    f"{exc}"
+                )
+                metadata["fallback_error"] = str(exc)
+                return ModuleResult(
+                    result_id=result_id,
+                    module_name=self.name,
+                    status="failed",
+                    timestamp=timestamp,
+                    metadata=metadata,
+                    errors=[message],
+                )
 
         flows_list = self._serialise_flows(flows)
         dns_summary = self._summarise_dns(dns_queries)
@@ -179,6 +186,15 @@ class NetworkAnalysisModule(AnalysisModule):
                 "output_file": str(output_file),
             }
         ]
+
+        if fallback_used:
+            findings.append(
+                {
+                    "type": "info",
+                    "severity": "info",
+                    "description": "Parsed PCAP using built-in lightweight parser",
+                }
+            )
 
         return ModuleResult(
             result_id=result_id,
@@ -271,6 +287,329 @@ class NetworkAnalysisModule(AnalysisModule):
                     )
         finally:
             capture.close()
+
+    def _process_builtin_packets(
+        self,
+        pcap_file: Path,
+        flows: Dict[
+            Tuple[str, str, Optional[int], Optional[int], str], FlowAccumulator
+        ],
+        dns_queries: List[Dict[str, object]],
+        http_requests: List[Dict[str, object]],
+    ) -> None:
+        """Parse packets using a minimal PCAP reader implemented in pure Python."""
+
+        for timestamp, length, frame in self._iter_pcap_packets(pcap_file):
+            if len(frame) < 14:
+                continue
+
+            eth_type = struct.unpack("!H", frame[12:14])[0]
+            if eth_type == 0x0800:  # IPv4
+                self._parse_ipv4_frame(
+                    timestamp, length, frame[14:], flows, dns_queries, http_requests
+                )
+            elif eth_type == 0x86DD:  # IPv6
+                self._parse_ipv6_frame(
+                    timestamp, length, frame[14:], flows, dns_queries, http_requests
+                )
+
+    def _iter_pcap_packets(
+        self, pcap_file: Path
+    ) -> Iterable[Tuple[float, int, bytes]]:
+        """Yield ``(timestamp, length, frame)`` tuples from ``pcap_file``."""
+
+        with pcap_file.open("rb") as handle:
+            header = handle.read(24)
+            if len(header) < 24:
+                raise ValueError("Incomplete PCAP global header")
+
+            magic_le = int.from_bytes(header[:4], "little")
+            magic_be = int.from_bytes(header[:4], "big")
+
+            if magic_le == 0xA1B2C3D4:
+                endian = "<"
+                ts_divisor = 1_000_000
+            elif magic_le == 0xA1B23C4D:
+                endian = "<"
+                ts_divisor = 1_000_000_000
+            elif magic_be == 0xA1B2C3D4:
+                endian = ">"
+                ts_divisor = 1_000_000
+            elif magic_be == 0xA1B23C4D:
+                endian = ">"
+                ts_divisor = 1_000_000_000
+            else:
+                raise ValueError(
+                    f"Unsupported PCAP magic value: {header[:4].hex()}"
+                )
+
+            while True:
+                packet_header = handle.read(16)
+                if not packet_header:
+                    break
+                if len(packet_header) < 16:
+                    raise ValueError("Incomplete PCAP packet header")
+
+                ts_sec, ts_frac, incl_len, orig_len = struct.unpack(
+                    f"{endian}IIII", packet_header
+                )
+
+                frame = handle.read(incl_len)
+                if len(frame) < incl_len:
+                    raise ValueError("Truncated PCAP packet data")
+
+                timestamp = ts_sec + (ts_frac / ts_divisor)
+                yield timestamp, orig_len, frame
+
+    def _parse_ipv4_frame(
+        self,
+        timestamp: float,
+        packet_len: int,
+        payload: bytes,
+        flows: Dict[
+            Tuple[str, str, Optional[int], Optional[int], str], FlowAccumulator
+        ],
+        dns_queries: List[Dict[str, object]],
+        http_requests: List[Dict[str, object]],
+    ) -> None:
+        if len(payload) < 20:
+            return
+
+        ihl = (payload[0] & 0x0F) * 4
+        if ihl < 20 or len(payload) < ihl:
+            return
+
+        protocol = payload[9]
+        src_ip = ".".join(str(b) for b in payload[12:16])
+        dst_ip = ".".join(str(b) for b in payload[16:20])
+
+        transport_payload = payload[ihl:]
+        src_port: Optional[int] = None
+        dst_port: Optional[int] = None
+
+        if protocol in (6, 17) and len(transport_payload) >= 4:
+            src_port, dst_port = struct.unpack("!HH", transport_payload[:4])
+
+        key = (src_ip, dst_ip, src_port, dst_port, self._protocol_name(protocol))
+        flows[key].update(timestamp, packet_len)
+
+        if protocol == 17:
+            self._maybe_record_dns(
+                timestamp,
+                src_ip,
+                dst_ip,
+                src_port,
+                dst_port,
+                transport_payload,
+                dns_queries,
+            )
+        elif protocol == 6:
+            self._maybe_record_http(
+                timestamp,
+                src_ip,
+                dst_ip,
+                src_port,
+                dst_port,
+                transport_payload,
+                http_requests,
+            )
+
+    def _parse_ipv6_frame(
+        self,
+        timestamp: float,
+        packet_len: int,
+        payload: bytes,
+        flows: Dict[
+            Tuple[str, str, Optional[int], Optional[int], str], FlowAccumulator
+        ],
+        dns_queries: List[Dict[str, object]],
+        http_requests: List[Dict[str, object]],
+    ) -> None:
+        if len(payload) < 40:
+            return
+
+        next_header = payload[6]
+        src_ip = ":".join(
+            f"{int.from_bytes(payload[i:i+2], 'big'):x}" for i in range(8, 24, 2)
+        )
+        dst_ip = ":".join(
+            f"{int.from_bytes(payload[i:i+2], 'big'):x}" for i in range(24, 40, 2)
+        )
+
+        transport_payload = payload[40:]
+        src_port: Optional[int] = None
+        dst_port: Optional[int] = None
+
+        if next_header in (6, 17) and len(transport_payload) >= 4:
+            src_port, dst_port = struct.unpack("!HH", transport_payload[:4])
+
+        key = (
+            src_ip,
+            dst_ip,
+            src_port,
+            dst_port,
+            self._protocol_name(next_header),
+        )
+        flows[key].update(timestamp, packet_len)
+
+        if next_header == 17:
+            self._maybe_record_dns(
+                timestamp,
+                src_ip,
+                dst_ip,
+                src_port,
+                dst_port,
+                transport_payload,
+                dns_queries,
+            )
+        elif next_header == 6:
+            self._maybe_record_http(
+                timestamp,
+                src_ip,
+                dst_ip,
+                src_port,
+                dst_port,
+                transport_payload,
+                http_requests,
+            )
+
+    def _maybe_record_dns(
+        self,
+        timestamp: float,
+        src_ip: str,
+        dst_ip: str,
+        src_port: Optional[int],
+        dst_port: Optional[int],
+        payload: bytes,
+        dns_queries: List[Dict[str, object]],
+    ) -> None:
+        if src_port is None or dst_port is None:
+            return
+        if 53 not in (src_port, dst_port):
+            return
+        if len(payload) < 8:
+            return
+
+        dns_payload = payload[8:]
+        queries = list(self._decode_dns_queries(dns_payload))
+        if not queries:
+            return
+
+        ts = datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
+        client = src_ip if dst_port == 53 else dst_ip
+        server = dst_ip if dst_port == 53 else src_ip
+
+        for query in queries:
+            dns_queries.append(
+                {
+                    "timestamp": ts,
+                    "query": query.get("name"),
+                    "qtype": query.get("type"),
+                    "client": client,
+                    "server": server,
+                }
+            )
+
+    def _decode_dns_queries(self, payload: bytes) -> Iterable[Dict[str, object]]:
+        if len(payload) < 12:
+            return []
+
+        try:
+            header = struct.unpack("!HHHHHH", payload[:12])
+        except struct.error:
+            return []
+
+        qdcount = header[2]
+        offset = 12
+        queries = []
+
+        for _ in range(qdcount):
+            labels = []
+            while offset < len(payload):
+                length = payload[offset]
+                offset += 1
+                if length == 0:
+                    break
+                if offset + length > len(payload):
+                    return queries
+                label_bytes = payload[offset : offset + length]
+                try:
+                    labels.append(label_bytes.decode("ascii"))
+                except UnicodeDecodeError:
+                    labels.append(label_bytes.decode("ascii", "ignore"))
+                offset += length
+
+            if offset + 4 > len(payload):
+                break
+
+            qtype, qclass = struct.unpack("!HH", payload[offset : offset + 4])
+            offset += 4
+
+            queries.append({"name": ".".join(filter(None, labels)), "type": qtype, "class": qclass})
+
+        return queries
+
+    def _maybe_record_http(
+        self,
+        timestamp: float,
+        src_ip: str,
+        dst_ip: str,
+        src_port: Optional[int],
+        dst_port: Optional[int],
+        payload: bytes,
+        http_requests: List[Dict[str, object]],
+    ) -> None:
+        if src_port is None or dst_port is None:
+            return
+        if len(payload) < 20:
+            return
+
+        data_offset = (payload[12] >> 4) * 4
+        if len(payload) <= data_offset:
+            return
+
+        body = payload[data_offset:]
+        if not body:
+            return
+
+        try:
+            text = body.decode("utf-8", "ignore")
+        except Exception:  # pragma: no cover - defensive
+            return
+
+        lines = text.splitlines()
+        if not lines:
+            return
+
+        request_line = lines[0]
+        parts = request_line.split()
+        if not parts:
+            return
+
+        method = parts[0].upper()
+        if method not in HTTP_METHODS:
+            return
+
+        path = parts[1] if len(parts) > 1 else "/"
+        host = None
+        for line in lines[1:10]:
+            if line.lower().startswith("host:"):
+                host = line.split(":", 1)[1].strip()
+                break
+
+        ts = datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
+        http_requests.append(
+            {
+                "timestamp": ts,
+                "method": method,
+                "path": path,
+                "host": host,
+                "src_ip": src_ip,
+                "dst_ip": dst_ip,
+                "src_port": src_port,
+                "dst_port": dst_port,
+            }
+        )
 
     # ------------------------------------------------------------------
     # Serialisation helpers

@@ -33,6 +33,11 @@ class ReportGenerator(ReportingModule):
     from case data and analysis results.
     """
 
+    def __init__(self, case_dir: Path, config: Dict):
+        super().__init__(case_dir=case_dir, config=config)
+        self.output_dir = self.case_dir / "reports"
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+
     @property
     def name(self) -> str:
         return "report_generator"
@@ -237,11 +242,20 @@ class ReportGenerator(ReportingModule):
 
         return data
 
+    def _locate_workspace_file(self, filename: str) -> Optional[Path]:
+        """Search upwards from the case directory for ``filename``."""
+
+        for root in (self.case_dir, *self.case_dir.parents):
+            candidate = root / filename
+            if candidate.exists():
+                return candidate
+        return None
+
     def _get_case_metadata(self) -> Dict:
         """Get case metadata from database"""
-        case_db = self.case_dir.parent.parent.parent / "cases.db"
+        case_db = self._locate_workspace_file("cases.db")
 
-        if not case_db.exists():
+        if case_db is None:
             return {"error": "Case database not found"}
 
         conn = sqlite3.connect(case_db)
@@ -274,9 +288,9 @@ class ReportGenerator(ReportingModule):
 
     def _get_evidence_inventory(self) -> List[Dict]:
         """Get evidence inventory"""
-        case_db = self.case_dir.parent.parent.parent / "cases.db"
+        case_db = self._locate_workspace_file("cases.db")
 
-        if not case_db.exists():
+        if case_db is None:
             return []
 
         conn = sqlite3.connect(case_db)
@@ -625,9 +639,9 @@ class ReportGenerator(ReportingModule):
 
     def _get_coc_events(self) -> List[Dict]:
         """Get Chain of Custody events"""
-        coc_db = self.case_dir.parent.parent.parent / "chain_of_custody.db"
+        coc_db = self._locate_workspace_file("chain_of_custody.db")
 
-        if not coc_db.exists():
+        if coc_db is None:
             return []
 
         conn = sqlite3.connect(coc_db)
