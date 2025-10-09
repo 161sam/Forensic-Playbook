@@ -863,6 +863,17 @@ def diagnostics(ctx: click.Context) -> None:
         package_lines.append(f"  - {label}: {status}")
         package_details[label] = status
 
+    skipped_modules = ctx.obj.get("skipped_modules", {})
+    available_modules = sorted(framework.list_modules())
+    guard_status = "OK" if not skipped_modules else "Missing"
+    guard_lines = [f"Guards: {guard_status}"]
+    if skipped_modules:
+        guard_lines.append("  Missing modules:")
+        for module_name, reason in sorted(skipped_modules.items()):
+            guard_lines.append(f"    - {module_name}: {reason}")
+    else:
+        guard_lines.append("  All registered modules passed guard checks.")
+
     details = [
         "=== Environment diagnostics ===",
         f"Timezone: {tz_info}",
@@ -874,6 +885,8 @@ def diagnostics(ctx: click.Context) -> None:
         "",
         *package_lines,
         "",
+        *guard_lines,
+        "",
         "Diagnostics complete.",
     ]
 
@@ -883,6 +896,11 @@ def diagnostics(ctx: click.Context) -> None:
         "paths": path_details,
         "tools": tool_details,
         "python_packages": package_details,
+        "module_guards": {
+            "status": guard_status,
+            "available": available_modules,
+            "missing": skipped_modules,
+        },
     }
 
     _emit_status(
