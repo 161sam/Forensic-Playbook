@@ -21,7 +21,8 @@ except ModuleNotFoundError:  # pragma: no cover - environment dependent
 
 from forensic.utils.hashing import compute_hash
 
-from .chain_of_custody import ChainOfCustody, append_coc as append_coc_record
+from .chain_of_custody import ChainOfCustody
+from .chain_of_custody import append_coc as append_coc_record
 from .config import FrameworkConfig, get_config, load_yaml
 from .evidence import Evidence, EvidenceType
 from .logger import setup_logging
