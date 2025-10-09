@@ -44,7 +44,7 @@ def _build_packets() -> list[Ether]:
         Ether(src="02:00:00:00:00:01", dst="02:00:00:00:00:02")
         / IP(src="192.0.2.10", dst="192.0.2.53")
         / UDP(sport=53000, dport=53)
-        / DNS(rd=1, qd=DNSQR(qname="example.org", qtype="A"))
+        / DNS(rd=1, qd=DNSQR(qname="example.com", qtype="A"))
     )
 
     tcp_syn = (
@@ -57,7 +57,7 @@ def _build_packets() -> list[Ether]:
         Ether(src="02:00:00:00:00:01", dst="02:00:00:00:00:03")
         / IP(src="192.0.2.10", dst="198.51.100.20")
         / TCP(sport=44500, dport=80, flags="PA", seq=1001, ack=2001)
-        / Raw(b"GET / HTTP/1.1\r\nHost: example.org\r\n\r\n")
+        / Raw(b"GET / HTTP/1.1\r\nHost: example.com\r\n\r\n")
     )
 
     return [dns_query, tcp_syn, http_get]
@@ -90,7 +90,7 @@ def _fallback_payload() -> str:
         ],
         "dns": [
             {
-                "query": "example.org",
+                "query": "example.com",
                 "type": "A",
                 "src": "192.0.2.10",
                 "dst": "192.0.2.53",
@@ -99,7 +99,7 @@ def _fallback_payload() -> str:
         "http": [
             {
                 "method": "GET",
-                "host": "example.org",
+                "host": "example.com",
                 "path": "/",
             }
         ],
