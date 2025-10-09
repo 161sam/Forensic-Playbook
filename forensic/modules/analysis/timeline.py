@@ -22,7 +22,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from ...core.evidence import Evidence
 from ...core.module import AnalysisModule, ModuleResult
-from ...core.time_utils import utc_isoformat, utc_slug
+from ...core.time_utils import ZoneInfo, utc_isoformat, utc_slug
 
 
 class TimelineModule(AnalysisModule):
@@ -65,6 +65,31 @@ class TimelineModule(AnalysisModule):
 
         return "UTC"
 
+    def _set_active_timezone(self, timezone_name: Optional[str]) -> None:
+        name = str(timezone_name) if timezone_name else "UTC"
+        self._timeline_timezone_name = name
+        self._timeline_tzinfo = self._build_timezone(name)
+
+    def _build_timezone(self, timezone_name: Optional[str]) -> timezone:
+        if not timezone_name or str(timezone_name).upper() in {"UTC", "Z"}:
+            return timezone.utc
+        if ZoneInfo is None:  # pragma: no cover - environment dependent
+            return timezone.utc
+        try:
+            return ZoneInfo(str(timezone_name))  # type: ignore[return-value]
+        except Exception:  # pragma: no cover - invalid timezone specification
+            self.logger.warning(
+                "Invalid timezone '%s' configured for timeline module; using UTC.",
+                timezone_name,
+            )
+            return timezone.utc
+
+    def _active_tzinfo(self) -> timezone:
+        tzinfo = getattr(self, "_timeline_tzinfo", None)
+        if tzinfo is None:
+            return timezone.utc
+        return tzinfo
+
     def validate_params(self, params: Dict) -> bool:
         """Validate parameters"""
         if "source" not in params:
@@ -99,6 +124,7 @@ class TimelineModule(AnalysisModule):
         include_logs = params.get("include_logs", "true").lower() == "true"
 
         effective_timezone = self._effective_timezone(params)
+        self._set_active_timezone(effective_timezone)
 
         findings = []
         errors = []
@@ -107,7 +133,7 @@ class TimelineModule(AnalysisModule):
             "timeline_type": timeline_type,
             "output_format": output_format,
             "start": timestamp,
-            "timezone": effective_timezone,
+            "timezone": self._timeline_timezone_name,
         }
 
         self.logger.info(f"Generating timeline from: {source}")
@@ -928,11 +954,20 @@ class TimelineModule(AnalysisModule):
         return f"{src_repr} -> {dst_repr} ({protocol})"
 
     def _normalise_timestamp(self, value: Any) -> Optional[str]:
+        tzinfo = self._active_tzinfo()
+
+        def format_dt(dt: datetime) -> str:
+            converted = dt.astimezone(tzinfo)
+            if tzinfo == timezone.utc:
+                return converted.isoformat().replace("+00:00", "Z")
+            return converted.isoformat()
+
         if value is None:
             return None
         if isinstance(value, int | float):
             try:
-                return datetime.fromtimestamp(float(value), tz=timezone.utc).isoformat()
+                dt_numeric = datetime.fromtimestamp(float(value), tz=timezone.utc)
+                return format_dt(dt_numeric)
             except Exception:
                 return None
 
@@ -947,23 +982,22 @@ class TimelineModule(AnalysisModule):
         try:
             dt = datetime.fromisoformat(iso_candidate)
             if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            else:
-                dt = dt.astimezone(timezone.utc)
-            return dt.isoformat()
+                dt = dt.replace(tzinfo=tzinfo)
+            return format_dt(dt)
         except ValueError:
             pass
 
         for fmt in ("%Y-%m-%d %H:%M:%S", "%Y/%m/%d %H:%M:%S", "%Y-%m-%d"):
             try:
                 dt = datetime.strptime(value_str, fmt)
-                dt = dt.replace(tzinfo=timezone.utc)
-                return dt.isoformat()
+                dt = dt.replace(tzinfo=tzinfo)
+                return format_dt(dt)
             except ValueError:
                 continue
 
         try:
-            return datetime.fromtimestamp(float(value_str), tz=timezone.utc).isoformat()
+            dt_numeric = datetime.fromtimestamp(float(value_str), tz=timezone.utc)
+            return format_dt(dt_numeric)
         except Exception:
             return None
 

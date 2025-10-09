@@ -248,19 +248,31 @@ class PersistenceModule(TriageModule):
         json_path = planned_dir / "persistence.json"
         csv_path = planned_dir / "persistence.csv"
 
-        io.write_json(
-            json_path,
-            {
-                "module": self.name,
-                "generated_at": timestamp,
-                "timezone": self.timezone,
-                "records": sorted_records,
-                "summary": summary,
-                "warnings": sorted(set(warnings)),
-            },
-        )
+        artifacts: List[str] = []
+        errors: List[str] = []
+        status = "success"
+        output_path: Optional[Path] = json_path
 
-        self._write_csv(csv_path, sorted_records)
+        try:
+            io.write_json(
+                json_path,
+                {
+                    "module": self.name,
+                    "generated_at": timestamp,
+                    "timezone": self.timezone,
+                    "records": sorted_records,
+                    "summary": summary,
+                    "warnings": sorted(set(warnings)),
+                },
+            )
+            self._write_csv(csv_path, sorted_records)
+            artifacts = [str(json_path), str(csv_path)]
+        except OSError as exc:
+            message = f"Failed to write persistence artefacts: {exc}"
+            self.logger.warning(message)
+            errors.append(message)
+            status = "partial"
+            output_path = None
 
         findings = [
             {
@@ -273,35 +285,34 @@ class PersistenceModule(TriageModule):
             for category, data in sorted(summary.items())
         ]
 
-        findings.append(
-            {
-                "type": "persistence_artifacts",
-                "description": "Persistence enumeration artifacts generated.",
-                "artifacts": [str(json_path), str(csv_path)],
-            }
-        )
+        if artifacts:
+            findings.append(
+                {
+                    "type": "persistence_artifacts",
+                    "description": "Persistence enumeration artifacts generated.",
+                    "artifacts": artifacts,
+                }
+            )
 
         metadata = {
             "summary": summary,
             "warnings": sorted(set(warnings)),
-            "artifacts": [str(json_path), str(csv_path)],
+            "artifacts": artifacts,
             "paths": {
                 category: [str(path) for path in paths]
                 for category, paths in path_map.items()
             },
         }
 
-        status = "success"
-
         return ModuleResult(
             result_id=result_id,
             module_name=self.name,
             status=status,
             timestamp=timestamp,
-            output_path=json_path,
+            output_path=output_path,
             findings=findings,
             metadata=metadata,
-            errors=[],
+            errors=errors,
         )
 
     # ------------------------------------------------------------------

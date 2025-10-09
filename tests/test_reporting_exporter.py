@@ -36,6 +36,22 @@ def test_export_report_markdown_round_trip(tmp_path: Path, sample_report: dict) 
         assert key in content
 
 
+def test_export_report_json_sorts_scalar_lists(tmp_path: Path) -> None:
+    output = tmp_path / "deterministic.json"
+    sample = {
+        "values": ["b", "a", "b"],
+        "nested": {"numbers": [3, 1, 2]},
+        "records": [{"id": 2}, {"id": 1}],
+    }
+
+    export_report(sample, "json", output)
+
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["values"] == ["a", "b", "b"]
+    assert payload["nested"]["numbers"] == [1, 2, 3]
+    assert payload["records"] == sample["records"]
+
+
 def test_export_report_rejects_unknown_format(
     tmp_path: Path, sample_report: dict
 ) -> None:

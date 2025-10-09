@@ -318,6 +318,12 @@ class ReportGenerator(ReportingModule):
                 errors=errors,
             )
 
+        self._finalise_report_sections(report_data)
+        final_alerts = report_data.get("alerts")
+        if isinstance(final_alerts, list):
+            alerts[:] = sorted(dict.fromkeys(final_alerts))
+        else:
+            alerts.clear()
         metadata["alerts"] = alerts
         metadata["generation_end"] = utc_isoformat()
 
@@ -556,6 +562,10 @@ class ReportGenerator(ReportingModule):
         elif not events:
             messages.append("Timeline artefacts were available but contained no events.")
 
+        sources = sorted(dict.fromkeys(sources))
+        errors = sorted(dict.fromkeys(errors))
+        messages = sorted(dict.fromkeys(messages))
+
         return {
             "events": events[:1000],
             "sources": sources,
@@ -668,7 +678,7 @@ class ReportGenerator(ReportingModule):
             summary["messages"].append(
                 "Network artefacts contained no notable findings."
             )
-        summary["artifacts"].sort()
+        summary["artifacts"] = sorted(dict.fromkeys(summary["artifacts"]))
         summary["dns_findings"].sort(
             key=lambda item: (
                 item.get("timestamp", ""),
@@ -683,6 +693,8 @@ class ReportGenerator(ReportingModule):
                 item.get("method", ""),
             )
         )
+        summary["messages"] = sorted(dict.fromkeys(summary["messages"]))
+        summary["errors"] = sorted(dict.fromkeys(summary["errors"]))
 
         return summary
 
@@ -910,14 +922,14 @@ class ReportGenerator(ReportingModule):
             for f in data["findings"]:
                 ftype = f.get("type", "unknown")
                 types[ftype] = types.get(ftype, 0) + 1
-            stats["findings_by_type"] = types
+            stats["findings_by_type"] = dict(sorted(types.items()))
 
             # By module
             modules = {}
             for f in data["findings"]:
                 module = f.get("module", "unknown")
                 modules[module] = modules.get(module, 0) + 1
-            stats["findings_by_module"] = modules
+            stats["findings_by_module"] = dict(sorted(modules.items()))
 
         if "evidence" in data:
             stats["total_evidence"] = len(data["evidence"])
@@ -1128,6 +1140,59 @@ class ReportGenerator(ReportingModule):
 
         if message and message not in alerts:
             alerts.append(message)
+
+    def _finalise_report_sections(self, report_data: Dict[str, Any]) -> None:
+        """Normalise report sections for deterministic serialisation."""
+
+        alerts = report_data.get("alerts")
+        if isinstance(alerts, list):
+            report_data["alerts"] = sorted(dict.fromkeys(alerts))
+
+        timeline = report_data.get("timeline")
+        if isinstance(timeline, dict):
+            for key in ("sources", "errors", "messages"):
+                values = timeline.get(key)
+                if isinstance(values, list):
+                    timeline[key] = sorted(dict.fromkeys(values))
+            events = timeline.get("events")
+            if isinstance(events, list):
+                events.sort(key=lambda item: item.get("timestamp", ""))
+
+        network = report_data.get("network")
+        if isinstance(network, dict):
+            for key in ("artifacts", "errors", "messages"):
+                values = network.get(key)
+                if isinstance(values, list):
+                    network[key] = sorted(dict.fromkeys(values))
+            dns_findings = network.get("dns_findings")
+            if isinstance(dns_findings, list):
+                dns_findings.sort(
+                    key=lambda item: (
+                        item.get("timestamp", ""),
+                        item.get("query", ""),
+                        item.get("src", ""),
+                    )
+                )
+            http_findings = network.get("http_findings")
+            if isinstance(http_findings, list):
+                http_findings.sort(
+                    key=lambda item: (
+                        item.get("timestamp", ""),
+                        item.get("destination", ""),
+                        item.get("method", ""),
+                    )
+                )
+            talkers = network.get("top_talkers")
+            if isinstance(talkers, list):
+                talkers.sort(
+                    key=lambda item: (
+                        -int(item.get("bytes", 0) or 0),
+                        -int(item.get("packets", 0) or 0),
+                        item.get("src", ""),
+                        item.get("dst", ""),
+                        item.get("protocol", ""),
+                    )
+                )
 
     def _timestamp_to_slug(self, timestamp: str) -> str:
         """Create a deterministic slug from an ISO-8601 timestamp."""
