@@ -26,7 +26,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from ...core.evidence import Evidence
 from ...core.module import AnalysisModule, ModuleResult
-from ...core.time_utils import utc_isoformat, utc_slug
+from ...core.time_utils import ZoneInfo, isoformat_with_timezone, utc_slug
 
 try:  # pragma: no cover - optional dependency
     import pyshark  # type: ignore
@@ -45,7 +45,7 @@ try:  # pragma: no cover - optional dependency
 except ImportError:  # pragma: no cover - optional dependency
     DNS = IP = IPv6 = TCP = UDP = rdpcap = None  # type: ignore
 
-HTTP_METHODS = {
+DEFAULT_HTTP_METHODS = {
     "GET",
     "POST",
     "PUT",
@@ -57,14 +57,14 @@ HTTP_METHODS = {
     "CONNECT",
 }
 
-SUSPICIOUS_USER_AGENTS = {
+DEFAULT_SUSPICIOUS_USER_AGENTS = {
     "curl",
     "python-requests",
     "wget",
     "powershell",
 }
 
-ENCODED_URI_PATTERN = re.compile(r"[A-Za-z0-9+/]{24,}={0,2}")
+DEFAULT_ENCODED_URI_PATTERN = re.compile(r"[A-Za-z0-9+/]{24,}={0,2}")
 
 
 @dataclass
@@ -86,6 +86,40 @@ class FlowAccumulator:
 class NetworkAnalysisModule(AnalysisModule):
     """Perform flow, DNS and HTTP analysis on PCAP captures."""
 
+    def __init__(self, case_dir: Path, config: Dict):
+        super().__init__(case_dir=case_dir, config=config)
+
+        defaults = self._config_defaults()
+
+        self._http_methods = self._normalise_http_methods(
+            defaults.get("http_methods")
+        )
+        suspicious_agents = self._normalise_string_list(
+            defaults.get("suspicious_user_agents")
+        )
+        if suspicious_agents:
+            self._suspicious_user_agents = {agent.lower() for agent in suspicious_agents}
+        else:
+            self._suspicious_user_agents = {
+                agent.lower() for agent in DEFAULT_SUSPICIOUS_USER_AGENTS
+            }
+
+        encoded_pattern = defaults.get(
+            "encoded_uri_regex", DEFAULT_ENCODED_URI_PATTERN.pattern
+        )
+        self._encoded_uri_pattern = self._compile_encoded_pattern(encoded_pattern)
+
+        output_filename = str(defaults.get("output_filename", "network.json")).strip()
+        self._output_filename = output_filename or "network.json"
+
+        timezone_override = defaults.get("timezone") or self.timezone
+        self._timezone_name = str(timezone_override)
+        self._tzinfo = self._build_timezone(self._timezone_name)
+
+        self._enable_builtin_parser = bool(defaults.get("enable_builtin_parser", True))
+        self._param_sources: Dict[str, str] = {}
+        self._dry_run_missing_inputs: List[str] = []
+
     @property
     def name(self) -> str:
         return "network"
@@ -99,66 +133,174 @@ class NetworkAnalysisModule(AnalysisModule):
         return False
 
     def _config_defaults(self) -> Dict[str, Any]:
-        return self._module_config("network")
+        return self._module_config("network_analysis", "network")
 
     def validate_params(self, params: Dict) -> bool:
         defaults = self._config_defaults()
+        original = dict(params)
+        self._param_sources = {}
+        self._dry_run_missing_inputs = []
 
-        for key in ("pcap", "pcap_json"):
-            if params.get(key):
-                continue
-            default_value = defaults.get(key)
-            if default_value:
+        def _resolve(
+            key: str,
+            *,
+            allow_stdin: bool = False,
+            default_value: Any = None,
+        ) -> Optional[str]:
+            if key in original:
+                value = self._normalise_scalar(original[key], allow_stdin=allow_stdin)
+                if value is not None:
+                    params[key] = value
+                    self._param_sources[key] = "cli"
+                    return value
+                params.pop(key, None)
+
+            for candidate in (key, f"default_{key}"):
+                if candidate in defaults:
+                    value = self._normalise_scalar(
+                        defaults[candidate], allow_stdin=allow_stdin
+                    )
+                    if value is not None:
+                        params[key] = value
+                        self._param_sources[key] = "config"
+                        return value
+
+            if default_value is not None:
                 params[key] = default_value
+                self._param_sources[key] = "default"
+                return default_value
 
-        has_pcap = "pcap" in params and params["pcap"]
-        has_pcap_json = "pcap_json" in params and params["pcap_json"]
+            params.pop(key, None)
+            return None
+
+        pcap_value = _resolve("pcap")
+        pcap_json_value = _resolve("pcap_json", allow_stdin=True)
+
+        dry_run_raw = original.get("dry_run")
+        if "dry_run" in original:
+            self._param_sources["dry_run"] = "cli"
+        elif "dry_run" in defaults:
+            dry_run_raw = defaults.get("dry_run")
+            self._param_sources["dry_run"] = "config"
+        else:
+            dry_run_raw = False
+            self._param_sources["dry_run"] = "default"
+
+        dry_run = self._to_bool(dry_run_raw, default=False)
+        params["dry_run"] = dry_run
+
+        has_pcap = bool(pcap_value)
+        has_pcap_json = bool(pcap_json_value)
 
         if not has_pcap and not has_pcap_json:
             self.logger.error("Missing required parameter: pcap or pcap_json")
             return False
 
         if has_pcap:
-            pcap_path = Path(params["pcap"])
-            if not pcap_path.exists():
-                self.logger.error(f"PCAP file does not exist: {pcap_path}")
-                return False
+            pcap_path = Path(str(pcap_value))
+            if not pcap_path.exists() or not pcap_path.is_file():
+                if dry_run:
+                    self._dry_run_missing_inputs.append(str(pcap_path))
+                else:
+                    self.logger.error(f"PCAP file does not exist: {pcap_path}")
+                    return False
 
-        if has_pcap_json:
-            json_source = params["pcap_json"]
-            if json_source != "-":
-                json_path = Path(json_source)
-                if not json_path.exists():
-                    self.logger.error(f"PCAP JSON file does not exist: {json_path}")
+        if has_pcap_json and pcap_json_value != "-":
+            json_path = Path(str(pcap_json_value))
+            if not json_path.exists() or not json_path.is_file():
+                if dry_run:
+                    self._dry_run_missing_inputs.append(str(json_path))
+                else:
+                    self.logger.error(
+                        f"PCAP JSON file does not exist: {json_path}"
+                    )
                     return False
 
         return True
 
     def run(self, evidence: Optional[Evidence], params: Dict) -> ModuleResult:
+        del evidence  # Analysis operates on supplied artefacts only.
+
         result_id = self._generate_result_id()
-        timestamp = utc_isoformat()
+        timestamp = isoformat_with_timezone(self._timezone_name)
         slug = utc_slug()
 
-        pcap_path = params.get("pcap")
-        pcap_file = Path(pcap_path) if pcap_path else None
+        dry_run = bool(params.get("dry_run", False))
+        pcap_value = params.get("pcap")
+        pcap_file = Path(str(pcap_value)) if pcap_value else None
         pcap_json_source = params.get("pcap_json")
+        extras_available = self._extras_available()
 
-        output_root = self.output_dir / slug
-        metadata: Dict[str, Any] = {"generated_at": timestamp}
+        metadata: Dict[str, Any] = {
+            "generated_at": timestamp,
+            "timezone": self._timezone_name,
+            "pcap_extra_available": extras_available,
+            "pcap_json_mode": bool(pcap_json_source),
+            "dry_run": dry_run,
+            "parameter_sources": dict(sorted(self._param_sources.items())),
+        }
 
-        if pcap_file is not None:
-            metadata["pcap_file"] = str(pcap_file)
+        metadata["pcap_file"] = str(pcap_file) if pcap_file else None
+        metadata["pcap_json_source"] = (
+            None
+            if not pcap_json_source
+            else ("stdin" if pcap_json_source == "-" else str(pcap_json_source))
+        )
+
+        if pcap_file and pcap_file.exists():
             try:
                 metadata["pcap_size"] = pcap_file.stat().st_size
-            except FileNotFoundError:
+            except OSError:
                 metadata["pcap_size"] = None
         else:
-            metadata["pcap_file"] = None
             metadata["pcap_size"] = None
 
+        if dry_run and self._dry_run_missing_inputs:
+            metadata["missing_inputs"] = sorted(set(self._dry_run_missing_inputs))
+
+        output_root = self.output_dir / slug
+        planned_output = output_root / self._output_filename
+
+        if dry_run:
+            planned_steps = self._planned_steps(pcap_file, pcap_json_source, extras_available)
+            metadata.update(self.dry_run_notice(planned_steps))
+            metadata["planned_output_file"] = str(planned_output)
+
+            findings: List[Dict[str, Any]] = [
+                {
+                    "type": "dry_run",
+                    "description": "Dry-run only logged planned network analysis steps.",
+                    "planned_output": str(planned_output),
+                }
+            ]
+
+            if not extras_available:
+                findings.append(
+                    {
+                        "type": "guard",
+                        "severity": "info",
+                        "description": (
+                            "Optional PCAP extras are not installed. Install the "
+                            "'pcap' extra for enhanced protocol decoding."
+                        ),
+                        "hints": [
+                            "pip install forensic-playbook[pcap]",
+                        ],
+                    }
+                )
+
+            return ModuleResult(
+                result_id=result_id,
+                module_name=self.name,
+                status="success",
+                timestamp=timestamp,
+                findings=findings,
+                metadata=metadata,
+            )
+
         fallback_used = False
-        has_extra = rdpcap is not None or pyshark is not None
-        metadata["pcap_extra_available"] = has_extra
+        parser_used: Optional[str] = None
+        parser_errors: Dict[str, str] = {}
 
         if pcap_json_source:
             try:
@@ -181,11 +323,18 @@ class NetworkAnalysisModule(AnalysisModule):
                 )
 
             metadata["pcap_json_source"] = json_origin
-            metadata["pcap_json_mode"] = True
+            if json_origin not in {None, "stdin"}:
+                json_path = Path(json_origin)
+                if json_path.exists():
+                    try:
+                        metadata["pcap_json_sha256"] = self._compute_hash(json_path)
+                    except Exception:  # pragma: no cover - defensive hashing failure
+                        pass
 
             flows_list = self._sort_flow_records(json_flows)
             dns_summary = self._summarise_dns(json_dns)
             http_summary = self._summarise_http(json_http)
+            metadata["parser_used"] = "pcap_json"
         else:
             if pcap_file is None:
                 message = "PCAP file is required when no PCAP JSON is provided"
@@ -205,20 +354,53 @@ class NetworkAnalysisModule(AnalysisModule):
             dns_queries: List[Dict[str, Any]] = []
             http_requests: List[Dict[str, Any]] = []
 
+            if pcap_file.exists():
+                try:
+                    metadata["pcap_sha256"] = self._compute_hash(pcap_file)
+                except Exception:  # pragma: no cover - defensive hashing failure
+                    pass
+
             if rdpcap is not None:
-                packets = rdpcap(str(pcap_file))
-                self._process_scapy_packets(packets, flows, dns_queries, http_requests)
-            elif pyshark is not None:
-                self._process_pyshark_capture(
-                    str(pcap_file), flows, dns_queries, http_requests
-                )
-            else:
+                try:
+                    packets = rdpcap(str(pcap_file))
+                    self._process_scapy_packets(packets, flows, dns_queries, http_requests)
+                    parser_used = "scapy"
+                except Exception as exc:  # pragma: no cover - optional dependency failure
+                    parser_errors["scapy"] = str(exc)
+
+            if parser_used is None and pyshark is not None:
+                try:
+                    self._process_pyshark_capture(
+                        str(pcap_file), flows, dns_queries, http_requests
+                    )
+                    parser_used = "pyshark"
+                except Exception as exc:  # pragma: no cover - optional dependency failure
+                    parser_errors["pyshark"] = str(exc)
+
+            if parser_used is None:
+                if not self._enable_builtin_parser:
+                    metadata["parser_errors"] = dict(sorted(parser_errors.items()))
+                    return self.guard_result(
+                        "Optional PCAP parsers unavailable and builtin parser disabled.",
+                        hints=[
+                            "Install the 'pcap' extra via `pip install forensic-playbook[pcap]`.",
+                            "Enable the builtin parser via configuration if desired.",
+                        ],
+                        status="skipped",
+                        metadata=metadata,
+                        result_id=result_id,
+                        timestamp=timestamp,
+                    )
+
                 fallback_used = True
                 metadata["fallback_parser"] = "builtin"
+                if parser_errors:
+                    metadata["parser_errors"] = dict(sorted(parser_errors.items()))
                 try:
                     self._process_builtin_packets(
                         pcap_file, flows, dns_queries, http_requests
                     )
+                    metadata["parser_used"] = "builtin"
                 except Exception as exc:  # pragma: no cover - defensive path
                     message = (
                         "Failed to analyse PCAP without optional dependencies:"
@@ -233,13 +415,15 @@ class NetworkAnalysisModule(AnalysisModule):
                         metadata=metadata,
                         errors=[message],
                     )
+            else:
+                metadata["parser_used"] = parser_used
 
             flows_list = self._serialise_flows(flows)
             dns_summary = self._summarise_dns(dns_queries)
             http_summary = self._summarise_http(http_requests)
 
         output_root.mkdir(parents=True, exist_ok=True)
-        output_file = output_root / "network.json"
+        output_file = output_root / self._output_filename
         payload = {
             "metadata": metadata,
             "flows": flows_list,
@@ -250,7 +434,7 @@ class NetworkAnalysisModule(AnalysisModule):
         with output_file.open("w", encoding="utf-8") as handle:
             json.dump(payload, handle, indent=2, sort_keys=True)
 
-        findings = [
+        findings: List[Dict[str, Any]] = [
             {
                 "type": "network_analysis",
                 "description": "Extracted flows, DNS queries and HTTP metadata",
@@ -267,6 +451,19 @@ class NetworkAnalysisModule(AnalysisModule):
                     "type": "info",
                     "severity": "info",
                     "description": "Parsed PCAP using built-in lightweight parser",
+                }
+            )
+
+        if not extras_available:
+            findings.append(
+                {
+                    "type": "guard",
+                    "severity": "info",
+                    "description": (
+                        "Optional PCAP extras are not installed. Install the 'pcap' "
+                        "extra for enhanced protocol decoding."
+                    ),
+                    "hints": ["pip install forensic-playbook[pcap]"],
                 }
             )
 
@@ -682,7 +879,7 @@ class NetworkAnalysisModule(AnalysisModule):
         if not queries:
             return
 
-        ts = datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
+        ts = self._format_timestamp(timestamp)
         client = src_ip if dst_port == 53 else dst_ip
         server = dst_ip if dst_port == 53 else src_ip
 
@@ -776,7 +973,7 @@ class NetworkAnalysisModule(AnalysisModule):
             return
 
         method = parts[0].upper()
-        if method not in HTTP_METHODS:
+        if method not in self._http_methods:
             return
 
         path = parts[1] if len(parts) > 1 else "/"
@@ -786,11 +983,12 @@ class NetworkAnalysisModule(AnalysisModule):
                 host = line.split(":", 1)[1].strip()
                 break
 
-        ts = datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
+        ts = self._format_timestamp(timestamp)
         http_requests.append(
             {
                 "timestamp": ts,
                 "method": method,
+                "uri": path,
                 "path": path,
                 "host": host,
                 "src_ip": src_ip,
@@ -869,6 +1067,115 @@ class NetworkAnalysisModule(AnalysisModule):
     # ------------------------------------------------------------------
     # Utility helpers
     # ------------------------------------------------------------------
+    def _planned_steps(
+        self,
+        pcap_file: Optional[Path],
+        pcap_json_source: Optional[str],
+        extras_available: bool,
+    ) -> List[str]:
+        steps: List[str] = []
+        if pcap_json_source:
+            origin = "stdin" if pcap_json_source == "-" else str(pcap_json_source)
+            steps.append(f"Load PCAP JSON input from {origin}")
+        elif pcap_file:
+            steps.append(f"Parse PCAP capture from {pcap_file}")
+            if extras_available:
+                steps.append("Prefer scapy/pyshark parsers when available")
+            if self._enable_builtin_parser:
+                steps.append("Fallback to builtin parser for flow/DNS/HTTP extraction")
+        else:
+            steps.append("Awaiting PCAP or PCAP JSON input for analysis")
+
+        steps.append("Aggregate flows, DNS queries and HTTP metadata")
+        steps.append(f"Write deterministic output to {self._output_filename}")
+        return steps
+
+    def _normalise_string_list(self, value: Any) -> List[str]:
+        if value is None:
+            return []
+        if isinstance(value, (list, tuple, set)):
+            items = list(value)
+        elif isinstance(value, str):
+            items = re.split(r"[,;]", value)
+        else:
+            return []
+
+        result: List[str] = []
+        for item in items:
+            if isinstance(item, str):
+                trimmed = item.strip()
+                if trimmed:
+                    result.append(trimmed)
+            elif item is not None:
+                result.append(str(item))
+        return result
+
+    def _normalise_http_methods(self, value: Any) -> set[str]:
+        methods = {method.upper() for method in self._normalise_string_list(value)}
+        if not methods:
+            methods = set(DEFAULT_HTTP_METHODS)
+        return methods
+
+    def _compile_encoded_pattern(self, value: Any) -> re.Pattern[str]:
+        if isinstance(value, re.Pattern):
+            return value
+
+        pattern = str(value).strip() if value is not None else ""
+        if not pattern:
+            return DEFAULT_ENCODED_URI_PATTERN
+
+        try:
+            return re.compile(pattern)
+        except re.error:
+            self.logger.warning(
+                "Invalid encoded URI regex configured for network analysis: %s",
+                pattern,
+            )
+            return DEFAULT_ENCODED_URI_PATTERN
+
+    def _build_timezone(self, name: Optional[str]) -> timezone:
+        if name and name.upper() in {"UTC", "Z"}:
+            return timezone.utc
+
+        if name and ZoneInfo is not None:
+            try:
+                return ZoneInfo(str(name))  # type: ignore[arg-type]
+            except Exception:
+                self.logger.warning(
+                    "Falling back to UTC due to invalid timezone configuration: %s",
+                    name,
+                )
+
+        return timezone.utc
+
+    def _extras_available(self) -> bool:
+        return any(extra is not None for extra in (rdpcap, pyshark))
+
+    def _normalise_scalar(
+        self, value: Any, *, allow_stdin: bool = False
+    ) -> Optional[str]:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            trimmed = value.strip()
+            if allow_stdin and trimmed == "-":
+                return "-"
+            return trimmed or None
+        return str(value)
+
+    def _to_bool(self, value: Any, *, default: bool = False) -> bool:
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            lowered = value.strip().lower()
+            if lowered in {"1", "true", "yes", "on"}:
+                return True
+            if lowered in {"0", "false", "no", "off"}:
+                return False
+        return bool(value)
+
     def _extract_flow_key_scapy(
         self, packet: object
     ) -> Optional[Tuple[str, str, Optional[int], Optional[int], str]]:
@@ -1017,7 +1324,7 @@ class NetworkAnalysisModule(AnalysisModule):
             return None
 
         method = parts[0].upper()
-        if method not in HTTP_METHODS:
+        if method not in self._http_methods:
             return None
 
         uri = parts[1]
@@ -1067,7 +1374,9 @@ class NetworkAnalysisModule(AnalysisModule):
     ) -> Dict[str, bool]:
         ua_lower = (user_agent or "").lower()
         encoded_uri = bool(uri and self._looks_encoded(uri))
-        suspicious_agent = any(agent in ua_lower for agent in SUSPICIOUS_USER_AGENTS)
+        suspicious_agent = any(
+            agent in ua_lower for agent in self._suspicious_user_agents
+        )
         suspicious_method = method not in {"GET", "POST", "HEAD"}
         return {
             "suspicious_user_agent": suspicious_agent,
@@ -1078,7 +1387,7 @@ class NetworkAnalysisModule(AnalysisModule):
     def _looks_encoded(self, uri: str) -> bool:
         if "%" in uri:
             return True
-        return bool(ENCODED_URI_PATTERN.search(uri))
+        return bool(self._encoded_uri_pattern.search(uri))
 
     def _protocol_name(self, proto_number: Optional[int]) -> str:
         proto_map = {6: "TCP", 17: "UDP", 1: "ICMP"}
@@ -1089,7 +1398,12 @@ class NetworkAnalysisModule(AnalysisModule):
     def _format_timestamp(self, timestamp: float) -> str:
         if timestamp in (float("inf"), float("-inf")):
             return "unknown"
-        return datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
+
+        dt = datetime.fromtimestamp(timestamp, tz=timezone.utc)
+        tzinfo = self._tzinfo
+        if tzinfo and tzinfo != timezone.utc:
+            return dt.astimezone(tzinfo).isoformat()
+        return dt.isoformat().replace("+00:00", "Z")
 
     def _shannon_entropy(self, value: str) -> float:
         if not value:
