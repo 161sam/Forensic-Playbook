@@ -59,11 +59,58 @@ jobs:
           python-version: "3.11"
       - name: Install dependencies
         run: pip install .[dev]
+      - name: Install optional PDF renderer
+        run: |
+          set +e
+          echo "Attempting to install wkhtmltopdf via apt-get..."
+          sudo apt-get update
+          if sudo apt-get install -y wkhtmltopdf; then
+            echo "wkhtmltopdf installed successfully."
+            exit 0
+          fi
+
+          echo "wkhtmltopdf unavailable; attempting to install WeasyPrint via pip..."
+          if pip install weasyprint; then
+            echo "WeasyPrint installed successfully."
+            exit 0
+          fi
+
+          echo "No PDF renderer installed; continuing with HTML-only reporting."
+          exit 0
       - name: Install optional Scapy dependency
         run: pip install "scapy>=2.5" -q
         continue-on-error: true
-      - name: Run minimal end-to-end flow
-        run: python tools/run_minimal_flow.py --workspace out/workspace --report out/report.html
+      - name: Prepare minimal end-to-end workspace
+        run: |
+          python tools/run_minimal_flow.py \
+            --workspace out/workspace \
+            --report out/report.html \
+            --skip-report
+      - name: Generate HTML report via CLI
+        run: |
+          forensic-cli \
+            --workspace out/workspace \
+            report generate \
+            --case demo \
+            --fmt html \
+            --out out/report.html
+      - name: Attempt PDF report via CLI
+        run: |
+          if python - <<'PY'
+from forensic.modules.reporting.exporter import get_pdf_renderer
+import sys
+sys.exit(0 if get_pdf_renderer() is not None else 1)
+PY
+          then
+            forensic-cli \
+              --workspace out/workspace \
+              report generate \
+              --case demo \
+              --fmt pdf \
+              --out out/report.pdf
+          else
+            echo "No PDF renderer detected; skipping PDF generation."
+          fi
       - name: Execute minimal pytest suite with coverage
         run: |
           pytest tests/test_e2e_minimal.py --maxfail=1 --disable-warnings \
