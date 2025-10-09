@@ -1093,7 +1093,7 @@ class NetworkAnalysisModule(AnalysisModule):
     def _normalise_string_list(self, value: Any) -> List[str]:
         if value is None:
             return []
-        if isinstance(value, (list, tuple, set)):
+        if isinstance(value, list | tuple | set):
             items = list(value)
         elif isinstance(value, str):
             items = re.split(r"[,;]", value)

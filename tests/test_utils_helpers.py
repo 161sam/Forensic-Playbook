@@ -3,16 +3,15 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
 
 import pytest
 
+from forensic.utils import hashing, timefmt
 from forensic.utils import io as io_utils
 from forensic.utils import paths as paths_utils
-from forensic.utils import timefmt
-from forensic.utils import hashing
 
 
 def test_read_text_returns_empty_for_missing_file(tmp_path: Path) -> None:

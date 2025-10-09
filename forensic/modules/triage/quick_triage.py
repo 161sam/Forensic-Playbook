@@ -19,7 +19,6 @@ from ...core.evidence import Evidence
 from ...core.module import ModuleResult, TriageModule
 from ...utils import io
 
-
 CSV_HEADERS: Tuple[str, ...] = ("check", "path", "reason", "details")
 
 
@@ -657,7 +656,7 @@ class QuickTriageModule(TriageModule):
         value = raw
         source = "config"
 
-        if isinstance(value, (int, float)):
+        if isinstance(value, int | float):
             meta["resolved"] = int(value)
             meta["source"] = source
             return now - timedelta(days=float(value)), meta
