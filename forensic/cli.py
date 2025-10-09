@@ -150,6 +150,64 @@ def create_case(
     click.echo(f"  Directory: {case.case_dir}")
 
 
+@case.command("init")
+@click.argument("case_id", default="demo")
+@click.option("--name", default=None, help="Human friendly case name")
+@click.option(
+    "--description",
+    default="Demo case scaffold generated via 'case init'",
+    help="Case description",
+)
+@click.option(
+    "--investigator",
+    default="Demo Analyst",
+    help="Investigator responsible for the case",
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Re-use existing case directory if it already exists",
+)
+@click.pass_context
+def init_case(
+    ctx: click.Context,
+    case_id: str,
+    name: str | None,
+    description: str,
+    investigator: str,
+    force: bool,
+) -> None:
+    """Scaffold a minimal investigation case for quick demos."""
+
+    framework: ForensicFramework = ctx.obj["framework"]
+
+    if not name:
+        name = case_id.replace("_", " ").title()
+
+    try:
+        case = framework.load_case(case_id)
+        existed = True
+    except ValueError:
+        existed = False
+        case = framework.create_case(
+            name=name,
+            description=description,
+            investigator=investigator,
+            case_id=case_id,
+        )
+
+    if existed and not force:
+        click.echo(f"✓ Case already initialised: {case.case_id}")
+        click.echo(f"  Directory: {case.case_dir}")
+        return
+
+    # Ensure the common sub-directories are present.
+    for subdir in ("evidence", "analysis", "reports", "logs"):
+        (case.case_dir / subdir).mkdir(parents=True, exist_ok=True)
+
+    click.echo(f"✓ Case initialised: {case.case_id}")
+    click.echo(f"  Directory: {case.case_dir}")
+
 @case.command("list")
 @click.pass_context
 def list_cases(ctx: click.Context) -> None:

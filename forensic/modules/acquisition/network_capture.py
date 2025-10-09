@@ -260,9 +260,10 @@ class NetworkCaptureModule(AcquisitionModule):
                 candidates.append(tool)
 
         for tool in candidates:
-            tool_path = shutil.which(tool)
-            if tool_path:
-                return tool, tool_path
+            if not self._verify_tool(tool):
+                continue
+            tool_path = shutil.which(tool) or tool
+            return tool, tool_path
         return None
 
     def _build_command(
