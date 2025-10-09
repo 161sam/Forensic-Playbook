@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import importlib
+import json
 import os
 import shutil
 import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 import click
 
@@ -36,6 +37,81 @@ try:  # pragma: no cover - optional legacy module
     from .modules.analysis.ioc_scanning import IoCScanner
 except ModuleNotFoundError:  # pragma: no cover - optional legacy module
     IoCScanner = None  # type: ignore[assignment]
+
+
+def _json_default(value: Any) -> Any:
+    """Return a JSON compatible representation for complex objects."""
+
+    if isinstance(value, Path):
+        return str(value)
+    return value
+
+
+def _emit_status(
+    ctx: click.Context,
+    command: str,
+    *,
+    status: str,
+    message: str | None = None,
+    details: list[str] | None = None,
+    data: Dict[str, Any] | None = None,
+    errors: list[str] | None = None,
+    exit_code: int | None = None,
+) -> None:
+    """Emit a status payload respecting ``--json`` and ``--quiet`` flags."""
+
+    payload: Dict[str, Any] = {"command": command, "status": status}
+    if message is not None:
+        payload["message"] = message
+    if data:
+        payload["data"] = data
+    if errors:
+        payload["errors"] = errors
+
+    json_mode = ctx.obj.get("json_mode", False)
+    quiet = ctx.obj.get("quiet", False)
+
+    if json_mode:
+        indent = None if quiet else 2
+        click.echo(json.dumps(payload, indent=indent, default=_json_default))
+    else:
+        if message and (not quiet or status != "success"):
+            click.echo(message, err=status == "error")
+        if not quiet:
+            for line in details or []:
+                click.echo(line)
+            if errors:
+                for error in errors:
+                    click.echo(f"Error: {error}", err=True)
+
+    if exit_code is not None:
+        ctx.exit(exit_code)
+
+
+def _module_status_to_cli(status: str) -> tuple[str, int | None]:
+    """Translate module execution status to CLI status/exit code."""
+
+    normalized = status.lower()
+    if normalized == "success":
+        return "success", None
+    if normalized in {"partial", "skipped"}:
+        return "warning", None
+    return "error", 1
+
+
+def _module_result_to_dict(result: Any) -> Dict[str, Any]:
+    """Return a JSON-serialisable representation of :class:`ModuleResult`."""
+
+    return {
+        "result_id": getattr(result, "result_id", ""),
+        "module_name": getattr(result, "module_name", ""),
+        "status": getattr(result, "status", "unknown"),
+        "timestamp": getattr(result, "timestamp", ""),
+        "output_path": str(getattr(result, "output_path", "") or ""),
+        "findings": list(getattr(result, "findings", []) or []),
+        "metadata": dict(getattr(result, "metadata", {}) or {}),
+        "errors": list(getattr(result, "errors", []) or []),
+    }
 
 
 def _register_default_modules(ctx: click.Context) -> None:
@@ -89,6 +165,8 @@ def _register_default_modules(ctx: click.Context) -> None:
     "--config", type=click.Path(exists=True), default=None, help="Config file"
 )
 @click.option("--verbose", "-v", is_flag=True, help="Verbose output")
+@click.option("--json", "json_mode", is_flag=True, help="Emit JSON status objects")
+@click.option("--quiet", is_flag=True, help="Suppress human-readable output")
 @click.option(
     "--legacy/--no-legacy",
     default=False,
@@ -100,6 +178,8 @@ def cli(
     workspace: str | None,
     config: str | None,
     verbose: bool,
+    json_mode: bool,
+    quiet: bool,
     legacy: bool,
 ) -> None:
     """Forensic Framework CLI."""
@@ -109,12 +189,17 @@ def cli(
     workspace_path = Path(workspace) if workspace else None
     config_path = Path(config) if config else None
 
+    # Quiet mode takes precedence over verbose output to avoid mixed messaging.
+    effective_verbose = verbose and not quiet
+
     ctx.obj["framework"] = ForensicFramework(
         config_file=config_path, workspace=workspace_path
     )
-    ctx.obj["verbose"] = verbose
+    ctx.obj["verbose"] = effective_verbose
     ctx.obj["skipped_modules"] = {}
     ctx.obj["legacy_enabled"] = legacy
+    ctx.obj["json_mode"] = json_mode
+    ctx.obj["quiet"] = quiet
 
     _register_default_modules(ctx)
 
@@ -144,10 +229,25 @@ def create_case(
     case = framework.create_case(
         name=name, description=description, investigator=investigator, case_id=case_id
     )
-
-    click.echo(f"✓ Case created: {case.case_id}")
-    click.echo(f"  Name: {case.name}")
-    click.echo(f"  Directory: {case.case_dir}")
+    data = {
+        "case_id": case.case_id,
+        "name": case.name,
+        "description": case.description,
+        "investigator": case.investigator,
+        "directory": str(case.case_dir),
+    }
+    details = [
+        f"  Name: {case.name}",
+        f"  Directory: {case.case_dir}",
+    ]
+    _emit_status(
+        ctx,
+        "case.create",
+        status="success",
+        message=f"✓ Case created: {case.case_id}",
+        details=details,
+        data={"case": data},
+    )
 
 
 @case.command("init")
@@ -197,16 +297,42 @@ def init_case(
         )
 
     if existed and not force:
-        click.echo(f"✓ Case already initialised: {case.case_id}")
-        click.echo(f"  Directory: {case.case_dir}")
+        details = [f"  Directory: {case.case_dir}"]
+        data = {
+            "case_id": case.case_id,
+            "name": case.name,
+            "directory": str(case.case_dir),
+            "existed": True,
+        }
+        _emit_status(
+            ctx,
+            "case.init",
+            status="warning",
+            message=f"✓ Case already initialised: {case.case_id}",
+            details=details,
+            data=data,
+        )
         return
 
     # Ensure the common sub-directories are present.
     for subdir in ("evidence", "analysis", "reports", "logs"):
         (case.case_dir / subdir).mkdir(parents=True, exist_ok=True)
 
-    click.echo(f"✓ Case initialised: {case.case_id}")
-    click.echo(f"  Directory: {case.case_dir}")
+    details = [f"  Directory: {case.case_dir}"]
+    data = {
+        "case_id": case.case_id,
+        "name": case.name,
+        "directory": str(case.case_dir),
+        "existed": existed,
+    }
+    _emit_status(
+        ctx,
+        "case.init",
+        status="success",
+        message=f"✓ Case initialised: {case.case_id}",
+        details=details,
+        data=data,
+    )
 
 @case.command("list")
 @click.pass_context
@@ -217,15 +343,30 @@ def list_cases(ctx: click.Context) -> None:
     cases = framework.list_cases()
 
     if not cases:
-        click.echo("No cases found")
+        _emit_status(
+            ctx,
+            "case.list",
+            status="success",
+            message="No cases found",
+            data={"cases": []},
+        )
         return
 
-    click.echo("\nCases:")
+    details = ["Cases:"]
     for case in cases:
-        click.echo(f"  {case['case_id']}: {case['name']}")
-        click.echo(f"    Investigator: {case['investigator']}")
-        click.echo(f"    Created: {case['created_at']}")
-        click.echo()
+        details.append(f"  {case['case_id']}: {case['name']}")
+        details.append(f"    Investigator: {case['investigator']}")
+        details.append(f"    Created: {case['created_at']}")
+        details.append("")
+
+    _emit_status(
+        ctx,
+        "case.list",
+        status="success",
+        message=f"{len(cases)} case(s) found",
+        details=details,
+        data={"cases": cases},
+    )
 
 
 @case.command("load")
@@ -238,12 +379,36 @@ def load_case(ctx: click.Context, case_id: str) -> None:
 
     try:
         case = framework.load_case(case_id)
-        click.echo(f"✓ Case loaded: {case.case_id}")
-        click.echo(f"  Name: {case.name}")
-        click.echo(f"  Directory: {case.case_dir}")
     except ValueError as exc:
-        click.echo(f"✗ Error: {exc}", err=True)
-        sys.exit(1)
+        _emit_status(
+            ctx,
+            "case.load",
+            status="error",
+            message=f"✗ Error: {exc}",
+            errors=[str(exc)],
+            exit_code=1,
+        )
+        return
+
+    details = [
+        f"  Name: {case.name}",
+        f"  Directory: {case.case_dir}",
+    ]
+    data = {
+        "case_id": case.case_id,
+        "name": case.name,
+        "directory": str(case.case_dir),
+        "description": case.description,
+        "investigator": case.investigator,
+    }
+    _emit_status(
+        ctx,
+        "case.load",
+        status="success",
+        message=f"✓ Case loaded: {case.case_id}",
+        details=details,
+        data={"case": data},
+    )
 
 
 @cli.group()
@@ -274,8 +439,16 @@ def add_evidence(
     framework: ForensicFramework = ctx.obj["framework"]
 
     if not framework.current_case:
-        click.echo("✗ No active case. Load or create a case first.", err=True)
-        sys.exit(1)
+        message = "✗ No active case. Load or create a case first."
+        _emit_status(
+            ctx,
+            "evidence.add",
+            status="error",
+            message=message,
+            errors=[message],
+            exit_code=1,
+        )
+        return
 
     evidence_type_enum = EvidenceType[evidence_type.upper()]
 
@@ -284,10 +457,24 @@ def add_evidence(
         source_path=Path(source_path),
         description=description,
     )
-
-    click.echo(f"✓ Evidence added: {evidence.evidence_id}")
-    click.echo(f"  Type: {evidence.evidence_type.value}")
-    click.echo(f"  Hash: {evidence.hash_sha256}")
+    details = [
+        f"  Type: {evidence.evidence_type.value}",
+        f"  Hash: {evidence.hash_sha256}",
+    ]
+    data = {
+        "evidence_id": evidence.evidence_id,
+        "type": evidence.evidence_type.value,
+        "hash_sha256": evidence.hash_sha256,
+        "source_path": str(evidence.source_path),
+    }
+    _emit_status(
+        ctx,
+        "evidence.add",
+        status="success",
+        message=f"✓ Evidence added: {evidence.evidence_id}",
+        details=details,
+        data={"evidence": data},
+    )
 
 
 @cli.group()
@@ -304,52 +491,201 @@ def list_modules(ctx: click.Context) -> None:
     available = sorted(framework.list_modules())
     skipped = ctx.obj.get("skipped_modules", {})
 
-    click.echo("Available modules:")
-    for module_name in available:
-        click.echo(f"  • {module_name}")
-
+    details = ["Available modules:"]
+    details.extend(f"  • {module_name}" for module_name in available)
     if skipped:
-        click.echo("\nUnavailable modules:")
+        details.append("")
+        details.append("Unavailable modules:")
         for module_name, reason in skipped.items():
-            click.echo(f"  • {module_name} ({reason})")
+            details.append(f"  • {module_name} ({reason})")
+
+    data = {"available": available, "unavailable": skipped}
+    _emit_status(
+        ctx,
+        "modules.list",
+        status="success",
+        message=f"{len(available)} module(s) available",
+        details=details,
+        data=data,
+    )
 
 
 @modules.command("run")
 @click.argument("module_name")
+@click.option("--case", "case_id", help="Case identifier to load before execution")
+@click.option(
+    "--root",
+    "root_path",
+    type=click.Path(path_type=Path),
+    help="Root path or evidence source for the module",
+)
+@click.option(
+    "--out",
+    "out_path",
+    type=click.Path(path_type=Path),
+    help="Override default output path",
+)
+@click.option("--tz", "timezone", help="Timezone override passed to the module")
+@click.option("--dry-run", is_flag=True, help="Execute the module in dry-run mode")
+@click.option(
+    "--enable-live-capture",
+    is_flag=True,
+    help="Allow modules to perform live capture actions",
+)
 @click.option("--param", multiple=True, type=str, help="Module parameter key=value")
 @click.pass_context
-def run_module(ctx: click.Context, module_name: str, param: tuple[str, ...]) -> None:
+def run_module(
+    ctx: click.Context,
+    module_name: str,
+    case_id: str | None,
+    root_path: Path | None,
+    out_path: Path | None,
+    timezone: str | None,
+    dry_run: bool,
+    enable_live_capture: bool,
+    param: tuple[str, ...],
+) -> None:
     """Run a module with optional parameters."""
 
     framework: ForensicFramework = ctx.obj["framework"]
-    params: Dict[str, str] = {}
+    params: Dict[str, Any] = {}
 
     for item in param:
         if "=" not in item:
-            click.echo(
-                f"✗ Invalid parameter '{item}'. Use key=value format.",
-                err=True,
+            message = f"✗ Invalid parameter '{item}'. Use key=value format."
+            _emit_status(
+                ctx,
+                "modules.run",
+                status="error",
+                message=message,
+                errors=[message],
+                exit_code=1,
             )
-            sys.exit(1)
+            return
         key, value = item.split("=", 1)
         params[key] = value
 
+    if dry_run:
+        params["dry_run"] = True
+    if enable_live_capture:
+        params["enable_live_capture"] = True
+    if timezone:
+        params["timezone"] = timezone
+    if root_path is not None:
+        root_str = str(root_path)
+        for key in ("root", "source", "target", "image", "path", "mount"):
+            params.setdefault(key, root_str)
+    if out_path is not None:
+        out_str = str(out_path)
+        params.setdefault("output", out_str)
+        params["output_file"] = out_str
+
+    if case_id:
+        try:
+            case = framework.load_case(case_id)
+        except ValueError as exc:
+            _emit_status(
+                ctx,
+                "modules.run",
+                status="error",
+                message=f"✗ {exc}",
+                errors=[str(exc)],
+                exit_code=1,
+            )
+            return
+    else:
+        case = framework.current_case
+        if case is None:
+            message = "✗ No active case. Use --case to select one."
+            _emit_status(
+                ctx,
+                "modules.run",
+                status="error",
+                message=message,
+                errors=[message],
+                exit_code=1,
+            )
+            return
+
     try:
-        result = framework.run_module(module_name, None, params)
-    except KeyError:
-        click.echo(f"✗ Unknown module: {module_name}", err=True)
-        sys.exit(1)
+        result = framework.execute_module(module_name, params=params)
+    except ValueError as exc:
+        _emit_status(
+            ctx,
+            "modules.run",
+            status="error",
+            message=f"✗ {exc}",
+            errors=[str(exc)],
+            exit_code=1,
+        )
+        return
+    except RuntimeError as exc:
+        _emit_status(
+            ctx,
+            "modules.run",
+            status="error",
+            message=f"✗ {exc}",
+            errors=[str(exc)],
+            exit_code=1,
+        )
+        return
+    except Exception as exc:  # pragma: no cover - defensive
+        message = f"✗ Module execution failed: {exc}"
+        _emit_status(
+            ctx,
+            "modules.run",
+            status="error",
+            message=message,
+            errors=[str(exc)],
+            exit_code=1,
+        )
+        return
 
-    click.echo(f"Module {module_name} executed with status: {result.status}")
-    if result.findings:
-        click.echo("Findings:")
-        for finding in result.findings:
-            click.echo(f"  - {finding.get('description', finding)}")
+    module_payload = _module_result_to_dict(result)
+    cli_status, exit_code = _module_status_to_cli(module_payload["status"])
+    message = (
+        f"Module {module_name} finished with status: {module_payload['status']}"
+    )
 
-    if result.errors:
-        click.echo("Errors:")
-        for error in result.errors:
-            click.echo(f"  - {error}")
+    details: list[str] = [f"Status: {module_payload['status']}"]
+    if module_payload.get("output_path"):
+        details.append(f"Output file: {module_payload['output_path']}")
+    if module_payload["findings"]:
+        details.append("Findings:")
+        for finding in module_payload["findings"]:
+            if isinstance(finding, dict):
+                description = finding.get("description") or json.dumps(
+                    finding, default=_json_default
+                )
+            else:
+                description = str(finding)
+            details.append(f"  - {description}")
+    if module_payload["errors"]:
+        details.append("Errors:")
+        for error in module_payload["errors"]:
+            details.append(f"  - {error}")
+
+    params_payload = {
+        key: (str(value) if isinstance(value, Path) else value)
+        for key, value in params.items()
+    }
+    data = {
+        "case_id": getattr(case, "case_id", None),
+        "module": module_name,
+        "params": params_payload,
+        "result": module_payload,
+    }
+
+    _emit_status(
+        ctx,
+        "modules.run",
+        status=cli_status,
+        message=message,
+        details=details,
+        data=data,
+        errors=module_payload["errors"] if cli_status == "error" else None,
+        exit_code=exit_code,
+    )
 
 
 cli.add_command(modules, name="module")
@@ -369,7 +705,11 @@ def report() -> None:
     help="Report output format.",
 )
 @click.option(
-    "--out", "out_path", type=click.Path(), default=None, help="Output file path"
+    "--out",
+    "out_path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Output file path",
 )
 @click.option("--case", "case_id", required=True, help="Case identifier")
 @click.option(
@@ -379,7 +719,7 @@ def report() -> None:
 def generate_report(
     ctx: click.Context,
     fmt: str,
-    out_path: str | None,
+    out_path: Path | None,
     case_id: str,
     dry_run: bool,
 ) -> None:
@@ -390,31 +730,69 @@ def generate_report(
     try:
         case = framework.load_case(case_id)
     except ValueError as exc:
-        click.echo(f"✗ Error: {exc}", err=True)
-        sys.exit(1)
+        _emit_status(
+            ctx,
+            "report.generate",
+            status="error",
+            message=f"✗ Error: {exc}",
+            errors=[str(exc)],
+            exit_code=1,
+        )
+        return
 
-    params = {"format": fmt}
+    params: Dict[str, Any] = {"format": fmt}
     if out_path:
-        params["output_file"] = out_path
+        params["output_file"] = str(out_path)
     if dry_run:
         params["dry_run"] = True
 
     module = ReportGenerator(case_dir=case.case_dir, config=framework.config)
     result = module.run(None, params)
 
-    click.echo(f"Report generation status: {result.status}")
-    if result.output_path:
-        click.echo(f"Output file: {result.output_path}")
-    if result.metadata.get("dry_run"):
-        click.echo("Dry-run mode: no files were written.")
-    if result.errors:
-        click.echo("Errors:")
-        for error in result.errors:
-            click.echo(f"  - {error}")
-    for finding in result.findings:
-        description = finding.get("description")
-        if description:
-            click.echo(f"Finding: {description}")
+    payload = _module_result_to_dict(result)
+    cli_status, exit_code = _module_status_to_cli(payload["status"])
+    message = f"Report generation status: {payload['status']}"
+
+    details = [f"Status: {payload['status']}"]
+    if payload.get("output_path"):
+        details.append(f"Output file: {payload['output_path']}")
+    if payload["metadata"].get("dry_run"):
+        details.append("Dry-run mode: no files were written.")
+    if payload["findings"]:
+        details.append("Findings:")
+        for finding in payload["findings"]:
+            if isinstance(finding, dict):
+                description = finding.get("description") or json.dumps(
+                    finding, default=_json_default
+                )
+            else:
+                description = str(finding)
+            details.append(f"  - {description}")
+    if payload["errors"]:
+        details.append("Errors:")
+        for error in payload["errors"]:
+            details.append(f"  - {error}")
+
+    params_payload = {
+        key: (str(value) if isinstance(value, Path) else value)
+        for key, value in params.items()
+    }
+    data = {
+        "case_id": case.case_id,
+        "params": params_payload,
+        "result": payload,
+    }
+
+    _emit_status(
+        ctx,
+        "report.generate",
+        status=cli_status,
+        message=message,
+        details=details,
+        data=data,
+        errors=payload["errors"] if cli_status == "error" else None,
+        exit_code=exit_code,
+    )
 
 
 @cli.command()
@@ -425,17 +803,25 @@ def diagnostics(ctx: click.Context) -> None:
     framework: ForensicFramework = ctx.obj["framework"]
     workspace = framework.workspace
 
-    click.echo("=== Environment diagnostics ===")
-    click.echo(f"Timezone: {datetime.now().astimezone().tzinfo}")
-    click.echo(f"Workspace: {workspace}")
-
+    tz_info = datetime.now().astimezone().tzinfo
     paths_to_check = [workspace, workspace / "analysis", workspace / "reports"]
-    click.echo("\nWrite permissions:")
+
+    path_details: list[Dict[str, Any]] = []
+    path_lines = ["Write permissions:"]
     for path in paths_to_check:
         exists = path.exists()
         writable = os.access(path if exists else path.parent, os.W_OK)
         status = "✓" if writable else "✗"
-        click.echo(f"  {status} {path} ({'exists' if exists else 'will be created'})")
+        suffix = "exists" if exists else "will be created"
+        path_lines.append(f"  {status} {path} ({suffix})")
+        path_details.append(
+            {
+                "path": str(path),
+                "exists": exists,
+                "writable": writable,
+                "note": suffix,
+            }
+        )
 
     tool_groups = {
         "Network capture": ["tcpdump", "dumpcap"],
@@ -445,17 +831,19 @@ def diagnostics(ctx: click.Context) -> None:
         "YARA": ["yara"],
     }
 
-    click.echo("\nTool availability:")
+    tool_details: Dict[str, Dict[str, list[str]]] = {}
+    tool_lines = ["Tool availability:"]
     for label, tools in tool_groups.items():
-        available = [tool for tool in tools if shutil.which(tool)]
-        missing = [tool for tool in tools if tool not in available]
+        available = sorted(tool for tool in tools if shutil.which(tool))
+        missing = sorted(tool for tool in tools if tool not in available)
         parts = []
         if available:
-            parts.append(f"available: {', '.join(sorted(available))}")
+            parts.append(f"available: {', '.join(available)}")
         if missing:
-            parts.append(f"missing: {', '.join(sorted(missing))}")
+            parts.append(f"missing: {', '.join(missing)}")
         message = "; ".join(parts) if parts else "no tools detected"
-        click.echo(f"  - {label}: {message}")
+        tool_lines.append(f"  - {label}: {message}")
+        tool_details[label] = {"available": available, "missing": missing}
 
     optional_packages = {
         "volatility3": "volatility3",
@@ -463,25 +851,62 @@ def diagnostics(ctx: click.Context) -> None:
         "yara-python": "yara",
     }
 
-    click.echo("\nPython packages:")
+    package_details: Dict[str, str] = {}
+    package_lines = ["Python packages:"]
     for label, module_name in optional_packages.items():
         try:
             importlib.import_module(module_name)
             status = "available"
         except ModuleNotFoundError:
             status = "missing"
-        click.echo(f"  - {label}: {status}")
+        package_lines.append(f"  - {label}: {status}")
+        package_details[label] = status
 
-    click.echo("\nDiagnostics complete.")
+    details = [
+        "=== Environment diagnostics ===",
+        f"Timezone: {tz_info}",
+        f"Workspace: {workspace}",
+        "",
+        *path_lines,
+        "",
+        *tool_lines,
+        "",
+        *package_lines,
+        "",
+        "Diagnostics complete.",
+    ]
+
+    data = {
+        "timezone": str(tz_info),
+        "workspace": str(workspace),
+        "paths": path_details,
+        "tools": tool_details,
+        "python_packages": package_details,
+    }
+
+    _emit_status(
+        ctx,
+        "diagnostics",
+        status="success",
+        message="Diagnostics collected",
+        details=details,
+        data=data,
+    )
 
 
 def _ensure_legacy_enabled(ctx: click.Context) -> None:
     if not ctx.obj.get("legacy_enabled"):
-        click.echo(
-            "Legacy wrappers are disabled. Re-run with --legacy to access deprecated tools.",
-            err=True,
+        message = (
+            "Legacy wrappers are disabled. Re-run with --legacy to access deprecated tools."
         )
-        ctx.exit(1)
+        _emit_status(
+            ctx,
+            "legacy",
+            status="error",
+            message=message,
+            errors=[message],
+            exit_code=1,
+        )
 
 
 def _run_legacy_script(script_name: str, args: tuple[str, ...]) -> int:

@@ -36,15 +36,15 @@ dev = [
 memory = [
     "volatility3>=2.4.0",
 ]
-yara = [
-    "yara-python>=4.2",
-]
 pcap = [
     "scapy>=2.5",
     "pyshark>=0.5.3",
 ]
 report_pdf = [
     "weasyprint>=59.0",
+]
+yara = [
+    "yara-python>=4.2",
 ]
 
 [project.scripts]
