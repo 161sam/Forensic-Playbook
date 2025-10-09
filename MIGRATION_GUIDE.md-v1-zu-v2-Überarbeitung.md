@@ -578,7 +578,7 @@ forensic-cli check-tools
 - [ ] Alle Kern-Module implementiert
 - [ ] CLI vollständig funktional
 - [ ] Mind. 3 Pipelines verfügbar
-- [ ] Test-Coverage >70%
+- [ ] Test-Coverage >92%
 - [ ] Dokumentation vollständig
 - [ ] Alle Legacy-Scripts migriert oder deprecated
 - [ ] Chain of Custody funktional
