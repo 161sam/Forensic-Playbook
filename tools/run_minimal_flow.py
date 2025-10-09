@@ -52,8 +52,13 @@ def _synthesise_network_fixture(
     return json_fixture, {"pcap_json": "-"}, json_payload
 
 
-def run_minimal_flow(workspace: Path, report_path: Path) -> Path:
-    """Run diagnostics → network analysis → report generation."""
+def run_minimal_flow(
+    workspace: Path,
+    report_path: Path,
+    *,
+    generate_report: bool = True,
+) -> Path:
+    """Run diagnostics → network analysis and optionally generate a report."""
 
     runner = CliRunner()
     workspace.mkdir(parents=True, exist_ok=True)
@@ -103,9 +108,12 @@ def run_minimal_flow(workspace: Path, report_path: Path) -> Path:
         analysis_result = framework.execute_module("network", params=analysis_params)
     if analysis_result.status != "success":
         raise RuntimeError(
-            "Network analysis failed:"
+            "Network analysis failed:",
             f" {analysis_result.status} | {analysis_result.errors}"
         )
+
+    if not generate_report:
+        return report_path
 
     report_module = ReportGenerator(case_dir=case.case_dir, config=framework.config)
     report_result = report_module.run(
@@ -113,7 +121,7 @@ def run_minimal_flow(workspace: Path, report_path: Path) -> Path:
     )
     if report_result.status != "success":
         raise RuntimeError(
-            "Report generation failed:"
+            "Report generation failed:",
             f" {report_result.status} | {report_result.errors}"
         )
 
@@ -140,13 +148,27 @@ def parse_args() -> argparse.Namespace:
         default=Path("out/report.html"),
         help="Destination for the generated HTML report",
     )
+    parser.add_argument(
+        "--skip-report",
+        action="store_true",
+        help="Prepare the workspace without generating an HTML report",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    output_path = run_minimal_flow(args.workspace, args.report)
-    print(f"Report generated at: {output_path}")
+    output_path = run_minimal_flow(
+        args.workspace, args.report, generate_report=not args.skip_report
+    )
+
+    if args.skip_report:
+        print(
+            "Minimal flow completed without generating a report (skip requested)."
+        )
+    else:
+        print(f"Report generated at: {output_path}")
+
 
 
 if __name__ == "__main__":
