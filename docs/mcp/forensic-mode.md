@@ -4,39 +4,54 @@ title: "Forensic Mode Principles"
 description: "Operational guardrails for MCP agents working with Forensic-Playbook."
 ---
 
-# Grundprinzipien
+# Forensic Mode — Grundprinzipien
 
-Forensic Mode stellt sicher, dass alle Aktionen nachvollziehbar, read-only und auditierbar bleiben. Die Richtlinien gelten für
-Menschen und MCP-Agenten gleichermaßen.
+Forensic Mode stellt sicher, dass jede Aktion nachvollziehbar, read-only by default und dokumentiert bleibt. Die Leitlinien gelten für Menschen, Skripte und MCP-Agents gleichermaßen.
 
-1. **Dry-Run-Pflicht:** Jeder Befehl muss zuerst mit `--dry-run` oder äquivalentem Plan-Flag ausgeführt werden.
-2. **Chain of Custody:** Artefakte, Hashes und Parameter sind in `meta/chain_of_custody.jsonl` bzw. `meta/provenance.jsonl`
-   festzuhalten.
-3. **Konfigurationspräzedenz:** CLI > Fall-spezifische YAML > globale Defaults. MCP-Tools müssen diese Reihenfolge respektieren.
-4. **Guarded Execution:** Fehlende Tools führen zu Guard-Warnungen (`status=skipped`/`partial`) statt Exceptions.
-5. **Read-Only-Standard:** Schreibende Aktionen setzen explizite Flags (`--enable-live-capture`, `--approve`). Ohne Flag erfolgt
-   kein Zugriff.
+## Kernregeln
 
-# Bezug zu AGENTS
+1. **Dry-Run zuerst** — Jeder Schritt startet mit `--dry-run`, `--plan` oder einer äquivalenten Vorschau. Live-Ausführung erfolgt nur nach bestätigter Freigabe (`--accept-risk`).
+2. **Provenienzpflicht** — Erfassen Sie Eingaben, Ausgaben, Hashes und Entscheidungsgrundlagen in `meta/chain_of_custody.jsonl` sowie `meta/provenance.jsonl`.
+3. **Konfigurationspräzedenz** — CLI-Flags > Fallkonfiguration (`cases/<id>/config.yaml`) > globale Defaults (`config/framework.yaml`). MCP-Adapter müssen diese Reihenfolge respektieren.
+4. **Determinismus** — Ergebnisse müssen reproduzierbar sein. Zufällige Seeds, Zeitstempel oder UUIDs sind zu fixieren oder in Logs zu dokumentieren.
+5. **Read-Only-Standard** — Schreibende Aktionen sind opt-in und transparent dokumentiert (z. B. Live-Capture, Memory-Dumps).
 
-- Wurzel-Anweisungen (`AGENTS.md`) definieren globale Leitplanken (Forensic Mode, Dry-Run, Chain-of-Custody).
-- Unterordner wie `docs/AGENTS.md` konkretisieren Dokumentationsanforderungen (Dry-Run hervorheben, deterministische Beispiele).
-- MCP-Agents sollten diese Anweisungen vor jedem Schritt lesen und in ihren Antworten referenzieren.
+## Do & Don’t
 
-# MCP-spezifische Guardrails
+| Do | Don’t |
+| --- | --- |
+| Plan zuerst, dann bestätigen | Kein Live-Run ohne dokumentierte Freigabe |
+| Logs unter `<workspace>/codex_logs/` referenzieren | Unprotokollierte Dateien oder Pfade nutzen |
+| Prompttexte mit [`forensic/mcp/prompts/forensic_mode.txt`](../../forensic/mcp/prompts/forensic_mode.txt) abgleichen | Eigene Prompts ohne Guard-Abschnitte einsetzen |
+| Fehlende Tools als Guard-Warnung (`status=skipped`) melden | Exceptions werfen, die den Prompt-Fluss beenden |
 
-- **Tool-Katalog aktualisieren:** Nach Modul- oder CLI-Änderungen `forensic-cli mcp expose` ausführen und Dokumentation
-  synchronisieren.
-- **Prompts versionieren:** `forensic/mcp/prompts/forensic_mode.txt` enthält den offiziellen System-Prompt. Änderungen müssen in
-  `docs/mcp/codex-workflow.md` verlinkt werden.
-- **Logging:** Alle MCP-Aufrufe schreiben nach `<workspace>/codex_logs/`. Bewahren Sie die Logdateien bis zur Übergabe an das
-  Incident-Response-Team auf.
-- **Sicherer Kontext:** Keine Ausführung außerhalb des definierten Workspaces; Pfade werden vor Nutzung normalisiert.
+## Bezug zu AGENTS-Anweisungen
 
-# Best Practices
+- Das Wurzel-Dokument (`/AGENTS.md`) beschreibt allgemeine Guardrails sowie Beispiel-Prompts.
+- Bereichsspezifische Dateien wie `docs/AGENTS.md`, `forensic/AGENTS.md` oder `router/AGENTS.md` erweitern diese Regeln für ihr Subsystem.
+- Änderungen an Guardtexten müssen synchron in den AGENTS-Dateien und im System-Prompt erfolgen.
 
-- Führen Sie regelmäßig `forensic-cli diagnostics` aus, um Guard-Status und fehlende Tools zu erkennen.
-- Nutzen Sie `--json`-Ausgaben für automatisierte Auswertung und archivieren Sie die Antworten gemeinsam mit Logdateien.
-- Dokumentieren Sie Entscheidungen (Freigaben für Live-Captures, Anpassungen an YAMLs) schriftlich im Case-Dossier.
+## Prompt-Beispiele
+
+**System-Prompt (Auszug):**
+```
+Du agierst im Forensic Mode. Führe zuerst einen Dry-Run durch, fasse geplante Schritte zusammen und warte auf Freigabe. Dokumentiere Workspace, Logpfade und Chain-of-Custody-Hinweise.
+```
+
+**Analysten-Prompt:**
+```
+Plane eine Timeline-Analyse für den Fall `net_timeline`. Beginne mit einem Dry-Run, liste betroffene Artefakte auf und bestätige, dass alle Pfade innerhalb des Workspaces bleiben.
+```
+
+## Confirm-Gates & Exportregeln
+
+- Jede automatisierte Ausführung verlangt eine dokumentierte Freigabe (Prompt-Reply, CLI-Flag oder Ticket-ID).
+- Exporte (Berichte, Artefakt-Zips) müssen Hashes berechnen und die Ergebnisse zusammen mit Zeitstempeln im Workspace ablegen.
+- Verweise auf externe Systeme (z. B. Ticketing) erfolgen ausschließlich über redigierte IDs.
+
+## Abgleich mit Tests & Dokumentation
+
+- Unit-Tests (`tests/test_cli_codex.py`, `tests/test_cli_mcp.py`, `tests/test_mcp_registry.py`) prüfen die Dry-Run- und JSON-Pfade.
+- Dokumentationsupdates (README, Getting-Started, `docs/mcp/*.md`) müssen auf diese Prinzipien verlinken.
 
 <!-- AUTODOC:END -->
