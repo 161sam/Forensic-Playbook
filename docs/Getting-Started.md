@@ -486,6 +486,37 @@ forensic-cli module run timeline --param source=/mnt/evidence
 
 ---
 
+### Scenario 7: Router Artefact Collection (Guarded Python Modules)
+
+**Objective:** Replace the legacy router Bash scripts with idempotent Python
+helpers that honour dry-run safeguards and provenance logging.
+
+```bash
+# Prepare an isolated workspace (no filesystem changes in --dry-run)
+forensic-cli router env init --root ~/cases/router_demo --dry-run
+
+# Plan capture directories before enabling tcpdump/dumpcap
+forensic-cli router capture setup --if eth1 --bpf "not port 22" --dry-run
+
+# Extract router UI artefacts without writing files
+forensic-cli router extract ui --input /mnt/router_dump --out ~/cases/router_demo/extract --dry-run
+
+# Catalogue evidence with hashes (defaults from config/modules/router/manifest.yaml)
+forensic-cli router manifest write --source ~/cases/router_demo/extract --out ~/cases/router_demo/manifest.json --dry-run
+
+# Summarise findings into Markdown (sections configurable via router/summarize.yaml)
+forensic-cli router summarize --in ~/cases/router_demo/extract --out ~/cases/router_demo/summary.md --dry-run
+```
+
+**Notes:**
+
+- Router commands follow the precedence **CLI > YAML > built-in defaults** with
+  ready-to-edit templates in `config/modules/router/`.
+- `--legacy` is available on every sub-command to preview the original Bash
+  implementation or to execute it explicitly when validating migrations.
+
+---
+
 ## 🎓 Next Steps
 
 ### Learn More

@@ -1,0 +1,8 @@
+# Default router pipeline description.
+steps:
+  - env.init
+  - capture.setup
+  - extract.ui
+  - manifest.write
+  - summarize
+fail_fast: true

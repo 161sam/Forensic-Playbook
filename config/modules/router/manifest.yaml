@@ -1,0 +1,8 @@
+# Router manifest generation defaults.
+fields:
+  - path
+  - sha256
+  - size
+hash_algorithm: sha256
+source_dir: router
+log_name: chain_of_custody.log
