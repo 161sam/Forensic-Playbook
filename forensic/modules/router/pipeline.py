@@ -1,133 +1,230 @@
-"""Router forensic pipeline orchestration."""
+"""Router forensic pipeline orchestration module."""
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any, Dict, List, Mapping, Optional
 
-from forensic.core.config import load_yaml
-
-from . import capture, env, extract, manifest, summarize
+from .capture import RouterCaptureModule
 from .common import (
+    RouterModule,
     RouterResult,
     format_plan,
-    legacy_invocation,
     load_router_defaults,
     normalize_bool,
     resolve_parameters,
 )
+from .env import RouterEnvModule
+from .extract import RouterExtractModule
+from .manifest import RouterManifestModule
+from .summarize import RouterSummarizeModule
 
 
-def _normalise_steps(steps: Iterable[Any]) -> list[dict[str, Any]]:
-    normalised: list[dict[str, Any]] = []
-    for step in steps or []:
-        if isinstance(step, str):
-            normalised.append({"handler": step, "params": {}})
-            continue
-        if isinstance(step, Mapping):
-            if "handler" in step:
-                normalised.append({"handler": str(step["handler"]), "params": dict(step.get("params", {}))})
+class RouterPipelineModule(RouterModule):
+    """Orchestrate router modules with dry-run safeguards."""
+
+    module = "router.pipeline"
+    description_text = "Run router workflow pipeline"
+
+    def validate_params(self, params: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
+        self._validation_errors = []
+        config = load_router_defaults("pipeline")
+        builtin = {
+            "case": None,
+            "dry_run": True,
+            "with_capture": False,
+            "fail_fast": True,
+            "timestamp": None,
+        }
+
+        resolved, _ = resolve_parameters(params, config, builtin)
+        case_dir = resolved.get("case") or params.get("case")
+        case_path = Path(case_dir) if case_dir else Path.cwd()
+
+        sanitized: Dict[str, Any] = {
+            "case": case_path,
+            "dry_run": normalize_bool(resolved.get("dry_run", True)),
+            "with_capture": normalize_bool(resolved.get("with_capture", False)),
+            "fail_fast": normalize_bool(resolved.get("fail_fast", True)),
+        }
+
+        timestamp = resolved.get("timestamp")
+        if timestamp:
+            sanitized["timestamp"] = str(timestamp)
+
+        custom_steps = params.get("steps")
+        if custom_steps is not None:
+            if not isinstance(custom_steps, list) or not all(isinstance(item, str) for item in custom_steps):
+                self._validation_errors.append("steps must be a list of handler names")
+                return None
+            sanitized["steps"] = list(custom_steps)
+
+        for key in ("env", "capture", "extract", "manifest", "summarize"):
+            value = params.get(key) or {}
+            if value and not isinstance(value, Mapping):
+                self._validation_errors.append(f"{key} parameters must be a mapping")
+                return None
+            sanitized[key] = dict(value)
+
+        return sanitized
+
+    def tool_versions(self) -> Dict[str, str]:
+        return {}
+
+    def run(
+        self,
+        framework: Any,
+        case: Path | str,
+        params: Mapping[str, Any],
+    ) -> RouterResult:
+        ts = self._timestamp(params)
+        start = time.perf_counter()
+        sanitized = self.validate_params(params)
+        result = RouterResult()
+
+        if sanitized is None:
+            result.status = "failed"
+            result.message = "; ".join(self._validation_errors) or "Invalid parameters"
+            result.errors.extend(self._validation_errors)
+            self._log_provenance(
+                ts=ts,
+                params=params,
+                tool_versions=self.tool_versions(),
+                result=result,
+                inputs={},
+                duration_ms=(time.perf_counter() - start) * 1000,
+                exit_code=1,
+            )
+            return result
+
+        case_dir: Path = Path(sanitized["case"])
+        dry_run: bool = sanitized.get("dry_run", True)
+        timestamp = sanitized.get("timestamp", ts)
+        fail_fast: bool = sanitized.get("fail_fast", True)
+
+        default_steps: List[str] = ["env"]
+        if sanitized.get("with_capture"):
+            default_steps.append("capture")
+        default_steps.extend(["extract", "manifest", "summarize"])
+        steps: List[str] = sanitized.get("steps", default_steps)
+
+        step_results: List[Dict[str, Any]] = []
+        plan_lines = [f"Would run {step}" for step in steps]
+        result.add_input("case", str(case_dir))
+        result.data["steps"] = steps
+
+        if dry_run:
+            result.status = "skipped"
+            result.message = "Dry-run: router pipeline preview"
+            result.details.extend(format_plan(plan_lines))
+            self._log_provenance(
+                ts=ts,
+                params=sanitized,
+                tool_versions=self.tool_versions(),
+                result=result,
+                inputs=result.inputs,
+                duration_ms=(time.perf_counter() - start) * 1000,
+                exit_code=0,
+            )
+            return result
+
+        exit_code = 0
+        for step in steps:
+            handler = HANDLERS.get(step)
+            if not handler:
+                message = f"Unknown pipeline handler {step}"
+                step_results.append({"handler": step, "status": "failed", "message": message})
+                result.details.append(message)
+                exit_code = 1
+                if fail_fast:
+                    break
                 continue
-            if len(step) == 1:
-                key = next(iter(step))
-                value = step[key]
-                normalised.append({"handler": str(key), "params": dict(value or {})})
-                continue
-        normalised.append({"handler": str(step), "params": {}})
-    return normalised
+
+            module_params = dict(sanitized.get(step, {}))
+            module_params.setdefault("dry_run", dry_run)
+            module_params.setdefault("timestamp", timestamp)
+            if step == "env":
+                module_params.setdefault("root", str(case_dir))
+            handler_result = handler(case_dir, module_params)
+            step_results.append(
+                {
+                    "handler": step,
+                    "status": handler_result.status,
+                    "message": handler_result.message,
+                }
+            )
+            result.details.append(f"{step}: {handler_result.status}")
+            if handler_result.status == "failed":
+                exit_code = 1
+                if fail_fast:
+                    break
+
+        if exit_code == 0:
+            result.status = "success"
+            result.message = "Router pipeline completed"
+        else:
+            result.status = "failed"
+            result.message = "Router pipeline encountered errors"
+
+        result.data["step_results"] = step_results
+
+        self._log_provenance(
+            ts=ts,
+            params=sanitized,
+            tool_versions=self.tool_versions(),
+            result=result,
+            inputs=result.inputs,
+            duration_ms=(time.perf_counter() - start) * 1000,
+            exit_code=exit_code,
+        )
+        return result
 
 
-HANDLERS = {
-    "env.init": lambda params: env.init_environment(params),
-    "capture.setup": lambda params: capture.setup(params),
-    "capture.start": lambda params: capture.start(params),
-    "capture.stop": lambda params: capture.stop(params),
-    "extract.ui": lambda params: extract.extract("ui", params),
-    "extract.ddns": lambda params: extract.extract("ddns", params),
-    "extract.devices": lambda params: extract.extract("devices", params),
-    "extract.eventlog": lambda params: extract.extract("eventlog", params),
-    "extract.portforwards": lambda params: extract.extract("portforwards", params),
-    "extract.session_csrf": lambda params: extract.extract("session_csrf", params),
-    "extract.tr069": lambda params: extract.extract("tr069", params),
-    "extract.backups": lambda params: extract.extract("backups", params),
-    "manifest.write": lambda params: manifest.write_manifest(params),
-    "summarize": lambda params: summarize.summarize(params),
+def _env_handler(case_dir: Path, params: Mapping[str, Any]) -> RouterResult:
+    module = RouterEnvModule(case_dir, load_router_defaults("env"))
+    return module.run(None, case_dir, params)
+
+
+def _capture_handler(case_dir: Path, params: Mapping[str, Any]) -> RouterResult:
+    module = RouterCaptureModule(case_dir, load_router_defaults("capture"))
+    return module.run(None, case_dir, params)
+
+
+def _extract_handler(case_dir: Path, params: Mapping[str, Any]) -> RouterResult:
+    module = RouterExtractModule(case_dir, load_router_defaults("extract"))
+    return module.run(None, case_dir, params)
+
+
+def _manifest_handler(case_dir: Path, params: Mapping[str, Any]) -> RouterResult:
+    module = RouterManifestModule(case_dir, load_router_defaults("manifest"))
+    return module.run(None, case_dir, params)
+
+
+def _summarize_handler(case_dir: Path, params: Mapping[str, Any]) -> RouterResult:
+    module = RouterSummarizeModule(case_dir, load_router_defaults("summary"))
+    return module.run(None, case_dir, params)
+
+
+HANDLERS: Dict[str, Any] = {
+    "env": _env_handler,
+    "capture": _capture_handler,
+    "capture.setup": _capture_handler,
+    "capture.start": _capture_handler,
+    "extract": _extract_handler,
+    "extract.ui": _extract_handler,
+    "manifest": _manifest_handler,
+    "manifest.write": _manifest_handler,
+    "summarize": _summarize_handler,
 }
 
 
 def run_pipeline(params: Mapping[str, Any]) -> RouterResult:
-    """Execute the configured router forensic pipeline."""
+    """Backward-compatible wrapper for CLI usage."""
 
-    config = load_router_defaults("pipeline")
-    builtin = {
-        "steps": ["extract.ui", "summarize"],
-        "fail_fast": True,
-        "dry_run": False,
-        "legacy": False,
-    }
-
-    resolved, _ = resolve_parameters(params, config, builtin)
-    dry_run = normalize_bool(resolved.get("dry_run", False))
-    legacy = normalize_bool(resolved.get("legacy", False))
-
-    if legacy:
-        return legacy_invocation(
-            "run_forensic_pipeline.sh",
-            [resolved.get("plan") or ""],
-            dry_run=dry_run,
-        )
-
-    plan = resolved.get("plan")
-    if plan:
-        plan_path = Path(plan)
-        if plan_path.exists():
-            plan_data = load_yaml(plan_path)
-            if isinstance(plan_data, Mapping):
-                plan_steps = plan_data.get("steps")
-                if plan_steps:
-                    resolved["steps"] = plan_steps
-
-    steps = _normalise_steps(resolved.get("steps", []))
-    result = RouterResult()
-    result.data["steps"] = steps
-
-    if dry_run:
-        preview = [f"Would run {step['handler']}" for step in steps]
-        result.message = "Dry-run: router pipeline preview"
-        result.details.extend(format_plan(preview))
-        return result
-
-    fail_fast = normalize_bool(resolved.get("fail_fast", True))
-    step_results: list[dict[str, Any]] = []
-
-    for step in steps:
-        handler_name = step["handler"]
-        handler = HANDLERS.get(handler_name)
-        if not handler:
-            step_results.append({"handler": handler_name, "status": "skipped", "reason": "unknown handler"})
-            if fail_fast:
-                result.status = "failed"
-                result.message = f"Unknown pipeline handler {handler_name}"
-                break
-            continue
-
-        outcome = handler(step.get("params", {}))
-        step_results.append({
-            "handler": handler_name,
-            "status": outcome.status,
-            "message": outcome.message,
-        })
-        result.details.append(f"{handler_name}: {outcome.status}")
-        if outcome.status == "failed" and fail_fast:
-            result.status = "failed"
-            result.message = f"Pipeline halted after {handler_name} failure"
-            break
-
-    if result.status != "failed":
-        result.message = "Router pipeline completed"
-
-    result.data["step_results"] = step_results
-    return result
+    case_dir = Path(params.get("case") or Path.cwd())
+    module = RouterPipelineModule(case_dir, load_router_defaults("pipeline"))
+    return module.run(None, case_dir, params)
 
 
-__all__ = ["run_pipeline"]
+__all__ = ["RouterPipelineModule", "run_pipeline", "HANDLERS"]

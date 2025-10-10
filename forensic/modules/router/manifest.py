@@ -1,122 +1,187 @@
-"""Evidence manifest generation helpers."""
+"""Router manifest generation module."""
 
 from __future__ import annotations
 
-import csv
 import json
+import time
 from pathlib import Path
-from typing import Mapping
-
-from forensic.utils.hashing import compute_hash
+from typing import Any, Dict, List, Mapping, Optional
 
 from .common import (
+    RouterModule,
     RouterResult,
     ensure_directory,
     format_plan,
-    legacy_invocation,
     load_router_defaults,
     normalize_bool,
     resolve_parameters,
 )
 
 
-def write_manifest(params: Mapping[str, object]) -> RouterResult:
-    """Create a manifest JSON/CSV file with deterministic ordering."""
+class RouterManifestModule(RouterModule):
+    """Produce deterministic manifests for router extraction outputs."""
 
-    config = load_router_defaults("manifest")
-    builtin = {
-        "hash_algorithm": "sha256",
-        "fields": ["path", "sha256", "size"],
-        "source_dir": "router",
-        "dry_run": False,
-        "legacy": False,
-        "log_name": "chain_of_custody.log",
-    }
+    module = "router.manifest"
+    description_text = "Generate manifest of router artifacts"
 
-    resolved, _ = resolve_parameters(params, config, builtin)
-    dry_run = normalize_bool(resolved.get("dry_run", False))
-    legacy = normalize_bool(resolved.get("legacy", False))
-
-    output_path = resolved.get("out") or resolved.get("output")
-    if not output_path:
-        return RouterResult().guard(
-            "No output path provided for manifest generation.",
-            status="failed",
-        )
-
-    output_path = Path(output_path)
-    source_dir = Path(resolved.get("source") or resolved.get("source_dir") or output_path.parent)
-
-    if legacy:
-        return legacy_invocation(
-            "generate_evidence_manifest.sh",
-            [str(source_dir), str(output_path)],
-            dry_run=dry_run,
-        )
-
-    if not source_dir.exists():
-        return RouterResult().guard(
-            f"Source directory {source_dir} not found.",
-            hints=["Provide --source to override the default."],
-        )
-
-    files = sorted(path for path in source_dir.rglob("*") if path.is_file())
-    records = []
-    hash_algorithm = resolved.get("hash_algorithm", "sha256")
-    log_name = resolved.get("log_name", "chain_of_custody.log")
-
-    for path in files:
-        if path.name == log_name:
-            continue
-        record = {
-            "path": str(path.relative_to(source_dir)),
-            "size": path.stat().st_size,
+    def validate_params(self, params: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
+        self._validation_errors = []
+        config = load_router_defaults("manifest")
+        builtin = {
+            "source": None,
+            "output": None,
+            "dry_run": True,
+            "timestamp": None,
         }
-        try:
-            record[hash_algorithm] = compute_hash(path, algorithm=hash_algorithm)
-        except Exception as exc:  # pragma: no cover - IO failures are rare
-            record[hash_algorithm] = f"error: {exc}"
-        records.append(record)
 
-    result = RouterResult()
-    result.data["records"] = records
-    result.data["source_dir"] = str(source_dir)
-    result.data["output"] = str(output_path)
+        resolved, _ = resolve_parameters(params, config, builtin)
+        source = resolved.get("source")
+        if not source:
+            self._validation_errors.append("source directory is required")
+            return None
 
-    if dry_run:
-        result.message = "Dry-run: manifest preview"
-        result.details.extend(
-            format_plan(
-                [
-                    f"Would write {len(records)} records to {output_path}",
-                ]
+        source_path = Path(source)
+        sanitized: Dict[str, Any] = {
+            "source": source_path,
+            "dry_run": normalize_bool(resolved.get("dry_run", True)),
+        }
+
+        timestamp = resolved.get("timestamp")
+        if timestamp:
+            sanitized["timestamp"] = str(timestamp)
+
+        output = resolved.get("output")
+        if output:
+            sanitized["output"] = Path(output)
+
+        return sanitized
+
+    def tool_versions(self) -> Dict[str, str]:
+        return {}
+
+    def run(
+        self,
+        framework: Any,
+        case: Path | str,
+        params: Mapping[str, Any],
+    ) -> RouterResult:
+        ts = self._timestamp(params)
+        start = time.perf_counter()
+        case_dir = Path(case)
+        sanitized = self.validate_params(params)
+        result = RouterResult()
+
+        if sanitized is None:
+            result.status = "failed"
+            result.message = "; ".join(self._validation_errors) or "Invalid parameters"
+            result.errors.extend(self._validation_errors)
+            self._log_provenance(
+                ts=ts,
+                params=params,
+                tool_versions=self.tool_versions(),
+                result=result,
+                inputs={},
+                duration_ms=(time.perf_counter() - start) * 1000,
+                exit_code=1,
             )
+            return result
+
+        source: Path = Path(sanitized["source"])
+        dry_run: bool = sanitized.get("dry_run", True)
+        timestamp = sanitized.get("timestamp", ts)
+        output_path = sanitized.get("output")
+        if not output_path:
+            output_path = source / f"{timestamp}_manifest.json"
+
+        result.add_input("source", str(source))
+        result.add_input("timestamp", str(timestamp))
+        result.data["output"] = str(output_path)
+
+        if dry_run:
+            result.status = "skipped"
+            result.message = "Dry-run: manifest preview"
+            result.details.extend(
+                format_plan(
+                    [
+                        f"Would index files under {source}",
+                        f"Would write manifest to {output_path}",
+                    ]
+                )
+            )
+            self._log_provenance(
+                ts=ts,
+                params=sanitized,
+                tool_versions=self.tool_versions(),
+                result=result,
+                inputs=result.inputs,
+                duration_ms=(time.perf_counter() - start) * 1000,
+                exit_code=0,
+            )
+            return result
+
+        if not source.exists():
+            result.status = "failed"
+            result.message = f"Source directory {source} does not exist"
+            self._log_provenance(
+                ts=ts,
+                params=sanitized,
+                tool_versions=self.tool_versions(),
+                result=result,
+                inputs=result.inputs,
+                duration_ms=(time.perf_counter() - start) * 1000,
+                exit_code=1,
+            )
+            return result
+
+        entries: List[Dict[str, Any]] = []
+        for file_path in sorted(source.rglob("*")):
+            if not file_path.is_file():
+                continue
+            stat = file_path.stat()
+            rel = file_path.relative_to(source)
+            entries.append(
+                {
+                    "path": str(rel).replace("\\", "/"),
+                    "size": stat.st_size,
+                    "mtime": stat.st_mtime,
+                }
+            )
+
+        ensure_directory(output_path.parent, dry_run=False)
+        with output_path.open("w", encoding="utf-8") as handle:
+            json.dump(
+                {
+                    "module": self.module,
+                    "generated_at": str(timestamp),
+                    "files": entries,
+                },
+                handle,
+                indent=2,
+                sort_keys=True,
+            )
+
+        result.status = "success"
+        result.message = f"Manifest written to {output_path}"
+        result.add_artifact(output_path, case_dir=case_dir, dry_run=False)
+
+        self._log_provenance(
+            ts=ts,
+            params=sanitized,
+            tool_versions=self.tool_versions(),
+            result=result,
+            inputs=result.inputs,
+            duration_ms=(time.perf_counter() - start) * 1000,
+            exit_code=0,
         )
         return result
 
-    ensure_directory(output_path.parent)
 
-    if output_path.suffix.lower() == ".csv":
-        with output_path.open("w", encoding="utf-8", newline="") as handle:
-            writer = csv.DictWriter(handle, fieldnames=resolved.get("fields", ["path", hash_algorithm, "size"]))
-            writer.writeheader()
-            for record in records:
-                row = {key: record.get(key, "") for key in writer.fieldnames}
-                writer.writerow(row)
-    else:
-        with output_path.open("w", encoding="utf-8") as handle:
-            json.dump(records, handle, indent=2, sort_keys=True)
+def write_manifest(params: Mapping[str, Any]) -> RouterResult:
+    """Backward-compatible wrapper for CLI usage."""
 
-    result.message = "Manifest written"
-    result.details.append(f"Captured {len(records)} artifacts.")
-    result.add_artifact(
-        output_path,
-        label="router_manifest",
-        dry_run=dry_run,
-        hash_algorithm=hash_algorithm,
-        coc_log=source_dir / log_name,
-    )
-    return result
+    case_dir = Path(params.get("case") or params.get("source") or Path.cwd())
+    module = RouterManifestModule(case_dir, load_router_defaults("manifest"))
+    return module.run(None, case_dir, params)
 
 
-__all__ = ["write_manifest"]
+__all__ = ["RouterManifestModule", "write_manifest"]
