@@ -6,7 +6,8 @@ import shlex
 from shutil import which
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from forensic.utils.cmd import CommandError, run as run_cmd
+from forensic.utils.cmd import CommandError
+from forensic.utils.cmd import run as run_cmd
 
 _EXECUTABLE = "bulk_extractor"
 _CAPABILITIES = ["version"]
