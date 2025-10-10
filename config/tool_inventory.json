@@ -1,0 +1,6 @@
+{
+  "tools": {
+    "netstat": false,
+    "ss": false
+  }
+}

@@ -7,6 +7,7 @@ from __future__ import annotations
 import ast
 import importlib
 import importlib.util
+import json
 import shutil
 import sys
 import types
@@ -19,6 +20,7 @@ MODULE_ROOT = REPO_ROOT / "forensic" / "modules"
 README_PATH = REPO_ROOT / "README.md"
 MARKER_BEGIN = "<!-- MODULE_MATRIX:BEGIN -->"
 MARKER_END = "<!-- MODULE_MATRIX:END -->"
+TOOL_INVENTORY_PATH = REPO_ROOT / "config" / "tool_inventory.json"
 
 def _ensure_requests_stub() -> None:
     """Provide a lightweight ``requests`` stub when the dependency is missing.
@@ -61,6 +63,34 @@ def _ensure_requests_stub() -> None:
 _ensure_requests_stub()
 
 sys.path.insert(0, str(REPO_ROOT))
+
+
+def _load_tool_inventory() -> dict[str, bool]:
+    """Load deterministic tool availability overrides from the repository."""
+
+    if not TOOL_INVENTORY_PATH.exists():
+        return {}
+
+    try:
+        data = json.loads(TOOL_INVENTORY_PATH.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:  # pragma: no cover - configuration error
+        raise SystemExit(
+            f"Failed to parse tool inventory JSON: {TOOL_INVENTORY_PATH}: {exc}"
+        ) from exc
+
+    if isinstance(data, dict) and "tools" in data and isinstance(data["tools"], dict):
+        data = data["tools"]
+
+    overrides: dict[str, bool] = {}
+
+    for tool, value in data.items():
+        if isinstance(tool, str) and isinstance(value, bool):
+            overrides[tool] = value
+
+    return overrides
+
+
+TOOL_INVENTORY = _load_tool_inventory()
 
 
 CATEGORY_LABELS = {
@@ -227,8 +257,19 @@ def extract_static_tools(module_path: Path) -> List[str]:
 def _classify_tool_availability(
     import_path: str, tools: Sequence[str]
 ) -> tuple[list[str], list[str]]:
-    available = {tool for tool in tools if shutil.which(tool)}
-    missing = {tool for tool in tools if tool not in available}
+    available: set[str] = set()
+    missing: set[str] = set()
+
+    for tool in tools:
+        override = TOOL_INVENTORY.get(tool)
+        if override is True:
+            available.add(tool)
+        elif override is False:
+            missing.add(tool)
+        elif shutil.which(tool):
+            available.add(tool)
+        else:
+            missing.add(tool)
 
     for group in ALTERNATIVE_TOOL_GROUPS.get(import_path, []):
         if group & available:
