@@ -58,28 +58,28 @@ bevor die finale Tabelle aktualisiert wird.
 <!-- MODULE_MATRIX:BEGIN -->
 | Kategorie | Modul | Status | Backend/Extra | Guard | Notizen |
 | --- | --- | --- | --- | --- | --- |
-| Acquisition | `disk_imaging` | Missing | ddrescue / ewfacquire | Root + block device access | Import error: No module named 'requests' |
-| Acquisition | `live_response` | Missing | coreutils (uname, ps, netstat) | — | Import error: No module named 'requests' |
-| Acquisition | `memory_dump` | Missing | avml | --enable-live-capture (Linux) | Import error: No module named 'requests' |
-| Acquisition | `network_capture` | Missing | tcpdump / dumpcap | --enable-live-capture + root | Import error: No module named 'requests' |
-| Analysis | `filesystem` | Missing | sleuthkit (fls, blkcat) | — | Import error: No module named 'requests' |
-| Analysis | `malware` | Missing | yara extra | — | Import error: No module named 'requests' |
-| Analysis | `memory` | Missing | memory extra (volatility3) | — | Import error: No module named 'requests' |
-| Analysis | `network` | Missing | pcap extra (scapy, pyshark) | — | Import error: No module named 'requests' |
-| Analysis | `registry` | Missing | reglookup / rip.pl | — | Import error: No module named 'requests' |
-| Analysis | `timeline` | Missing | log2timeline.py / mactime | — | Import error: No module named 'requests' |
-| Reporting | `exporter` | Missing | report_pdf extra (weasyprint) | — | Import error: No module named 'requests' |
-| Reporting | `generator` | Missing | jinja2 templates | — | Import error: No module named 'requests' |
-| Router | `capture` | Missing | — | — | Import error: No module named 'requests' |
-| Router | `common` | Missing | — | — | Import error: No module named 'requests' |
-| Router | `env` | Missing | — | — | Import error: No module named 'requests' |
-| Router | `extract` | Missing | — | — | Import error: No module named 'requests' |
-| Router | `manifest` | Missing | — | — | Import error: No module named 'requests' |
-| Router | `pipeline` | Missing | — | — | Import error: No module named 'requests' |
-| Router | `summarize` | Missing | — | — | Import error: No module named 'requests' |
-| Triage | `persistence` | Missing | filesystem inspection | — | Import error: No module named 'requests' |
-| Triage | `quick_triage` | Missing | POSIX utilities | — | Import error: No module named 'requests' |
-| Triage | `system_info` | Missing | platform / socket APIs | — | Import error: No module named 'requests' |
+| Acquisition | `disk_imaging` | Guarded | ddrescue / ewfacquire | Root + block device access | Requires ddrescue, ewfacquire (missing locally) |
+| Acquisition | `live_response` | Guarded | coreutils (uname, ps, netstat) | — | Requires netstat, ss (all available) |
+| Acquisition | `memory_dump` | Guarded | avml | --enable-live-capture (Linux) | Requires avml (missing locally) |
+| Acquisition | `network_capture` | Guarded | tcpdump / dumpcap | --enable-live-capture + root | — |
+| Analysis | `filesystem` | Guarded | sleuthkit (fls, blkcat) | — | Requires fls (missing locally) |
+| Analysis | `malware` | Guarded | yara extra | — | Requires yara (missing locally) |
+| Analysis | `memory` | Guarded | memory extra (volatility3) | — | Requires vol, vol.py, vol3, volatility (missing locally) |
+| Analysis | `network` | Guarded | pcap extra (scapy, pyshark) | — | — |
+| Analysis | `registry` | Guarded | reglookup / rip.pl | — | Requires reglookup, rip.pl (missing locally) |
+| Analysis | `timeline` | Guarded | log2timeline.py / mactime | — | Requires fls, log2timeline.py, mactime (missing locally) |
+| Reporting | `exporter` | Guarded | report_pdf extra (weasyprint) | — | Requires wkhtmltopdf (missing locally) |
+| Reporting | `generator` | Guarded | jinja2 templates | — | — |
+| Router | `capture` | MVP | — | — | MVP baseline implementation |
+| Router | `common` | MVP | — | — | MVP baseline implementation |
+| Router | `env` | MVP | — | — | MVP baseline implementation |
+| Router | `extract` | MVP | — | — | MVP baseline implementation |
+| Router | `manifest` | MVP | — | — | MVP baseline implementation |
+| Router | `pipeline` | MVP | — | — | MVP baseline implementation |
+| Router | `summarize` | MVP | — | — | MVP baseline implementation |
+| Triage | `persistence` | Guarded | filesystem inspection | — | — |
+| Triage | `quick_triage` | Guarded | POSIX utilities | — | — |
+| Triage | `system_info` | Guarded | platform / socket APIs | — | — |
 <!-- MODULE_MATRIX:END -->
 
 ## Schnellstart (CLI)
