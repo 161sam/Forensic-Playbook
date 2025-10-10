@@ -274,7 +274,9 @@ class NetworkCaptureModule(AcquisitionModule):
             )
             return self.guard_result(
                 message,
-                hints=["Pass --enable-live-capture to acknowledge live packet capture."],
+                hints=[
+                    "Pass --enable-live-capture to acknowledge live packet capture."
+                ],
                 metadata=metadata,
                 status="skipped",
                 result_id=result_id,

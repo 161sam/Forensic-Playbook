@@ -1,90 +1,41 @@
-# REPORT – Repository normalisation
+# REPORT – Phase-3 Abschluss
 
-## Summary
+## Zusammenfassung
 
-| Area | Before | After |
-| --- | --- | --- |
-| Core configuration | Implicit defaults in `framework.py` only | Dedicated `forensic/core/config.py` with YAML/env overrides |
-| Utilities | None | `forensic/utils/` package with reusable helpers |
-| Acquisition modules | Only `disk_imaging` | Added `memory_dump`, `network_capture`, `live_response` (guarded) |
-| Analysis modules | No malware stub | Added `malware_analysis` with YARA guard |
-| Triage modules | Only `quick_triage` | Added `system_info`, `persistence` |
-| Reporting | Generator only | Exporter wired into generator; CLI `report` command available |
-| CLI | Legacy script only | Installable entry point with diagnostics + legacy wrappers |
-| Configuration files | Missing | Added `config/framework.yaml` + module defaults |
-| Tooling | No `pyproject` / `tox` | Added `pyproject.toml`, `tox.ini`, pre-commit, GitHub Actions |
-| Tests | No coverage for new modules | Added smoke/import tests + reporting round-trips |
-| Documentation | Aspirational/incorrect | Updated README, status & migration report with module matrix |
+Die Phase-3-Härtung hebt alle zuvor als „MVP" geführten Module auf den Guarded-
+Standard. Guarded Module liefern jetzt konsistente Dry-Run-Pfade, prüfen externe
+Tools mit freundlichen Hinweisen und protokollieren deterministische Exporte in
+der Provenienz- und Chain-of-Custody-Logik. Die Dokumentation (README,
+Getting-Started, Walkthrough) und die automatisch generierte Modulmatrix sind
+synchronisiert.
 
-### Phase-2 migration details
+## Modulstatus (Vorher → Nachher)
 
-#### Dateimigration
+| Modul | Bereich | Status Phase-3 Start | Status Phase-3 Abschluss | Guard-Highlights |
+| --- | --- | --- | --- | --- |
+| `live_response` | Acquisition | MVP, manuelle Checks | Guarded, Dry-Run + Whitelist-Provenienz | Kommandos nur aus Whitelist, Dry-Run zeigt geplante Aufrufe |
+| `network_capture` | Acquisition | MVP, rudimentäre Tool-Prüfung | Guarded, privilegienbewusst | Dumpcap/Tcpdump Guards, Dry-Run, Root- und Flag-Prüfung |
+| `network` | Analysis | MVP, fixer PCAP-Pfad | Guarded, Runtime-PCAP/JSON-Fallback | Akzeptiert Synth/JSON, deterministische Flow-Aggregation |
+| `generator` | Reporting | MVP, HTML-only happy path | Guarded, PDF optional | HTML immer, PDF optional mit Hinweisbox, deterministische Artefakte |
+| `persistence` | Triage | MVP, lose Pfadauswahl | Guarded, Konfigurations-Defaults | Liest nur konfigurierte Pfade, Chain-of-Custody aktualisiert |
+| `quick_triage` | Triage | MVP, unstrukturierte Ausgabe | Guarded, konsolidierte Funde | Dry-Run, deterministische JSON/CSV, Provenienz-Einträge |
+| `system_info` | Triage | MVP, spontane Abfragen | Guarded, OS-sichere APIs | Nur Lesezugriffe, sortierte Ausgaben, Guard-Hinweise |
 
-| Datei | Vorher | Nachher |
-| --- | --- | --- |
-| `forensic/core/evidence` | `.py.txt` placeholder | Proper Python module + import test |
-| `forensic/core/chain_of_custody` | `.py.txt` placeholder | Proper Python module + import test |
-| `forensic/core/logger` | `.py.txt` placeholder | Proper Python module + import test |
-| `forensic/modules/triage/quick_triage` | `.py.txt` placeholder | Proper Python module + import test |
+## Prozess- & QA-Checkliste
 
-#### Legacy handling
+- [x] End-to-End-Flow grün mit Runtime-PCAP-Synth oder `--pcap-json -` Fallback.
+- [x] PDF-Export optional: HTML immer verfügbar, PDF wird nur bei vorhandenem
+      Renderer erzeugt.
+- [x] Coverage-Gate ≥ 65 % aktiv in CI.
+- [x] Deterministische Exporte (sortierte Keys, ISO-8601-Zeitstempel mit TZ).
+- [x] Chain of Custody & Provenienz protokollieren jeden Lauf ohne Duplikate.
 
-| Skript | Vorher | Nachher |
-| --- | --- | --- |
-| `scripts/ioc_grep.sh` | Active without guidance | Marked `# DEPRECATED`, accessible via `forensic-cli --legacy` |
-| `scripts/quick-triage.sh` | Missing/undocumented | Restored as deprecated wrapper calling CLI module |
-| `scripts/harden_ssh.sh` | Mixed with forensic tooling | Flagged in `LEGACY.md` as out of scope |
+## Dokumentation & Werkzeuge
 
-#### CI & Packaging
-
-| Thema | Vorher | Nachher |
-| --- | --- | --- |
-| Packaging | `setup.py` only | `pyproject.toml` with optional extras + entry point |
-| CI | Manual | GitHub Actions (`lint`, `test`, coverage artefacts) |
-| Local tooling | Ad-hoc | `pre-commit` config for `black`, `ruff`, hygiene hooks |
-| Documentation sync | Manual edits | `tools/generate_module_matrix.py` with CI enforcement |
-
-## Resolved discrepancies
-
-* Eliminated references to non-existent features and unrealistic completion
-  percentages from README and status documents.
-* Ensured all modules referenced in documentation exist at least as importable
-  MVP stubs.
-* Added configuration directory and helper utilities required by the framework.
-* Updated CLI to guard against missing external tooling, surface diagnostics and
-  present actionable feedback.
-
-## Testing
-
-```
-pytest -q --cov=forensic
-```
-
-Smoke tests (`tests/test_imports.py`) ensure all migrated modules import
-successfully. Reporting exporter round-trips are covered in
-`tests/test_reporting_exporter.py`.
-
-## Legacy items
-
-* Shell scripts in `scripts/` remain available but require the `--legacy` flag.
-  Future work should either wrap or retire them permanently.
-* Disk imaging, timeline and other heavy modules still rely on external tooling
-  and provide guidance instead of automated execution.
-
-## Phase-3 status
-
-| Bereich | Vorher | Nachher |
-| --- | --- | --- |
-| CI (E2E) | Kein End-to-end-Job, nur Unit Tests | Minimalflow in GitHub Actions mit HTML-Report + Coverage-Artefakten |
-| Dokumentation | README ohne Real-Backend-/Report-Anleitungen | Ergänzte Sektionen zu Acquisition, Netzwerk/Timeline-Walkthrough und Reports |
-| Modul-Matrix | Manuelle Nachpflege, ohne Guard/Backend-Spalten | Generator erweitert um „Backend/Extra“ & „Guard“, README synchronisiert |
-| Testdaten (PCAP) | PCAP-Binär im Repo | Runtime-Synthesizer/JSON-Fallback |
-
-### Phase-3 nächste Schritte
-
-* Testsuite ausweiten, um zusätzliche Module und reale Tool-Pfade im E2E-Job zu
-  validieren.
-* PDF-Renderer in CI verfügbar machen (z. B. über `report_pdf`-Extra) und
-  Artefakte automatisch publizieren.
-* Netzwerk- und Timeline-Korrelation um weitere Datenquellen erweitern, sobald
-  optionale Tools auf Runners bereitstehen.
+- Modulmatrix über `tools/generate_module_matrix.py` aktualisiert (alle zuvor
+  MVP → Guarded, Backend/Guard-Spalten synchron).
+- README, Getting-Started und Walkthrough erklären Guard-Level, Dry-Run,
+  Konfigurations-Priorität sowie Runtime-PCAP-Synth/JSON-Fallback.
+- CI hält optionale PDF-Erstellung tolerant und dokumentiert fehlende Renderer in
+  den Provenienzlogs.
+- Abschlussstatus in REPORT.md dokumentiert; Änderungen sind idempotent.

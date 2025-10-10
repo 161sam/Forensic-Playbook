@@ -6,8 +6,8 @@ import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Optional
 from types import SimpleNamespace
+from typing import Dict, Optional
 
 import pytest
 from click.testing import CliRunner
@@ -19,10 +19,9 @@ from forensic.core.framework import ForensicFramework
 from forensic.modules.analysis.network import NetworkAnalysisModule
 from forensic.modules.reporting.generator import ReportGenerator
 from forensic.utils import cmd as cmd_utils
-from forensic.utils import hashing
+from forensic.utils import hashing, timefmt
 from forensic.utils import io as io_utils
 from forensic.utils import paths as paths_utils
-from forensic.utils import timefmt
 from tests.utils import invoke_pcap_synth, redirect_stdin
 
 
@@ -179,6 +178,8 @@ def test_minimal_end_to_end_flow(tmp_path: Path) -> None:
 
     assert config_module.load_yaml(config_dir / "missing.yaml") == {}
     original_yaml = config_module.yaml
+    if original_yaml is not None:
+        config_module.yaml = None
     with pytest.warns(RuntimeWarning):
         assert config_module.load_yaml(config_file) == {}
 
@@ -224,7 +225,9 @@ def test_minimal_end_to_end_flow(tmp_path: Path) -> None:
     assert cfg.as_dict()["log_level"] == "DEBUG"
 
     naive_timestamp = timefmt.to_iso(datetime(2024, 1, 1, 12, 0, 0))
-    aware_timestamp = timefmt.to_iso(datetime(2024, 1, 1, 14, 0, 0, tzinfo=timezone.utc))
+    aware_timestamp = timefmt.to_iso(
+        datetime(2024, 1, 1, 14, 0, 0, tzinfo=timezone.utc)
+    )
     current_timestamp = timefmt.utcnow_iso()
     assert timefmt.to_iso(None) is None
     assert naive_timestamp == "2024-01-01T12:00:00Z"

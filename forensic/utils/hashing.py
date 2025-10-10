@@ -50,10 +50,33 @@ def compute_hash(
         return compute_stream_hash(handle, algorithm=algorithm, chunk_size=chunk_size)
 
 
-def compute_hashes(path: Path, algorithms: Iterable[str]) -> dict:
-    """Compute multiple hashes and return a mapping."""
+def compute_hashes(
+    path: Path,
+    algorithms: Iterable[str],
+    *,
+    chunk_size: int = _DEFAULT_CHUNK_SIZE,
+) -> dict:
+    """Compute multiple hashes in a single streaming pass.
 
-    return {algo: compute_hash(path, algo) for algo in algorithms}
+    The file at ``path`` is read once and every requested hash algorithm is
+    updated chunk-wise. This keeps memory usage low even for large files while
+    avoiding redundant I/O.
+    """
+
+    algorithms = list(dict.fromkeys(algo.lower() for algo in algorithms))
+    if not algorithms:
+        return {}
+
+    hashers = {algo: _get_hasher(algo) for algo in algorithms}
+
+    with Path(path).open("rb") as handle:
+        for chunk in iter(lambda: handle.read(chunk_size), b""):
+            if not chunk:
+                break
+            for hasher in hashers.values():
+                hasher.update(chunk)
+
+    return {algo: hashers[algo].hexdigest() for algo in algorithms}
 
 
 __all__ = [

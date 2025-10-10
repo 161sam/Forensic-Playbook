@@ -30,7 +30,9 @@ def test_ensure_tool_missing(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_run_executes_command(tmp_path: Path) -> None:
-    result = cmd_utils.run([Path(sys.executable), "-c", "print('hello world')"], cwd=tmp_path)
+    result = cmd_utils.run(
+        [Path(sys.executable), "-c", "print('hello world')"], cwd=tmp_path
+    )
 
     assert result.stdout.strip() == "hello world"
     assert result.stderr == ""
@@ -61,7 +63,9 @@ def test_run_handles_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_run_handles_called_process_error(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_run(*args, **kwargs):
-        raise subprocess.CalledProcessError(2, ["demo", "--flag"])  # pragma: no cover - repr
+        raise subprocess.CalledProcessError(
+            2, ["demo", "--flag"]
+        )  # pragma: no cover - repr
 
     monkeypatch.setattr(subprocess, "run", fake_run)
 

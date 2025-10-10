@@ -22,6 +22,7 @@ except ModuleNotFoundError:  # pragma: no cover - environment dependent
 from forensic.utils.hashing import compute_hash
 
 from .chain_of_custody import ChainOfCustody
+from .chain_of_custody import append_coc as append_coc_record
 from .config import FrameworkConfig, get_config, load_yaml
 from .evidence import Evidence, EvidenceType
 from .logger import setup_logging
@@ -445,6 +446,8 @@ class ForensicFramework:
                 metadata = {"result_id": result.result_id}
                 if artifact_records:
                     metadata["artifacts"] = artifact_records
+                    for artifact in artifact_records:
+                        self.append_coc(artifact["path"], artifact["sha256"])
                 self.coc.log_event(
                     event_type="MODULE_EXECUTION_COMPLETE",
                     case_id=self.current_case.case_id,
@@ -656,10 +659,6 @@ class ForensicFramework:
         if not self.current_case:
             return
 
-        provenance_dir = self.current_case.case_dir / "meta"
-        provenance_dir.mkdir(exist_ok=True)
-        provenance_file = provenance_dir / "provenance.jsonl"
-
         outputs_list = sorted({str(path) for path in outputs})
         sha_entries = sorted(
             ({"path": entry["path"], "sha256": entry["sha256"]} for entry in sha256),
@@ -682,8 +681,53 @@ class ForensicFramework:
             record["result_id"] = result.result_id
             record["status"] = result.status
 
+        self.append_provenance(record)
+
+    def append_provenance(self, entry: Dict[str, Any]) -> None:
+        """Append ``entry`` to the case provenance log without duplicates."""
+
+        if not self.current_case:
+            return
+
+        provenance_dir = self.current_case.case_dir / "meta"
+        provenance_dir.mkdir(exist_ok=True)
+        provenance_file = provenance_dir / "provenance.jsonl"
+
+        canonical = json.dumps(entry, sort_keys=True)
+        result_id = entry.get("result_id")
+
+        if provenance_file.exists():
+            with provenance_file.open("r", encoding="utf-8") as handle:
+                for line in handle:
+                    stripped = line.strip()
+                    if not stripped:
+                        continue
+                    if result_id:
+                        try:
+                            existing = json.loads(stripped)
+                        except json.JSONDecodeError:
+                            continue
+                        if existing.get("result_id") == result_id:
+                            return
+                        existing_canonical = json.dumps(existing, sort_keys=True)
+                        if existing_canonical == canonical:
+                            return
+                    elif stripped == canonical:
+                        return
+
         with provenance_file.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(record, sort_keys=True) + "\n")
+            handle.write(canonical + "\n")
+
+    def append_coc(self, path: str | Path, sha256: str) -> None:
+        """Record artifact metadata in the case chain-of-custody log."""
+
+        if not self.current_case:
+            return
+
+        meta_dir = self.current_case.case_dir / "meta"
+        meta_dir.mkdir(exist_ok=True)
+        coc_file = meta_dir / "chain_of_custody.jsonl"
+        append_coc_record(coc_file, str(Path(path)), sha256)
 
     def _compute_hash(self, file_path: Path, algorithm: str = "sha256") -> str:
         """Compute file hash"""

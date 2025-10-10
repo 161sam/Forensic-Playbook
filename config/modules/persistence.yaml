@@ -1,6 +1,52 @@
-scan_targets:
-  - /etc/systemd/system
-  - /etc/crontab
-  - /etc/cron.hourly
-  - /etc/rc.local
-  - /etc/xdg/autostart
+modules:
+  triage:
+    persistence:
+      dry_run: false
+      paths:
+        systemd_units:
+          - /etc/systemd/system
+          - /lib/systemd/system
+          - /usr/lib/systemd/system
+          - /run/systemd/system
+        cron:
+          - /etc/crontab
+          - /etc/cron.d
+          - /etc/cron.daily
+          - /etc/cron.hourly
+          - /etc/cron.weekly
+          - /etc/cron.monthly
+          - /var/spool/cron
+        at:
+          - /var/spool/cron/atjobs
+          - /var/spool/cron/atspool
+        rc_local:
+          - /etc/rc.local
+        autostart:
+          - /etc/xdg/autostart
+          - ~/.config/autostart
+          - ~/.local/share/applications
+  persistence:
+    dry_run: false
+    paths:
+      systemd_units:
+        - /etc/systemd/system
+        - /lib/systemd/system
+        - /usr/lib/systemd/system
+        - /run/systemd/system
+      cron:
+        - /etc/crontab
+        - /etc/cron.d
+        - /etc/cron.daily
+        - /etc/cron.hourly
+        - /etc/cron.weekly
+        - /etc/cron.monthly
+        - /var/spool/cron
+      at:
+        - /var/spool/cron/atjobs
+        - /var/spool/cron/atspool
+      rc_local:
+        - /etc/rc.local
+      autostart:
+        - /etc/xdg/autostart
+        - ~/.config/autostart
+        - ~/.local/share/applications

@@ -3,16 +3,15 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
 
 import pytest
 
+from forensic.utils import hashing, timefmt
 from forensic.utils import io as io_utils
 from forensic.utils import paths as paths_utils
-from forensic.utils import timefmt
-from forensic.utils import hashing
 
 
 def test_read_text_returns_empty_for_missing_file(tmp_path: Path) -> None:
@@ -57,7 +56,9 @@ def test_resolve_config_paths_filters_existing_files(tmp_path: Path) -> None:
     assert paths == [existing]
 
 
-def test_optional_path_expands_user_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_optional_path_expands_user_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
     user_path = "~/documents"
     resolved = paths_utils.optional_path(user_path)
@@ -96,4 +97,3 @@ def test_compute_hashes(tmp_path: Path) -> None:
     assert set(hashes.keys()) == {"md5", "sha1", "sha256"}
     # Ensure values are produced for every algorithm
     assert all(len(value) > 0 for value in hashes.values())
-

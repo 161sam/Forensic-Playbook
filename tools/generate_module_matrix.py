@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Repo-Hilfen, nicht mit forensic.tools verwechseln
 """Generate the module capability matrix for the README."""
 
 from __future__ import annotations
@@ -51,10 +52,30 @@ BACKEND_HINTS = {
     "forensic.modules.triage.system_info": "platform / socket APIs",
 }
 
+STATUS_OVERRIDES = {
+    "forensic.modules.acquisition.live_response": "Guarded",
+    "forensic.modules.acquisition.network_capture": "Guarded",
+    "forensic.modules.analysis.network": "Guarded",
+    "forensic.modules.reporting.generator": "Guarded",
+    "forensic.modules.triage.persistence": "Guarded",
+    "forensic.modules.triage.quick_triage": "Guarded",
+    "forensic.modules.triage.system_info": "Guarded",
+}
+
 GUARD_HINTS = {
     "forensic.modules.acquisition.disk_imaging": "Root + block device access",
     "forensic.modules.acquisition.memory_dump": "--enable-live-capture (Linux)",
     "forensic.modules.acquisition.network_capture": "--enable-live-capture + root",
+}
+
+# Certain guarded modules provide fallbacks where any tool in the group is
+# sufficient to run the module. These groups should be considered satisfied if
+# *any* of the tools are available locally. This avoids incorrectly flagging a
+# module as partially unavailable when an alternative implementation exists.
+ALTERNATIVE_TOOL_GROUPS = {
+    "forensic.modules.acquisition.live_response": [
+        {"netstat", "ss"},
+    ],
 }
 
 
@@ -111,15 +132,31 @@ def extract_static_tools(module_path: Path) -> List[str]:
     return sorted(set(tools))
 
 
+def _classify_tool_availability(
+    import_path: str, tools: Sequence[str]
+) -> tuple[list[str], list[str]]:
+    available = {tool for tool in tools if shutil.which(tool)}
+    missing = {tool for tool in tools if tool not in available}
+
+    for group in ALTERNATIVE_TOOL_GROUPS.get(import_path, []):
+        if group & available:
+            available.update(group)
+            missing.difference_update(group)
+
+    return sorted(available), sorted(missing)
+
+
 def format_notes(
-    status: str, tools: Sequence[str], import_error: Exception | None
+    import_path: str,
+    status: str,
+    tools: Sequence[str],
+    import_error: Exception | None,
 ) -> str:
     if import_error is not None:
         return f"Import error: {import_error}"
 
     if status == "Guarded" and tools:
-        available = [tool for tool in tools if shutil.which(tool)]
-        missing = [tool for tool in tools if tool not in available]
+        available, missing = _classify_tool_availability(import_path, tools)
         if missing and available:
             return f"Requires {', '.join(tools)} (missing: {', '.join(missing)})"
         if missing:
@@ -148,14 +185,18 @@ def build_rows() -> List[ModuleRow]:
         except Exception as exc:  # pragma: no cover - environment dependent
             import_error = exc
 
+        status_override = STATUS_OVERRIDES.get(import_path)
+
         if import_error is not None:
             status = "Missing"
+        elif status_override:
+            status = status_override
         elif tools:
             status = "Guarded"
         else:
             status = "MVP"
 
-        notes = format_notes(status, tools, import_error)
+        notes = format_notes(import_path, status, tools, import_error)
         label = CATEGORY_LABELS.get(category, category.title())
         backend = BACKEND_HINTS.get(import_path, "")
         guard = GUARD_HINTS.get(import_path, "")

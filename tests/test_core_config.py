@@ -44,25 +44,36 @@ def test_load_env_config(monkeypatch: pytest.MonkeyPatch) -> None:
     assert env_config == {"log_level": "debug", "parallel_execution": False}
 
 
-def test_load_yaml_without_pyyaml_warns(tmp_path: Path) -> None:
+def test_load_yaml_without_pyyaml_warns(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     target = tmp_path / "config.yaml"
     target.write_text("log_level: DEBUG", encoding="utf-8")
+
+    if config.yaml is not None:
+        monkeypatch.setattr(config, "yaml", None)
 
     with pytest.warns(RuntimeWarning):
         assert config.load_yaml(target) == {}
 
 
-def test_load_yaml_raises_for_non_mapping(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_load_yaml_raises_for_non_mapping(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     target = tmp_path / "config.yaml"
     target.write_text("items", encoding="utf-8")
 
-    monkeypatch.setattr(config, "yaml", SimpleNamespace(safe_load=lambda handle: [1, 2, 3]))
+    monkeypatch.setattr(
+        config, "yaml", SimpleNamespace(safe_load=lambda handle: [1, 2, 3])
+    )
 
     with pytest.raises(TypeError):
         config.load_yaml(target)
 
 
-def test_get_config_merges_sources(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_get_config_merges_sources(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     config_dir = tmp_path / "config"
     config_dir.mkdir()
     yaml_file = config_dir / "framework.yaml"
@@ -91,7 +102,9 @@ def test_get_config_merges_sources(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert cfg.as_dict()["log_level"] == "DEBUG"
 
 
-def test_resolve_config_root_prefers_explicit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolve_config_root_prefers_explicit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     explicit = tmp_path / "explicit"
     explicit.mkdir()
 

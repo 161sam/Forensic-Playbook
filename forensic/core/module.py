@@ -94,7 +94,9 @@ class ForensicModule(ABC):
     def timezone(self) -> str:
         """Return the configured timezone for timestamp formatting."""
 
-        tz_value = self.config.get("timezone") if isinstance(self.config, dict) else None
+        tz_value = (
+            self.config.get("timezone") if isinstance(self.config, dict) else None
+        )
         return str(tz_value) if tz_value else "UTC"
 
     def tool_versions(self) -> Dict[str, str]:

@@ -80,7 +80,9 @@ class LiveResponseModule(AcquisitionModule):
             message = "No live response commands selected after validation."
             return self.guard_result(
                 message,
-                hints=["Specify at least one allow-listed command via --param commands"],
+                hints=[
+                    "Specify at least one allow-listed command via --param commands"
+                ],
                 status="skipped",
                 metadata={"commands": []},
                 result_id=result_id,
@@ -261,7 +263,7 @@ class LiveResponseModule(AcquisitionModule):
         if isinstance(value, str):
             entries = [item.strip() for item in value.split(",")]
             return [item for item in entries if item]
-        if isinstance(value, (list, tuple, set)):
+        if isinstance(value, list | tuple | set):
             normalised: List[str] = []
             for item in value:
                 if item is None:

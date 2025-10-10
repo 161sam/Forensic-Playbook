@@ -27,6 +27,28 @@ from ...core.time_utils import utc_display
 _TEMPLATE_PACKAGE = "forensic.modules.reporting"
 
 
+def _is_scalar(value: Any) -> bool:
+    return isinstance(value, str | int | float | bool | None)
+
+
+def _normalise_structure(value: Any) -> Any:
+    """Recursively sort mappings and scalar lists for deterministic output."""
+
+    if isinstance(value, dict):
+        return {key: _normalise_structure(value[key]) for key in sorted(value)}
+
+    if isinstance(value, list):
+        normalised = [_normalise_structure(item) for item in value]
+        if all(_is_scalar(item) for item in normalised):
+            return sorted(normalised)
+        return normalised
+
+    if isinstance(value, tuple):
+        return tuple(_normalise_structure(list(value)))
+
+    return value
+
+
 def _ensure_jinja2() -> None:
     """Ensure that the optional Jinja2 dependency is available."""
 
@@ -84,8 +106,9 @@ def export_report(data: Dict[str, Any], fmt: str, outpath: Path) -> Path:
     outpath.parent.mkdir(parents=True, exist_ok=True)
 
     if fmt == "json":
+        payload = _normalise_structure(data)
         outpath.write_text(
-            json.dumps(data, indent=2, default=str, sort_keys=True),
+            json.dumps(payload, indent=2, default=str, sort_keys=True),
             encoding="utf-8",
         )
     elif fmt in {"md", "markdown"}:

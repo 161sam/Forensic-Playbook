@@ -91,14 +91,14 @@ class NetworkAnalysisModule(AnalysisModule):
 
         defaults = self._config_defaults()
 
-        self._http_methods = self._normalise_http_methods(
-            defaults.get("http_methods")
-        )
+        self._http_methods = self._normalise_http_methods(defaults.get("http_methods"))
         suspicious_agents = self._normalise_string_list(
             defaults.get("suspicious_user_agents")
         )
         if suspicious_agents:
-            self._suspicious_user_agents = {agent.lower() for agent in suspicious_agents}
+            self._suspicious_user_agents = {
+                agent.lower() for agent in suspicious_agents
+            }
         else:
             self._suspicious_user_agents = {
                 agent.lower() for agent in DEFAULT_SUSPICIOUS_USER_AGENTS
@@ -211,9 +211,7 @@ class NetworkAnalysisModule(AnalysisModule):
                 if dry_run:
                     self._dry_run_missing_inputs.append(str(json_path))
                 else:
-                    self.logger.error(
-                        f"PCAP JSON file does not exist: {json_path}"
-                    )
+                    self.logger.error(f"PCAP JSON file does not exist: {json_path}")
                     return False
 
         return True
@@ -262,7 +260,9 @@ class NetworkAnalysisModule(AnalysisModule):
         planned_output = output_root / self._output_filename
 
         if dry_run:
-            planned_steps = self._planned_steps(pcap_file, pcap_json_source, extras_available)
+            planned_steps = self._planned_steps(
+                pcap_file, pcap_json_source, extras_available
+            )
             metadata.update(self.dry_run_notice(planned_steps))
             metadata["planned_output_file"] = str(planned_output)
 
@@ -363,9 +363,13 @@ class NetworkAnalysisModule(AnalysisModule):
             if rdpcap is not None:
                 try:
                     packets = rdpcap(str(pcap_file))
-                    self._process_scapy_packets(packets, flows, dns_queries, http_requests)
+                    self._process_scapy_packets(
+                        packets, flows, dns_queries, http_requests
+                    )
                     parser_used = "scapy"
-                except Exception as exc:  # pragma: no cover - optional dependency failure
+                except (
+                    Exception
+                ) as exc:  # pragma: no cover - optional dependency failure
                     parser_errors["scapy"] = str(exc)
 
             if parser_used is None and pyshark is not None:
@@ -374,7 +378,9 @@ class NetworkAnalysisModule(AnalysisModule):
                         str(pcap_file), flows, dns_queries, http_requests
                     )
                     parser_used = "pyshark"
-                except Exception as exc:  # pragma: no cover - optional dependency failure
+                except (
+                    Exception
+                ) as exc:  # pragma: no cover - optional dependency failure
                     parser_errors["pyshark"] = str(exc)
 
             if parser_used is None:
@@ -1051,11 +1057,14 @@ class NetworkAnalysisModule(AnalysisModule):
                 and req.get("indicators", {}).get("suspicious_user_agent")
             }
         )
-        encoded_uris = [
-            req["uri"]
-            for req in sorted_requests
-            if req.get("uri") and req.get("indicators", {}).get("encoded_uri")
-        ]
+        encoded_uris = sorted(
+            {
+                str(req.get("uri"))
+                for req in sorted_requests
+                if req.get("uri")
+                and req.get("indicators", {}).get("encoded_uri")
+            }
+        )
         return {
             "requests": sorted_requests,
             "indicators": {
@@ -1093,7 +1102,7 @@ class NetworkAnalysisModule(AnalysisModule):
     def _normalise_string_list(self, value: Any) -> List[str]:
         if value is None:
             return []
-        if isinstance(value, (list, tuple, set)):
+        if isinstance(value, list | tuple | set):
             items = list(value)
         elif isinstance(value, str):
             items = re.split(r"[,;]", value)

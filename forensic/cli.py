@@ -14,6 +14,7 @@ from typing import Any, Dict, Optional
 
 import click
 
+from . import tools as runtime_tools
 from .core.evidence import EvidenceType
 from .core.framework import ForensicFramework
 from .modules.acquisition.disk_imaging import DiskImagingModule
@@ -846,6 +847,46 @@ def diagnostics(ctx: click.Context) -> None:
         tool_lines.append(f"  - {label}: {message}")
         tool_details[label] = {"available": available, "missing": missing}
 
+    wrapper_details: Dict[str, Dict[str, Any]] = {}
+    wrapper_lines = ["Tool wrappers (guarded):"]
+    for wrapper_name in sorted(runtime_tools.__all__):
+        wrapper = getattr(runtime_tools, wrapper_name)
+        try:
+            wrapper_available = bool(wrapper.available())
+        except Exception as exc:  # pragma: no cover - defensive diagnostics
+            wrapper_available = False
+            availability_note = f"error: {exc}"
+        else:
+            availability_note = "available" if wrapper_available else "missing"
+
+        try:
+            wrapper_version = wrapper.version() if wrapper_available else None
+        except Exception:  # pragma: no cover - defensive diagnostics
+            wrapper_version = None
+
+        try:
+            wrapper_requirements = list(wrapper.requirements())
+        except Exception:  # pragma: no cover - defensive diagnostics
+            wrapper_requirements = []
+
+        try:
+            wrapper_capabilities = list(wrapper.capabilities())
+        except Exception:  # pragma: no cover - defensive diagnostics
+            wrapper_capabilities = []
+
+        version_note = wrapper_version or "n/a"
+        line = f"  - {wrapper_name}: {availability_note} (version: {version_note})"
+        wrapper_lines.append(line)
+        if wrapper_requirements and not wrapper_available:
+            wrapper_lines.append(f"    requirements: {', '.join(wrapper_requirements)}")
+
+        wrapper_details[wrapper_name] = {
+            "available": wrapper_available,
+            "version": wrapper_version,
+            "requirements": wrapper_requirements,
+            "capabilities": wrapper_capabilities,
+        }
+
     optional_packages = {
         "volatility3": "volatility3",
         "pyshark": "pyshark",
@@ -883,6 +924,8 @@ def diagnostics(ctx: click.Context) -> None:
         "",
         *tool_lines,
         "",
+        *wrapper_lines,
+        "",
         *package_lines,
         "",
         *guard_lines,
@@ -895,6 +938,7 @@ def diagnostics(ctx: click.Context) -> None:
         "workspace": str(workspace),
         "paths": path_details,
         "tools": tool_details,
+        "tool_wrappers": wrapper_details,
         "python_packages": package_details,
         "module_guards": {
             "status": guard_status,
