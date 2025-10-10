@@ -41,6 +41,7 @@ from .ops.codex import (
     DEFAULT_REPO_URL as CODEX_DEFAULT_REPO,
     CodexOperationResult,
     get_codex_status,
+    read_codex_logs,
     install_codex_environment,
     resolve_paths as resolve_codex_paths,
     start_codex_server,
@@ -503,6 +504,50 @@ def codex_status(
     )
     result = get_codex_status(paths, host=host, port=port, timeout=timeout)
     _emit_codex_result(ctx, "codex.status", result)
+
+
+@codex.command("logs")
+@click.option(
+    "--workspace",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Workspace directory (default /mnt/usb_rw)",
+)
+@click.option(
+    "--log-dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Log directory (default <workspace>/codex_logs)",
+)
+@click.option(
+    "--target",
+    type=click.Choice(["control", "stdout", "stderr"], case_sensitive=False),
+    default="control",
+    help="Log file to inspect",
+)
+@click.option(
+    "--lines",
+    type=click.IntRange(1, 500),
+    default=40,
+    show_default=True,
+    help="Number of lines to display from the end of the log",
+)
+@click.pass_context
+def codex_logs(
+    ctx: click.Context,
+    workspace: Path | None,
+    log_dir: Path | None,
+    target: str,
+    lines: int,
+) -> None:
+    """Display a guarded tail view of Codex MCP logs."""
+
+    paths = resolve_codex_paths(
+        workspace,
+        log_dir=log_dir,
+    )
+    result = read_codex_logs(paths, target=target, lines=lines)
+    _emit_codex_result(ctx, "codex.logs", result)
 
 
 @cli.group()

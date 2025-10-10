@@ -12,6 +12,7 @@ import subprocess
 import sys
 import textwrap
 import time
+from collections import deque
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -786,4 +787,100 @@ def get_codex_status(
         warnings=warnings,
         errors=errors,
         data=result_data,
+    )
+
+
+def read_codex_logs(
+    paths: CodexPaths,
+    *,
+    target: str = "control",
+    lines: int = 40,
+) -> CodexOperationResult:
+    """Return a tail excerpt from one of the Codex log files."""
+
+    target_normalised = target.lower().strip()
+    available_targets = {
+        "control": paths.control_log,
+        "stdout": paths.stdout_file,
+        "stderr": paths.stderr_file,
+    }
+
+    data: Dict[str, Any] = {
+        "paths": paths.as_dict(),
+        "requested_target": target,
+        "target": target_normalised,
+        "available_targets": sorted(available_targets.keys()),
+        "lines_requested": lines,
+    }
+
+    if target_normalised not in available_targets:
+        message = f"Unknown log target: {target}"
+        details = [
+            "Available targets:",
+            *(f"  - {name}" for name in sorted(available_targets.keys())),
+        ]
+        return CodexOperationResult(
+            status="error",
+            message=message,
+            details=details,
+            errors=[message],
+            data=data,
+        )
+
+    log_path = available_targets[target_normalised]
+    data["log_path"] = str(log_path)
+
+    details = [
+        f"Target: {target_normalised}",
+        f"Log path: {log_path}",
+        f"Lines requested: {max(lines, 0)}",
+    ]
+
+    if not log_path.exists():
+        warning = f"Log file does not exist yet: {log_path}"
+        details.append("Log file missing -> run 'forensic-cli codex start' to populate it.")
+        data["log_excerpt"] = []
+        data["lines_returned"] = 0
+        return CodexOperationResult(
+            status="warning",
+            message="Log file not found",
+            details=details,
+            warnings=[warning],
+            data=data,
+        )
+
+    excerpt: list[str]
+    try:
+        with log_path.open("r", encoding="utf-8", errors="replace") as stream:
+            if lines > 0:
+                excerpt = [line.rstrip("\n") for line in deque(stream, maxlen=lines)]
+            else:
+                excerpt = [line.rstrip("\n") for line in stream]
+    except OSError as exc:
+        return CodexOperationResult(
+            status="error",
+            message="Unable to read log file",
+            details=details,
+            errors=[str(exc)],
+            data=data,
+        )
+
+    data["log_excerpt"] = excerpt
+    data["lines_returned"] = len(excerpt)
+
+    if excerpt:
+        details.append("Log excerpt (latest entries):")
+        details.extend(excerpt)
+        message = "Log excerpt retrieved"
+        status = "success"
+    else:
+        details.append("Log excerpt: <empty>")
+        message = "Log file empty"
+        status = "warning"
+
+    return CodexOperationResult(
+        status=status,
+        message=message,
+        details=details,
+        data=data,
     )
