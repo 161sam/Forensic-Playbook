@@ -50,6 +50,7 @@ def test_mcp_expose_outputs_sorted_json(runner: CliRunner, tmp_path) -> None:
     payload = _parse_cli_json(result.output)
     names = [tool["name"] for tool in payload["tools"]]
     assert names == sorted(names)
+    assert "router.env.init" in names
     assert payload["prompt"]["resource"] == "forensic/mcp/prompts/forensic_mode.txt"
 
 
@@ -91,6 +92,32 @@ def test_mcp_run_local_success(tmp_path, runner: CliRunner) -> None:
     assert payload["command"] == "mcp.run.local"
     assert payload["status"] == "success"
     assert payload["data"]["tool"] == "diagnostics.ping"
+
+
+def test_mcp_run_local_router_env(tmp_path, runner: CliRunner) -> None:
+    workspace = tmp_path / "workspace"
+    result = runner.invoke(
+        cli,
+        [
+            "--workspace",
+            str(workspace),
+            "--json",
+            "mcp",
+            "run",
+            "router.env.init",
+            "--local",
+            "--arg",
+            f"root={workspace / 'router'}",
+            "--arg",
+            "dry_run=true",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    payload = _parse_cli_json(result.output)
+    assert payload["command"] == "mcp.run.local"
+    assert payload["status"] == "success"
+    data = payload["data"]["result"]["data"]
+    assert data["payload"]["directories"]
 
 
 def test_mcp_run_remote_success(monkeypatch: pytest.MonkeyPatch, runner: CliRunner, tmp_path) -> None:
