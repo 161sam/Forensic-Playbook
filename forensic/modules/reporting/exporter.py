@@ -28,7 +28,7 @@ _TEMPLATE_PACKAGE = "forensic.modules.reporting"
 
 
 def _is_scalar(value: Any) -> bool:
-    return isinstance(value, (str, int, float, bool)) or value is None
+    return isinstance(value, str | int | float | bool) or value is None
 
 
 def _normalise_structure(value: Any) -> Any:
