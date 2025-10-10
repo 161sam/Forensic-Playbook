@@ -29,6 +29,19 @@ from .modules.reporting.generator import ReportGenerator
 from .modules.triage.persistence import PersistenceModule
 from .modules.triage.quick_triage import QuickTriageModule
 from .modules.triage.system_info import SystemInfoModule
+from .ops.codex import (
+    DEFAULT_HOST as CODEX_DEFAULT_HOST,
+    DEFAULT_PORT as CODEX_DEFAULT_PORT,
+    DEFAULT_REPO_URL as CODEX_DEFAULT_REPO,
+    CodexOperationResult,
+    get_codex_status,
+    install_codex_environment,
+    resolve_paths as resolve_codex_paths,
+    start_codex_server,
+    stop_codex_server,
+)
+from .mcp import MCPClient, MCPConfig, ToolExecutionResult
+from .mcp.tools import build_expose_payload, run_tool as run_mcp_tool
 
 REPORT_FORMAT_CHOICES = ["html", "json", "md", "markdown"]
 if get_pdf_renderer() is not None:
@@ -205,6 +218,444 @@ def cli(
     ctx.obj["quiet"] = quiet
 
     _register_default_modules(ctx)
+
+
+def _emit_codex_result(
+    ctx: click.Context, command: str, result: CodexOperationResult
+) -> None:
+    details = list(result.details)
+    if result.warnings:
+        details.append("Warnings:")
+        details.extend(f"  - {warning}" for warning in result.warnings)
+
+    data = dict(result.data)
+    if result.warnings and "warnings" not in data:
+        data["warnings"] = result.warnings
+    if result.errors and "errors" not in data:
+        data["errors"] = result.errors
+
+    exit_code = 1 if result.status == "error" else None
+
+    _emit_status(
+        ctx,
+        command,
+        status=result.status,
+        message=result.message,
+        details=details,
+        data=data,
+        errors=result.errors,
+        exit_code=exit_code,
+    )
+
+
+def _emit_mcp_tool_result(
+    ctx: click.Context, command: str, tool: str, result: ToolExecutionResult
+) -> None:
+    pretty_details = [f"Tool: {tool}"]
+    if result.data:
+        pretty_details.append("Result data keys: " + ", ".join(sorted(result.data.keys())))
+    if result.warnings:
+        pretty_details.append("Warnings:")
+        pretty_details.extend(f"  - {warning}" for warning in result.warnings)
+
+    exit_code = 1 if result.status == "error" else None
+    payload = result.to_dict()
+
+    _emit_status(
+        ctx,
+        command,
+        status=result.status,
+        message=result.message,
+        details=pretty_details,
+        data={"tool": tool, "result": payload},
+        errors=result.errors,
+        exit_code=exit_code,
+    )
+
+
+def _coerce_argument_value(raw: str) -> Any:
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return raw
+
+
+def _parse_key_value_pairs(pairs: tuple[str, ...]) -> Dict[str, Any]:
+    arguments: Dict[str, Any] = {}
+    for item in pairs:
+        if "=" not in item:
+            raise click.BadParameter(
+                f"Invalid argument '{item}'. Use key=value syntax."
+            )
+        key, value = item.split("=", 1)
+        arguments[key] = _coerce_argument_value(value)
+    return arguments
+
+
+@cli.group()
+def codex() -> None:
+    """Guarded helpers for the Codex + MCP workflow."""
+
+
+@codex.command("install")
+@click.option(
+    "--workspace",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Workspace directory (default /mnt/usb_rw)",
+)
+@click.option(
+    "--codex-home",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Codex HOME directory (default <workspace>/codex_home)",
+)
+@click.option(
+    "--log-dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Log directory (default <workspace>/codex_logs)",
+)
+@click.option(
+    "--repo-url",
+    default=CODEX_DEFAULT_REPO,
+    show_default=True,
+    help="MCP server repository URL",
+)
+@click.option("--dry-run", is_flag=True, help="Print planned actions without executing")
+@click.option(
+    "--enable-mount",
+    is_flag=True,
+    help="Show mount automation notes (no-op without manual review)",
+)
+@click.option(
+    "--enable-host-patch",
+    is_flag=True,
+    help="Document host patch guidance (no automatic changes)",
+)
+@click.pass_context
+def codex_install(
+    ctx: click.Context,
+    workspace: Path | None,
+    codex_home: Path | None,
+    log_dir: Path | None,
+    repo_url: str,
+    dry_run: bool,
+    enable_mount: bool,
+    enable_host_patch: bool,
+) -> None:
+    """Install or update the Codex forensic environment."""
+
+    paths = resolve_codex_paths(
+        workspace,
+        codex_home=codex_home,
+        log_dir=log_dir,
+    )
+    result = install_codex_environment(
+        paths,
+        repo_url=repo_url,
+        dry_run=dry_run,
+        enable_mount=enable_mount,
+        enable_host_patch=enable_host_patch,
+    )
+    _emit_codex_result(ctx, "codex.install", result)
+
+
+@codex.command("start")
+@click.option(
+    "--workspace",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Workspace directory (default /mnt/usb_rw)",
+)
+@click.option(
+    "--codex-home",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Codex HOME directory (default <workspace>/codex_home)",
+)
+@click.option(
+    "--log-dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Log directory (default <workspace>/codex_logs)",
+)
+@click.option("--host", default=CODEX_DEFAULT_HOST, show_default=True)
+@click.option("--port", default=CODEX_DEFAULT_PORT, show_default=True, type=int)
+@click.option("--dry-run", is_flag=True, help="Print planned actions without executing")
+@click.option("--foreground", is_flag=True, help="Run MCP server in the foreground")
+@click.option(
+    "--enable-host-patch",
+    is_flag=True,
+    help="Attempt to ensure /etc/hosts contains localhost entry (requires root)",
+)
+@click.pass_context
+def codex_start(
+    ctx: click.Context,
+    workspace: Path | None,
+    codex_home: Path | None,
+    log_dir: Path | None,
+    host: str,
+    port: int,
+    dry_run: bool,
+    foreground: bool,
+    enable_host_patch: bool,
+) -> None:
+    """Start the guarded MCP server for Codex."""
+
+    paths = resolve_codex_paths(
+        workspace,
+        codex_home=codex_home,
+        log_dir=log_dir,
+    )
+    result = start_codex_server(
+        paths,
+        host=host,
+        port=port,
+        dry_run=dry_run,
+        foreground=foreground,
+        enable_host_patch=enable_host_patch,
+    )
+    _emit_codex_result(ctx, "codex.start", result)
+
+
+@codex.command("stop")
+@click.option(
+    "--workspace",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Workspace directory (default /mnt/usb_rw)",
+)
+@click.option(
+    "--log-dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Log directory (default <workspace>/codex_logs)",
+)
+@click.option("--dry-run", is_flag=True, help="Print planned actions without executing")
+@click.option(
+    "--wait",
+    default=2.0,
+    show_default=True,
+    type=float,
+    help="Seconds to wait after SIGTERM before reporting status",
+)
+@click.pass_context
+def codex_stop(
+    ctx: click.Context,
+    workspace: Path | None,
+    log_dir: Path | None,
+    dry_run: bool,
+    wait: float,
+) -> None:
+    """Stop the Codex MCP server."""
+
+    paths = resolve_codex_paths(
+        workspace,
+        log_dir=log_dir,
+    )
+    result = stop_codex_server(paths, dry_run=dry_run, wait_seconds=wait)
+    _emit_codex_result(ctx, "codex.stop", result)
+
+
+@codex.command("status")
+@click.option(
+    "--workspace",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Workspace directory (default /mnt/usb_rw)",
+)
+@click.option(
+    "--log-dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Log directory (default <workspace>/codex_logs)",
+)
+@click.option("--host", default=CODEX_DEFAULT_HOST, show_default=True)
+@click.option("--port", default=CODEX_DEFAULT_PORT, show_default=True, type=int)
+@click.option(
+    "--timeout",
+    default=1.0,
+    show_default=True,
+    type=float,
+    help="Timeout for health probes in seconds",
+)
+@click.pass_context
+def codex_status(
+    ctx: click.Context,
+    workspace: Path | None,
+    log_dir: Path | None,
+    host: str,
+    port: int,
+    timeout: float,
+) -> None:
+    """Report the status of the Codex MCP server."""
+
+    paths = resolve_codex_paths(
+        workspace,
+        log_dir=log_dir,
+    )
+    result = get_codex_status(paths, host=host, port=port, timeout=timeout)
+    _emit_codex_result(ctx, "codex.status", result)
+
+
+@cli.group()
+def mcp() -> None:
+    """Interact with MCP servers and tool adapters."""
+
+
+@mcp.command("expose")
+@click.option(
+    "--compact",
+    is_flag=True,
+    help="Emit compact JSON without indentation",
+)
+@click.pass_context
+def mcp_expose(ctx: click.Context, compact: bool) -> None:
+    """Print the MCP tool catalogue as JSON."""
+
+    framework: ForensicFramework = ctx.obj["framework"]
+    payload = build_expose_payload(framework)
+    indent = None if compact else 2
+    click.echo(json.dumps(payload, indent=indent, sort_keys=True))
+
+
+@mcp.command("status")
+@click.option("--endpoint", default=None, help="Override MCP endpoint URL")
+@click.option("--token", default=None, help="Authentication token (if required)")
+@click.option(
+    "--timeout",
+    type=float,
+    default=None,
+    help="HTTP timeout in seconds (default 5.0)",
+)
+@click.pass_context
+def mcp_status(
+    ctx: click.Context,
+    endpoint: str | None,
+    token: str | None,
+    timeout: float | None,
+) -> None:
+    """Perform a health check against the configured MCP endpoint."""
+
+    framework: ForensicFramework = ctx.obj["framework"]
+    config = MCPConfig.from_sources(
+        framework_config=framework.config,
+        endpoint=endpoint,
+        token=token,
+        timeout=timeout,
+    )
+
+    client = MCPClient(config)
+    response = client.status()
+    client.close()
+
+    details = [f"Endpoint: {config.endpoint}"]
+    if response.status is not None:
+        details.append(f"HTTP status: {response.status}")
+
+    data = {"config": config.to_dict(), "response": response.data}
+    errors = [response.error] if response.error else []
+
+    status = "success" if response.ok else "error"
+    message = "MCP endpoint reachable" if response.ok else "Unable to reach MCP endpoint"
+
+    _emit_status(
+        ctx,
+        "mcp.status",
+        status=status,
+        message=message,
+        details=details,
+        data=data,
+        errors=errors,
+        exit_code=None if response.ok else 1,
+    )
+
+
+@mcp.command("run")
+@click.argument("tool")
+@click.option("--endpoint", default=None, help="Override MCP endpoint URL")
+@click.option("--token", default=None, help="Authentication token (if required)")
+@click.option(
+    "--timeout",
+    type=float,
+    default=None,
+    help="HTTP timeout in seconds (default 5.0)",
+)
+@click.option(
+    "--arg",
+    "arguments",
+    multiple=True,
+    help="Tool argument as key=value (repeat for multiple entries)",
+)
+@click.option(
+    "--local",
+    is_flag=True,
+    help="Execute tool locally without contacting the MCP server",
+)
+@click.pass_context
+def mcp_run(
+    ctx: click.Context,
+    tool: str,
+    endpoint: str | None,
+    token: str | None,
+    timeout: float | None,
+    arguments: tuple[str, ...],
+    local: bool,
+) -> None:
+    """Execute an MCP tool either via HTTP or using the local adapter."""
+
+    framework: ForensicFramework = ctx.obj["framework"]
+    parsed_arguments = _parse_key_value_pairs(arguments)
+
+    if local:
+        result = run_mcp_tool(framework, tool, parsed_arguments)
+        _emit_mcp_tool_result(ctx, "mcp.run.local", tool, result)
+        return
+
+    config = MCPConfig.from_sources(
+        framework_config=framework.config,
+        endpoint=endpoint,
+        token=token,
+        timeout=timeout,
+    )
+
+    client = MCPClient(config)
+    response = client.run_tool(tool, parsed_arguments)
+    client.close()
+
+    details = [f"Endpoint: {config.endpoint}", f"Tool: {tool}"]
+    if response.status is not None:
+        details.append(f"HTTP status: {response.status}")
+
+    data = {
+        "tool": tool,
+        "arguments": parsed_arguments,
+        "config": config.to_dict(),
+        "response": response.data,
+    }
+    errors = [response.error] if response.error else []
+
+    status = "success" if response.ok else "error"
+    message = (
+        f"Tool '{tool}' executed via MCP"
+        if response.ok
+        else f"Failed to execute tool '{tool}' via MCP"
+    )
+
+    if not response.ok:
+        details.append("Hint: use --local to execute without MCP server if appropriate.")
+
+    _emit_status(
+        ctx,
+        "mcp.run",
+        status=status,
+        message=message,
+        details=details,
+        data=data,
+        errors=errors,
+        exit_code=None if response.ok else 1,
+    )
 
 
 @cli.group()

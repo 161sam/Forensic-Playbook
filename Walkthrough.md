@@ -46,6 +46,33 @@ source ~/forensic-venv/bin/activate
 forensic-cli diagnostics
 ```
 
+### Phase 1b: Optional Codex MCP Bridge (Forensic Mode)
+
+The Codex workflow mirrors the CLI. Start with dry-run commands to confirm planned actions and log locations (`<workspace>/codex_logs/`).
+
+```bash
+# 4. Plan Codex environment setup (no changes applied)
+forensic-cli codex install --dry-run
+
+# 5. Start MCP server in foreground for verification
+forensic-cli codex start --foreground --dry-run
+
+# 6. Check current MCP health status
+forensic-cli codex status
+```
+
+Capture the MCP tool catalogue (deterministic JSON) and confirm local execution works before involving Codex:
+
+```bash
+# List available MCP tools
+forensic-cli mcp expose
+
+# Run diagnostics locally via adapter
+forensic-cli mcp run --tool diagnostics.ping --local --json
+```
+
+> **Tip:** Codex uses the system prompt at `forensic/mcp/prompts/forensic_mode.txt`. It enforces dry-run-first plans, provenance logging, and explicit confirmations before executing guarded actions.
+
 **Output:**
 ```
 Core:
