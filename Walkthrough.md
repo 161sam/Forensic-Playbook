@@ -188,37 +188,40 @@ forensic-cli evidence add \
 ```bash
 forensic-cli router env init --case demo --dry-run
 forensic-cli router extract ui --case demo --param input=./evidence/router_exports --dry-run
-forensic-cli router manifest write --case demo
-forensic-cli router summarize --case demo
+forensic-cli router manifest write --case demo --param source=./cases/demo/router/20240101T000000Z
+forensic-cli router summarize --case demo --param source=./cases/demo/router/20240101T000000Z
 ```
 
 ```bash
 # Dry-run the router environment bootstrap
-forensic-cli router env init --root forensic_workspace/cases/CASE_20251008_143025/router --dry-run
+forensic-cli router env init --case CASE_20251008_143025 --dry-run
 
 # Prepare capture folders (no tcpdump invoked yet)
-forensic-cli router capture setup --if wan0 --dry-run
+forensic-cli router capture setup --case CASE_20251008_143025 --param interface=wan0 --dry-run
 
 # Extract router UI artefacts from exported logs without touching originals
 forensic-cli router extract ui \
-    --input evidence/router_exports \
-    --out forensic_workspace/cases/CASE_20251008_143025/router/extract \
+    --case CASE_20251008_143025 \
+    --param input=evidence/router_exports \
     --dry-run
 
 # When satisfied, run without --dry-run to materialise JSON summaries
 forensic-cli router extract ui \
-    --input evidence/router_exports \
-    --out forensic_workspace/cases/CASE_20251008_143025/router/extract
+    --case CASE_20251008_143025 \
+    --param input=evidence/router_exports \
+    --no-dry-run
 
 # Register artefacts and hashes via manifest helper
 forensic-cli router manifest write \
-    --source forensic_workspace/cases/CASE_20251008_143025/router/extract \
-    --out forensic_workspace/cases/CASE_20251008_143025/router/manifest.json
+    --case CASE_20251008_143025 \
+    --param source=forensic_workspace/cases/CASE_20251008_143025/router/20240101T000000Z \
+    --no-dry-run
 
 # Generate Markdown summary for quick briefing
 forensic-cli router summarize \
-    --in forensic_workspace/cases/CASE_20251008_143025/router/extract \
-    --out forensic_workspace/cases/CASE_20251008_143025/router/summary.md
+    --case CASE_20251008_143025 \
+    --param source=forensic_workspace/cases/CASE_20251008_143025/router/20240101T000000Z \
+    --no-dry-run
 ```
 
 **Resulting artefacts:**
@@ -228,6 +231,10 @@ forensic-cli router summarize \
 - `router/manifest.json` — deterministic inventory covering all router outputs.
 - `router/summary.md` — Markdown briefing summarising port forwards, DDNS and
   backup findings.
+
+> Reminder: Use deterministic text/JSON exports for rehearsals. Binary captures
+> (PCAP, firmware dumps) stay outside automated tests to keep the pipeline
+> portable and auditable.
 
 ---
 
