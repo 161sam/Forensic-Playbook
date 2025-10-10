@@ -90,3 +90,32 @@ def test_codex_status_reports_health(tmp_path: Path) -> None:
     assert payload["command"] == "codex.status"
     assert payload["status"] in {"warning", "success"}
     assert payload["data"]["running"] is False
+
+
+def test_codex_logs_returns_tail(tmp_path: Path) -> None:
+    runner = CliRunner()
+    workspace = tmp_path / "workspace"
+    log_dir = workspace / "codex_logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / "codex_control.log"
+    log_file.write_text("first\nsecond\nthird\n", encoding="utf-8")
+
+    args = [
+        "--workspace",
+        str(workspace),
+        "--json",
+        "codex",
+        "logs",
+        "--workspace",
+        str(workspace),
+        "--lines",
+        "2",
+    ]
+    _, payload = _invoke(runner, args)
+
+    assert payload["command"] == "codex.logs"
+    assert payload["status"] == "success"
+    data = payload["data"]
+    assert data["target"] == "control"
+    assert data["lines_returned"] == 2
+    assert data["log_excerpt"] == ["second", "third"]

@@ -107,6 +107,9 @@ forensic-cli codex start --foreground --dry-run
 # Health-check the endpoint (logs under <workspace>/codex_logs/)
 forensic-cli codex status
 
+# Review Codex control log excerpts without modifying evidence
+forensic-cli codex logs --lines 20 --target control
+
 # List exposed MCP tools (deterministic JSON)
 forensic-cli mcp expose
 
