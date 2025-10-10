@@ -6,8 +6,10 @@ from __future__ import annotations
 
 import ast
 import importlib
+import importlib.util
 import shutil
 import sys
+import types
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, List, Sequence, Tuple
@@ -17,6 +19,46 @@ MODULE_ROOT = REPO_ROOT / "forensic" / "modules"
 README_PATH = REPO_ROOT / "README.md"
 MARKER_BEGIN = "<!-- MODULE_MATRIX:BEGIN -->"
 MARKER_END = "<!-- MODULE_MATRIX:END -->"
+
+def _ensure_requests_stub() -> None:
+    """Provide a lightweight ``requests`` stub when the dependency is missing.
+
+    The module matrix generator imports the ``forensic`` package to introspect
+    module metadata. Importing ``forensic`` pulls in the MCP client which, in
+    turn, depends on the third-party ``requests`` package. CI environments that
+    only install minimal tooling do not necessarily ship with ``requests``
+    pre-installed which previously caused the import step to fail and the
+    generated table to contain noisy "Import error" entries.
+
+    To keep the generator deterministic and avoid adding an implicit runtime
+    dependency, we stub the parts of ``requests`` that are touched during import
+    (``Session`` construction and the base ``RequestException`` hierarchy). The
+    stub raises if the generator accidentally exercises runtime behaviour so we
+    get a clear signal rather than silently masking new usages.
+    """
+
+    if importlib.util.find_spec("requests") is not None:
+        return
+
+    stub = types.ModuleType("requests")
+
+    class _StubSession:  # pragma: no cover - defensive stub
+        def __init__(self, *args, **kwargs) -> None:  # noqa: D401 - simple stub
+            raise RuntimeError(
+                "requests.Session stub invoked during module matrix generation"
+            )
+
+    class _StubRequestException(Exception):
+        """Placeholder for :class:`requests.RequestException`."""
+
+    stub.Session = _StubSession
+    stub.RequestException = _StubRequestException
+    stub.exceptions = types.SimpleNamespace(RequestException=_StubRequestException)
+
+    sys.modules.setdefault("requests", stub)
+
+
+_ensure_requests_stub()
 
 sys.path.insert(0, str(REPO_ROOT))
 
