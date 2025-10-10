@@ -95,6 +95,27 @@ Generate a report preview without writing files:
 forensic-cli report generate --case CASE123 --fmt md --dry-run
 ```
 
+### Router forensics workflow
+
+The router toolkit migrates the legacy shell scripts under `router/scripts/` to
+guarded Python helpers. Every command honours **CLI > YAML > built-in defaults**
+with configuration stored in `config/modules/router/`. Dry-run mode is enabled
+everywhere and no live capture is performed unless explicitly acknowledged.
+
+```bash
+forensic-cli router env init --root /cases/router_demo --dry-run
+forensic-cli router capture setup --if eth1 --bpf "not port 22" --dry-run
+forensic-cli router extract ui --input /evidence/router_dump --out /tmp/router-ui --dry-run
+forensic-cli router manifest write --source /tmp/router-ui --out /tmp/router_manifest.json
+forensic-cli router summarize --in /tmp/router-ui --out /tmp/router_summary.md
+```
+
+Additional extractors for DDNS, connected devices, port forwards, TR-069, event
+logs, CSRF/session data and router backups follow the same pattern. Use
+`forensic-cli router --help` to discover the full command matrix. Every
+sub-command supports `--legacy` to preview or invoke the original Bash scripts
+when required for parity validation.
+
 ## Project structure (v2.0)
 
 ```text

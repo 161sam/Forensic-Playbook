@@ -1,0 +1,26 @@
+# Extraction defaults for router artefacts.
+output_dir: router/extract
+hash_algorithm: sha256
+encodings:
+  - utf-8
+  - latin-1
+patterns:
+  ui:
+    - "**/*.html"
+    - "**/*.htm"
+    - "**/*.json"
+  ddns:
+    - "**/*ddns*"
+  devices:
+    - "**/*device*"
+  eventlog:
+    - "**/*event*"
+  portforwards:
+    - "**/*port*"
+  session_csrf:
+    - "**/*csrf*"
+  tr069:
+    - "**/*tr069*"
+  backups:
+    - "**/*.cfg"
+    - "**/*.bin"

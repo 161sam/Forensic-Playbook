@@ -156,6 +156,45 @@ forensic-cli evidence add \
     --description "RAM capture at time of incident"
 ```
 
+#### 3.3 Router Artefact Staging (Guarded CLI)
+
+```bash
+# Dry-run the router environment bootstrap
+forensic-cli router env init --root forensic_workspace/cases/CASE_20251008_143025/router --dry-run
+
+# Prepare capture folders (no tcpdump invoked yet)
+forensic-cli router capture setup --if wan0 --dry-run
+
+# Extract router UI artefacts from exported logs without touching originals
+forensic-cli router extract ui \
+    --input evidence/router_exports \
+    --out forensic_workspace/cases/CASE_20251008_143025/router/extract \
+    --dry-run
+
+# When satisfied, run without --dry-run to materialise JSON summaries
+forensic-cli router extract ui \
+    --input evidence/router_exports \
+    --out forensic_workspace/cases/CASE_20251008_143025/router/extract
+
+# Register artefacts and hashes via manifest helper
+forensic-cli router manifest write \
+    --source forensic_workspace/cases/CASE_20251008_143025/router/extract \
+    --out forensic_workspace/cases/CASE_20251008_143025/router/manifest.json
+
+# Generate Markdown summary for quick briefing
+forensic-cli router summarize \
+    --in forensic_workspace/cases/CASE_20251008_143025/router/extract \
+    --out forensic_workspace/cases/CASE_20251008_143025/router/summary.md
+```
+
+**Resulting artefacts:**
+
+- `router/extract/<timestamp>/ui_artifacts.json` — parsed UI configuration with
+  SHA-256 hashes recorded in `router/extract/<timestamp>/chain_of_custody.log`.
+- `router/manifest.json` — deterministic inventory covering all router outputs.
+- `router/summary.md` — Markdown briefing summarising port forwards, DDNS and
+  backup findings.
+
 ---
 
 ### Phase 4: Quick Triage

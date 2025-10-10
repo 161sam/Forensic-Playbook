@@ -1,0 +1,9 @@
+# Router summary defaults for markdown and JSON outputs.
+sections:
+  - overview
+  - findings
+hash_algorithm: sha256
+severity_thresholds:
+  info: 0
+  warning: 1
+  critical: 2
