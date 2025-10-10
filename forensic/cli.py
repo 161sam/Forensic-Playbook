@@ -38,25 +38,12 @@ from .modules.router import summarize as router_summary
 from .modules.triage.persistence import PersistenceModule
 from .modules.triage.quick_triage import QuickTriageModule
 from .modules.triage.system_info import SystemInfoModule
-from .ops.codex import (
-    DEFAULT_HOST as CODEX_DEFAULT_HOST,
-)
-from .ops.codex import (
-    DEFAULT_PORT as CODEX_DEFAULT_PORT,
-)
-from .ops.codex import (
-    DEFAULT_REPO_URL as CODEX_DEFAULT_REPO,
-)
-from .ops.codex import (
-    CodexOperationResult,
-    get_codex_status,
-    install_codex_environment,
-    read_codex_logs,
-    start_codex_server,
-    stop_codex_server,
-)
-from .ops.codex import (
-    resolve_paths as resolve_codex_paths,
+from .codex import (
+    CodexActionResult,
+    install as run_codex_install,
+    start as run_codex_start,
+    status as run_codex_status,
+    stop as run_codex_stop,
 )
 
 REPORT_FORMAT_CHOICES = ["html", "json", "md", "markdown"]
@@ -237,7 +224,7 @@ def cli(
 
 
 def _emit_codex_result(
-    ctx: click.Context, command: str, result: CodexOperationResult
+    ctx: click.Context, command: str, result: CodexActionResult
 ) -> None:
     details = list(result.details)
     if result.warnings:
@@ -318,61 +305,34 @@ def codex() -> None:
     "--workspace",
     type=click.Path(path_type=Path),
     default=None,
-    help="Workspace directory (default /mnt/usb_rw)",
+    help="Workspace directory (defaults to CLI context or /mnt/usb_rw)",
 )
 @click.option(
-    "--codex-home",
-    type=click.Path(path_type=Path),
-    default=None,
-    help="Codex HOME directory (default <workspace>/codex_home)",
+    "--dry-run/--no-dry-run",
+    default=True,
+    help="Preview installer actions without executing (default).",
 )
 @click.option(
-    "--log-dir",
-    type=click.Path(path_type=Path),
-    default=None,
-    help="Log directory (default <workspace>/codex_logs)",
-)
-@click.option(
-    "--repo-url",
-    default=CODEX_DEFAULT_REPO,
-    show_default=True,
-    help="MCP server repository URL",
-)
-@click.option("--dry-run", is_flag=True, help="Print planned actions without executing")
-@click.option(
-    "--enable-mount",
+    "--accept-risk",
     is_flag=True,
-    help="Show mount automation notes (no-op without manual review)",
-)
-@click.option(
-    "--enable-host-patch",
-    is_flag=True,
-    help="Document host patch guidance (no automatic changes)",
+    help="Acknowledge guarded actions and execute the installer script.",
 )
 @click.pass_context
 def codex_install(
     ctx: click.Context,
     workspace: Path | None,
-    codex_home: Path | None,
-    log_dir: Path | None,
-    repo_url: str,
     dry_run: bool,
-    enable_mount: bool,
-    enable_host_patch: bool,
+    accept_risk: bool,
 ) -> None:
     """Install or update the Codex forensic environment."""
 
-    paths = resolve_codex_paths(
-        workspace,
-        codex_home=codex_home,
-        log_dir=log_dir,
-    )
-    result = install_codex_environment(
-        paths,
-        repo_url=repo_url,
+    framework_workspace = Path(ctx.obj["framework"].workspace)
+    target_workspace = workspace or framework_workspace
+    result = run_codex_install(
+        workspace=target_workspace,
         dry_run=dry_run,
-        enable_mount=enable_mount,
-        enable_host_patch=enable_host_patch,
+        accept_risk=accept_risk,
+        env=os.environ,
     )
     _emit_codex_result(ctx, "codex.install", result)
 
@@ -382,55 +342,34 @@ def codex_install(
     "--workspace",
     type=click.Path(path_type=Path),
     default=None,
-    help="Workspace directory (default /mnt/usb_rw)",
+    help="Workspace directory (defaults to CLI context or /mnt/usb_rw)",
 )
 @click.option(
-    "--codex-home",
-    type=click.Path(path_type=Path),
-    default=None,
-    help="Codex HOME directory (default <workspace>/codex_home)",
-)
-@click.option(
-    "--log-dir",
-    type=click.Path(path_type=Path),
-    default=None,
-    help="Log directory (default <workspace>/codex_logs)",
-)
-@click.option("--host", default=CODEX_DEFAULT_HOST, show_default=True)
-@click.option("--port", default=CODEX_DEFAULT_PORT, show_default=True, type=int)
-@click.option("--dry-run", is_flag=True, help="Print planned actions without executing")
-@click.option("--foreground", is_flag=True, help="Run MCP server in the foreground")
-@click.option(
-    "--enable-host-patch",
+    "--foreground",
     is_flag=True,
-    help="Attempt to ensure /etc/hosts contains localhost entry (requires root)",
+    help="Stream start script output in the foreground during execution.",
+)
+@click.option(
+    "--dry-run/--no-dry-run",
+    default=True,
+    help="Preview start actions without executing (default).",
 )
 @click.pass_context
 def codex_start(
     ctx: click.Context,
     workspace: Path | None,
-    codex_home: Path | None,
-    log_dir: Path | None,
-    host: str,
-    port: int,
-    dry_run: bool,
     foreground: bool,
-    enable_host_patch: bool,
+    dry_run: bool,
 ) -> None:
     """Start the guarded MCP server for Codex."""
 
-    paths = resolve_codex_paths(
-        workspace,
-        codex_home=codex_home,
-        log_dir=log_dir,
-    )
-    result = start_codex_server(
-        paths,
-        host=host,
-        port=port,
+    framework_workspace = Path(ctx.obj["framework"].workspace)
+    target_workspace = workspace or framework_workspace
+    result = run_codex_start(
+        workspace=target_workspace,
         dry_run=dry_run,
         foreground=foreground,
-        enable_host_patch=enable_host_patch,
+        env=os.environ,
     )
     _emit_codex_result(ctx, "codex.start", result)
 
@@ -440,37 +379,28 @@ def codex_start(
     "--workspace",
     type=click.Path(path_type=Path),
     default=None,
-    help="Workspace directory (default /mnt/usb_rw)",
+    help="Workspace directory (defaults to CLI context or /mnt/usb_rw)",
 )
 @click.option(
-    "--log-dir",
-    type=click.Path(path_type=Path),
-    default=None,
-    help="Log directory (default <workspace>/codex_logs)",
-)
-@click.option("--dry-run", is_flag=True, help="Print planned actions without executing")
-@click.option(
-    "--wait",
-    default=2.0,
-    show_default=True,
-    type=float,
-    help="Seconds to wait after SIGTERM before reporting status",
+    "--dry-run/--no-dry-run",
+    default=True,
+    help="Preview stop actions without executing (default).",
 )
 @click.pass_context
 def codex_stop(
     ctx: click.Context,
     workspace: Path | None,
-    log_dir: Path | None,
     dry_run: bool,
-    wait: float,
 ) -> None:
-    """Stop the Codex MCP server."""
+    """Stop the Codex MCP server if a PID file is present."""
 
-    paths = resolve_codex_paths(
-        workspace,
-        log_dir=log_dir,
+    framework_workspace = Path(ctx.obj["framework"].workspace)
+    target_workspace = workspace or framework_workspace
+    result = run_codex_stop(
+        workspace=target_workspace,
+        dry_run=dry_run,
+        env=os.environ,
     )
-    result = stop_codex_server(paths, dry_run=dry_run, wait_seconds=wait)
     _emit_codex_result(ctx, "codex.stop", result)
 
 
@@ -479,84 +409,19 @@ def codex_stop(
     "--workspace",
     type=click.Path(path_type=Path),
     default=None,
-    help="Workspace directory (default /mnt/usb_rw)",
-)
-@click.option(
-    "--log-dir",
-    type=click.Path(path_type=Path),
-    default=None,
-    help="Log directory (default <workspace>/codex_logs)",
-)
-@click.option("--host", default=CODEX_DEFAULT_HOST, show_default=True)
-@click.option("--port", default=CODEX_DEFAULT_PORT, show_default=True, type=int)
-@click.option(
-    "--timeout",
-    default=1.0,
-    show_default=True,
-    type=float,
-    help="Timeout for health probes in seconds",
+    help="Workspace directory (defaults to CLI context or /mnt/usb_rw)",
 )
 @click.pass_context
-def codex_status(
-    ctx: click.Context,
-    workspace: Path | None,
-    log_dir: Path | None,
-    host: str,
-    port: int,
-    timeout: float,
-) -> None:
-    """Report the status of the Codex MCP server."""
+def codex_status(ctx: click.Context, workspace: Path | None) -> None:
+    """Report the status of the Codex MCP server and log metadata."""
 
-    paths = resolve_codex_paths(
-        workspace,
-        log_dir=log_dir,
+    framework_workspace = Path(ctx.obj["framework"].workspace)
+    target_workspace = workspace or framework_workspace
+    result = run_codex_status(
+        workspace=target_workspace,
+        env=os.environ,
     )
-    result = get_codex_status(paths, host=host, port=port, timeout=timeout)
     _emit_codex_result(ctx, "codex.status", result)
-
-
-@codex.command("logs")
-@click.option(
-    "--workspace",
-    type=click.Path(path_type=Path),
-    default=None,
-    help="Workspace directory (default /mnt/usb_rw)",
-)
-@click.option(
-    "--log-dir",
-    type=click.Path(path_type=Path),
-    default=None,
-    help="Log directory (default <workspace>/codex_logs)",
-)
-@click.option(
-    "--target",
-    type=click.Choice(["control", "stdout", "stderr"], case_sensitive=False),
-    default="control",
-    help="Log file to inspect",
-)
-@click.option(
-    "--lines",
-    type=click.IntRange(1, 500),
-    default=40,
-    show_default=True,
-    help="Number of lines to display from the end of the log",
-)
-@click.pass_context
-def codex_logs(
-    ctx: click.Context,
-    workspace: Path | None,
-    log_dir: Path | None,
-    target: str,
-    lines: int,
-) -> None:
-    """Display a guarded tail view of Codex MCP logs."""
-
-    paths = resolve_codex_paths(
-        workspace,
-        log_dir=log_dir,
-    )
-    result = read_codex_logs(paths, target=target, lines=lines)
-    _emit_codex_result(ctx, "codex.logs", result)
 
 
 @cli.group()
