@@ -1,9 +1,10 @@
+"""Tests for the router environment preparation module."""
+
 from __future__ import annotations
 
 from pathlib import Path
 
 from forensic.modules.router.env import RouterEnvModule
-
 
 TIMESTAMP = "20240101T000000Z"
 

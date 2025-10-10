@@ -17,7 +17,6 @@ from .common import (
     resolve_parameters,
 )
 
-
 SUMMARY_SECTIONS: List[Tuple[str, str]] = [
     ("Devices", "devices"),
     ("Port Forwards", "portforwards"),

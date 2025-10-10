@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from typing import Any, Dict, Iterable, List, Mapping
+from typing import Any, Dict, List, Mapping
 
 from ..core.framework import ForensicFramework
 from .adapters import iter_tool_names

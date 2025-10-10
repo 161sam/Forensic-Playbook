@@ -6,7 +6,6 @@ from pathlib import Path
 
 from forensic.modules.router.pipeline import RouterPipelineModule
 
-
 TIMESTAMP = "20240101T000000Z"
 
 

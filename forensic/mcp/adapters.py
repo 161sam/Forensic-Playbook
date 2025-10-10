@@ -9,6 +9,8 @@ from ..core.framework import ForensicFramework
 from .tools import (
     ToolExecutionResult,
     get_tool_catalog,
+)
+from .tools import (
     run_tool as _legacy_run_tool,
 )
 

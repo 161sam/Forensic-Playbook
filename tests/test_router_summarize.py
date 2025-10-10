@@ -1,10 +1,11 @@
+"""Tests for router summary aggregation."""
+
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
 from forensic.modules.router.summarize import RouterSummarizeModule
-
 
 TIMESTAMP = "20240101T000000Z"
 

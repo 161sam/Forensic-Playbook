@@ -39,7 +39,7 @@ class RouterEnvModule(RouterModule):
         resolved, _ = resolve_parameters(params, config, builtin)
 
         directories = resolved.get("directories", [])
-        if isinstance(directories, (str, Path)):
+        if isinstance(directories, str | Path):
             directories = [directories]
         if not isinstance(directories, list) or not directories:
             self._validation_errors.append("directories must be a non-empty list of paths")
