@@ -54,6 +54,9 @@ Weitere Details (inklusive Paketlisten für Kali/Ubuntu) finden Sie im [User Gui
 Die folgende Tabelle wird automatisiert durch `python tools/generate_module_matrix.py`
 gepflegt. Bei Änderungen an Modulen unbedingt den Generator im Dry-Run prüfen,
 bevor die finale Tabelle aktualisiert wird.
+Die Verfügbarkeit einzelner Tools wird deterministisch über `config/tool_inventory.json`
+gesteuert – Änderungen daran nur nach abgesicherter Review und dokumentierter
+Guard-Abstimmung vornehmen.
 
 <!-- MODULE_MATRIX:BEGIN -->
 | Kategorie | Modul | Status | Backend/Extra | Guard | Notizen |
