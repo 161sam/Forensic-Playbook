@@ -49,6 +49,39 @@ Weitere Details (inklusive Paketlisten für Kali/Ubuntu) finden Sie im [User Gui
 | MCP/Codex | 🟡 Beta, Dry-Run verpflichtend |
 | Tests/CI | ✅ `pytest -q`, `ruff`, `black --check` |
 
+## Modul-Matrix
+
+Die folgende Tabelle wird automatisiert durch `python tools/generate_module_matrix.py`
+gepflegt. Bei Änderungen an Modulen unbedingt den Generator im Dry-Run prüfen,
+bevor die finale Tabelle aktualisiert wird.
+
+<!-- MODULE_MATRIX:BEGIN -->
+| Kategorie | Modul | Status | Backend/Extra | Guard | Notizen |
+| --- | --- | --- | --- | --- | --- |
+| Acquisition | `disk_imaging` | Missing | ddrescue / ewfacquire | Root + block device access | Import error: No module named 'requests' |
+| Acquisition | `live_response` | Missing | coreutils (uname, ps, netstat) | — | Import error: No module named 'requests' |
+| Acquisition | `memory_dump` | Missing | avml | --enable-live-capture (Linux) | Import error: No module named 'requests' |
+| Acquisition | `network_capture` | Missing | tcpdump / dumpcap | --enable-live-capture + root | Import error: No module named 'requests' |
+| Analysis | `filesystem` | Missing | sleuthkit (fls, blkcat) | — | Import error: No module named 'requests' |
+| Analysis | `malware` | Missing | yara extra | — | Import error: No module named 'requests' |
+| Analysis | `memory` | Missing | memory extra (volatility3) | — | Import error: No module named 'requests' |
+| Analysis | `network` | Missing | pcap extra (scapy, pyshark) | — | Import error: No module named 'requests' |
+| Analysis | `registry` | Missing | reglookup / rip.pl | — | Import error: No module named 'requests' |
+| Analysis | `timeline` | Missing | log2timeline.py / mactime | — | Import error: No module named 'requests' |
+| Reporting | `exporter` | Missing | report_pdf extra (weasyprint) | — | Import error: No module named 'requests' |
+| Reporting | `generator` | Missing | jinja2 templates | — | Import error: No module named 'requests' |
+| Router | `capture` | Missing | — | — | Import error: No module named 'requests' |
+| Router | `common` | Missing | — | — | Import error: No module named 'requests' |
+| Router | `env` | Missing | — | — | Import error: No module named 'requests' |
+| Router | `extract` | Missing | — | — | Import error: No module named 'requests' |
+| Router | `manifest` | Missing | — | — | Import error: No module named 'requests' |
+| Router | `pipeline` | Missing | — | — | Import error: No module named 'requests' |
+| Router | `summarize` | Missing | — | — | Import error: No module named 'requests' |
+| Triage | `persistence` | Missing | filesystem inspection | — | Import error: No module named 'requests' |
+| Triage | `quick_triage` | Missing | POSIX utilities | — | Import error: No module named 'requests' |
+| Triage | `system_info` | Missing | platform / socket APIs | — | Import error: No module named 'requests' |
+<!-- MODULE_MATRIX:END -->
+
 ## Schnellstart (CLI)
 
 ```bash
