@@ -1,127 +1,200 @@
-"""Summarize router analysis outputs."""
+"""Router summary generation module."""
 
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
-from typing import Mapping
-
-from forensic.core.time_utils import utc_isoformat
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from .common import (
+    RouterModule,
     RouterResult,
+    ensure_directory,
     format_plan,
-    legacy_invocation,
     load_router_defaults,
     normalize_bool,
     resolve_parameters,
 )
 
 
-def _build_summary(input_dir: Path) -> dict:
-    files = sorted(path for path in input_dir.rglob("*") if path.is_file())
-    total_size = sum(path.stat().st_size for path in files)
-    top_files = [
-        {
-            "path": str(path.relative_to(input_dir)),
-            "size": path.stat().st_size,
+SUMMARY_SECTIONS: List[Tuple[str, str]] = [
+    ("Devices", "devices"),
+    ("Port Forwards", "portforwards"),
+    ("DDNS", "ddns"),
+    ("TR-069", "tr069"),
+    ("Backups", "backups"),
+    ("Events", "eventlog"),
+]
+
+
+class RouterSummarizeModule(RouterModule):
+    """Generate Markdown summaries for router artifacts."""
+
+    module = "router.summarize"
+    description_text = "Summarize router extraction outputs"
+
+    def validate_params(self, params: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
+        self._validation_errors = []
+        config = load_router_defaults("summary")
+        builtin = {
+            "source": None,
+            "output": None,
+            "dry_run": True,
+            "timestamp": None,
         }
-        for path in files[:10]
-    ]
-    return {
-        "generated": utc_isoformat(),
-        "overview": {
-            "total_files": len(files),
-            "total_size": total_size,
-        },
-        "findings": top_files,
-    }
 
+        resolved, _ = resolve_parameters(params, config, builtin)
+        source = resolved.get("source")
+        if not source:
+            self._validation_errors.append("source directory is required")
+            return None
 
-def summarize(params: Mapping[str, object]) -> RouterResult:
-    """Create markdown or JSON summaries for router artifacts."""
+        sanitized: Dict[str, Any] = {
+            "source": Path(source),
+            "dry_run": normalize_bool(resolved.get("dry_run", True)),
+        }
 
-    config = load_router_defaults("summarize")
-    builtin = {
-        "sections": ["overview", "findings"],
-        "dry_run": False,
-        "legacy": False,
-    }
+        output = resolved.get("output")
+        if output:
+            sanitized["output"] = Path(output)
 
-    resolved, _ = resolve_parameters(params, config, builtin)
-    dry_run = normalize_bool(resolved.get("dry_run", False))
-    legacy = normalize_bool(resolved.get("legacy", False))
+        timestamp = resolved.get("timestamp")
+        if timestamp:
+            sanitized["timestamp"] = str(timestamp)
 
-    input_dir = resolved.get("in") or resolved.get("input")
-    output_path = resolved.get("out") or resolved.get("output")
+        return sanitized
 
-    if not input_dir:
-        return RouterResult().guard("Missing --in directory for summarize command.", status="failed")
-    if not output_path:
-        return RouterResult().guard("Missing --out path for summarize command.", status="failed")
+    def tool_versions(self) -> Dict[str, str]:
+        return {}
 
-    input_dir = Path(input_dir)
-    output_path = Path(output_path)
+    def _load_category(self, source: Path, category: str) -> Tuple[Optional[Dict[str, Any]], Optional[Path]]:
+        pattern = f"*_{category}.json"
+        for candidate in sorted(source.glob(pattern)):
+            try:
+                with candidate.open("r", encoding="utf-8") as handle:
+                    return json.load(handle), candidate
+            except json.JSONDecodeError:
+                continue
+        return None, None
 
-    if legacy:
-        return legacy_invocation(
-            "summarize_report.sh",
-            [str(input_dir), str(output_path)],
-            dry_run=dry_run,
+    def run(
+        self,
+        framework: Any,
+        case: Path | str,
+        params: Mapping[str, Any],
+    ) -> RouterResult:
+        ts = self._timestamp(params)
+        start = time.perf_counter()
+        case_dir = Path(case)
+        sanitized = self.validate_params(params)
+        result = RouterResult()
+
+        if sanitized is None:
+            result.status = "failed"
+            result.message = "; ".join(self._validation_errors) or "Invalid parameters"
+            result.errors.extend(self._validation_errors)
+            self._log_provenance(
+                ts=ts,
+                params=params,
+                tool_versions=self.tool_versions(),
+                result=result,
+                inputs={},
+                duration_ms=(time.perf_counter() - start) * 1000,
+                exit_code=1,
+            )
+            return result
+
+        source: Path = Path(sanitized["source"])
+        dry_run: bool = sanitized.get("dry_run", True)
+        timestamp = sanitized.get("timestamp", ts)
+        output_path = sanitized.get("output")
+        if not output_path:
+            output_path = source / f"{timestamp}_summary.md"
+
+        result.add_input("source", str(source))
+        result.data["output"] = str(output_path)
+
+        if dry_run:
+            result.status = "skipped"
+            result.message = "Dry-run: summary preview"
+            result.details.extend(
+                format_plan(
+                    [
+                        f"Would read JSON artifacts from {source}",
+                        f"Would write Markdown summary to {output_path}",
+                    ]
+                )
+            )
+            self._log_provenance(
+                ts=ts,
+                params=sanitized,
+                tool_versions=self.tool_versions(),
+                result=result,
+                inputs=result.inputs,
+                duration_ms=(time.perf_counter() - start) * 1000,
+                exit_code=0,
+            )
+            return result
+
+        if not source.exists():
+            result.status = "failed"
+            result.message = f"Source directory {source} does not exist"
+            self._log_provenance(
+                ts=ts,
+                params=sanitized,
+                tool_versions=self.tool_versions(),
+                result=result,
+                inputs=result.inputs,
+                duration_ms=(time.perf_counter() - start) * 1000,
+                exit_code=1,
+            )
+            return result
+
+        lines: List[str] = ["# Router Forensic Summary", "", f"Generated at: {timestamp}", ""]
+        summary_dir = output_path.parent
+        ensure_directory(summary_dir, dry_run=False)
+
+        for title, category in SUMMARY_SECTIONS:
+            data, artifact_path = self._load_category(source, category)
+            lines.append(f"## {title}")
+            if data and artifact_path:
+                entries = data.get("entries")
+                count = len(entries) if isinstance(entries, list) else 0
+                relative = artifact_path.relative_to(summary_dir)
+                lines.append(f"- Records: {count}")
+                lines.append(f"- Source: [{artifact_path.name}]({relative.as_posix()})")
+            else:
+                lines.append("- Records: 0")
+                lines.append("- Source: not available")
+            lines.append("")
+
+        content = "\n".join(lines).strip() + "\n"
+        with output_path.open("w", encoding="utf-8") as handle:
+            handle.write(content)
+
+        result.status = "success"
+        result.message = f"Summary written to {output_path}"
+        result.add_artifact(output_path, case_dir=case_dir, dry_run=False)
+
+        self._log_provenance(
+            ts=ts,
+            params=sanitized,
+            tool_versions=self.tool_versions(),
+            result=result,
+            inputs=result.inputs,
+            duration_ms=(time.perf_counter() - start) * 1000,
+            exit_code=0,
         )
-
-    if not input_dir.exists():
-        return RouterResult().guard(
-            f"Analysis directory {input_dir} does not exist.",
-            status="failed",
-        )
-
-    summary = _build_summary(input_dir)
-    sections = resolved.get("sections", ["overview", "findings"])
-
-    result = RouterResult()
-    result.data["input"] = str(input_dir)
-    result.data["output"] = str(output_path)
-    result.data["sections"] = sections
-
-    if dry_run:
-        plan = [
-            f"Would summarise {summary['overview']['total_files']} file(s)",
-            f"Would write summary to {output_path}",
-        ]
-        result.message = "Dry-run: summarize preview"
-        result.details.extend(format_plan(plan))
         return result
 
-    if output_path.suffix.lower() == ".json":
-        with output_path.open("w", encoding="utf-8") as handle:
-            json.dump({key: summary[key] for key in sections if key in summary}, handle, indent=2, sort_keys=True)
-    else:
-        lines = ["# Router Forensic Summary", ""]
-        if "overview" in sections and "overview" in summary:
-            overview = summary["overview"]
-            lines.append("## Overview")
-            lines.append(f"Total files: {overview['total_files']}")
-            lines.append(f"Total size: {overview['total_size']} bytes")
-            lines.append("")
-        if "findings" in sections and "findings" in summary:
-            lines.append("## Findings")
-            for finding in summary["findings"]:
-                lines.append(f"- {finding['path']} ({finding['size']} bytes)")
-            lines.append("")
-        with output_path.open("w", encoding="utf-8") as handle:
-            handle.write("\n".join(lines).strip() + "\n")
 
-    result.message = "Summary generated"
-    result.details.append(f"Wrote {output_path}")
-    result.add_artifact(
-        output_path,
-        label="router_summary",
-        dry_run=dry_run,
-        hash_algorithm=config.get("hash_algorithm", "sha256"),
-        coc_log=output_path.parent / "chain_of_custody.log",
-    )
-    return result
+def summarize(params: Mapping[str, Any]) -> RouterResult:
+    """Backward-compatible wrapper for CLI usage."""
+
+    case_dir = Path(params.get("case") or params.get("source") or Path.cwd())
+    module = RouterSummarizeModule(case_dir, load_router_defaults("summary"))
+    return module.run(None, case_dir, params)
 
 
-__all__ = ["summarize"]
+__all__ = ["RouterSummarizeModule", "summarize"]
