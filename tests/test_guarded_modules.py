@@ -12,7 +12,10 @@ from pathlib import Path
 from typing import Dict
 
 import pytest
+from click.testing import CliRunner
 
+from forensic import tools as runtime_tools
+from forensic.cli import cli
 from forensic.modules.acquisition.live_response import LiveResponseModule
 from forensic.modules.acquisition.network_capture import NetworkCaptureModule
 from forensic.modules.analysis.network import NetworkAnalysisModule
@@ -224,4 +227,17 @@ def test_quick_triage_dry_run_respects_configured_target(
     assert planned_directory_text is not None
     planned_directory = Path(planned_directory_text)
     assert not planned_directory.exists()
+
+
+def test_cli_diagnostics_lists_guarded_wrappers(tmp_path: Path) -> None:
+    runner = CliRunner()
+    workspace = tmp_path / "workspace"
+
+    result = runner.invoke(cli, ["--workspace", str(workspace), "diagnostics"])
+
+    assert result.exit_code == 0, result.output
+    output = result.output
+    assert "Tool wrappers (guarded):" in output
+    for name in sorted(runtime_tools.__all__):
+        assert f"- {name}:" in output
 

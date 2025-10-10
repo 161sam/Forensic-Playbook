@@ -23,6 +23,7 @@ from typing import Dict, List, Optional
 from ...core.evidence import Evidence
 from ...core.module import AnalysisModule, ModuleResult
 from ...core.time_utils import utc_isoformat
+from ...tools import volatility as volatility_wrapper
 
 
 class MemoryAnalysisModule(AnalysisModule):
@@ -47,6 +48,14 @@ class MemoryAnalysisModule(AnalysisModule):
     @property
     def requires_root(self) -> bool:
         return False
+
+    def tool_versions(self) -> Dict[str, str]:
+        """Report Volatility status using the guarded wrapper."""
+
+        available = volatility_wrapper.available()
+        version_info = volatility_wrapper.version() if available else None
+        status = version_info or ("available" if available else "missing")
+        return {"volatility": status}
 
     def validate_params(self, params: Dict) -> bool:
         """Validate parameters"""
@@ -586,6 +595,7 @@ class MemoryAnalysisModule(AnalysisModule):
 
         try:
             with open(strings_file, "w") as f:
+                # TODO: use forensic.tools.* wrapper
                 subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, timeout=600)
 
             return strings_file

@@ -16,6 +16,8 @@ jobs:
           python-version: "3.11"
       - name: Install dependencies
         run: pip install .[dev]
+      - name: Validate project layout (v2.0)
+        run: python tools/validate_project_layout.py
       - name: Verify module matrix
         run: |
           python tools/generate_module_matrix.py
