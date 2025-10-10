@@ -14,10 +14,12 @@ from click.testing import CliRunner
 
 from forensic.cli import cli
 from forensic.core import config as config_module
-from forensic.core.evidence import EvidenceType
+from forensic.core.chain_of_custody import ChainOfCustody, append_coc
+from forensic.core.evidence import Evidence, EvidenceState, EvidenceType
 from forensic.core.framework import ForensicFramework
 from forensic.modules.analysis.network import NetworkAnalysisModule
 from forensic.modules.reporting.generator import ReportGenerator
+from forensic.modules.reporting import exporter as report_exporter
 from forensic.utils import cmd as cmd_utils
 from forensic.utils import hashing, timefmt
 from forensic.utils import io as io_utils
@@ -250,3 +252,118 @@ def test_minimal_end_to_end_flow(tmp_path: Path) -> None:
         cmd_utils.run("echo invalid")
     with pytest.raises(ValueError):
         cmd_utils.run([], timeout=10)
+
+
+def test_chain_of_custody_and_evidence_helpers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Exercise chain-of-custody utilities and evidence helpers for coverage."""
+
+    db_path = tmp_path / "coc.sqlite"
+    chain = ChainOfCustody(db_path)
+
+    event1 = chain.log_event(
+        "COLLECTED",
+        actor="Analyst",
+        action=None,
+        description="Initial acquisition",
+        case_id="CASE-001",
+        evidence_id="EVID-001",
+        metadata={"size": "10MB"},
+        integrity_hash="abc123",
+    )
+    event2 = chain.log_event(
+        "PROCESSED",
+        actor="Analyst",
+        case_id="CASE-001",
+        evidence_id="EVID-001",
+        integrity_hash="abc123",
+    )
+    event3 = chain.log_event(
+        "MODIFIED",
+        actor="Reviewer",
+        case_id="CASE-001",
+        evidence_id="EVID-001",
+        integrity_hash="def456",
+        description="Redaction for sharing",
+    )
+
+    evidence_chain = chain.get_evidence_chain("EVID-001")
+    assert [event["event_id"] for event in evidence_chain] == [event1, event2, event3]
+    assert evidence_chain[-1]["previous_event_id"] == event2
+
+    case_chain = chain.get_case_chain("CASE-001")
+    assert len(case_chain) == 3
+
+    is_valid, issues = chain.verify_chain_integrity("EVID-001")
+    assert is_valid
+    assert issues == []
+
+    json_payload = chain.export_chain(evidence_id="EVID-001", format="json")
+    assert "COLLECTED" in json_payload
+
+    csv_path = tmp_path / "chain.csv"
+    chain.export_chain(case_id="CASE-001", format="csv", output_path=csv_path)
+    csv_contents = csv_path.read_text(encoding="utf-8")
+    assert "Analyst" in csv_contents
+
+    html_payload = chain.export_chain(evidence_id="EVID-001", format="html")
+    assert "Chain of Custody" in html_payload
+
+    with pytest.raises(ValueError):
+        chain.export_chain()
+
+    log_file = tmp_path / "coc.log"
+    append_coc(log_file, path="/tmp/file.bin", sha256="abc")
+    append_coc(log_file, path="/tmp/file.bin", sha256="abc")
+    log_entries = [line for line in log_file.read_text(encoding="utf-8").splitlines() if line]
+    assert len(log_entries) == 1
+
+    sample_file = tmp_path / "sample.txt"
+    sample_file.write_text("sample evidence", encoding="utf-8")
+
+    evidence = Evidence(EvidenceType.FILE, str(sample_file), "Sample evidence")
+    evidence.compute_hashes(["sha1", "sha256"])
+    assert evidence.verify_integrity("sha256") is True
+
+    evidence.add_tag("network")
+    evidence.add_tag("network")
+    evidence.link_evidence("EVID-002")
+    evidence.link_evidence("EVID-002")
+    evidence.update_state(EvidenceState.ANALYZED)
+
+    exported = evidence.to_dict()
+    restored = Evidence.from_dict(exported)
+    assert restored.to_dict()["hash_sha1"] == exported["hash_sha1"]
+    assert restored.state == EvidenceState.ANALYZED
+
+    missing = Evidence(EvidenceType.FILE, tmp_path / "missing.txt", "Missing file")
+    with pytest.raises(ValueError):
+        missing.compute_hashes()
+    with pytest.raises(ValueError):
+        missing.verify_integrity("sha256")
+
+    fresh_evidence = Evidence(EvidenceType.FILE, str(sample_file), "Fresh evidence")
+    fresh_evidence.compute_hashes(["sha256"])
+    with pytest.raises(ValueError):
+        fresh_evidence.verify_integrity("md5")
+    fresh_evidence.compute_hashes(["md5"])
+    assert fresh_evidence.verify_integrity("md5") is True
+
+    markdown_output = report_exporter._to_markdown({"case": {"id": "CASE-001"}})
+    assert "Report" in markdown_output
+
+    normalised = report_exporter._normalise_structure({"b": 1, "a": [3, 1, 2]})
+    assert list(normalised) == ["a", "b"]
+    assert normalised["a"] == [1, 2, 3]
+
+    monkeypatch.setattr(report_exporter, "_ensure_jinja2", lambda: (_ for _ in ()).throw(RuntimeError("missing")))
+    fallback_html = report_exporter.export_report(
+        {"case": {"name": "Demo"}}, "html", tmp_path / "report.html"
+    ).read_text(encoding="utf-8")
+    assert "Forensic Investigation Report" in fallback_html
+
+    json_report_path = tmp_path / "report.json"
+    report_exporter.export_report({"value": 1}, "json", json_report_path)
+    assert json.loads(json_report_path.read_text(encoding="utf-8"))["value"] == 1
+
+    with pytest.raises(ValueError):
+        report_exporter.export_report({}, "pdf", tmp_path / "report.pdf")
