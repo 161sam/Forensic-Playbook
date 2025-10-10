@@ -181,6 +181,14 @@ forensic-cli router summarize   --in ~/cases/router_demo/extract   --out ~/cases
 
 > **Legacy-Vergleich:** Mit `--legacy` lässt sich die historische Bash-Implementierung anzeigen. Ohne ausdrückliche Freigabe werden keine Live-Captures gestartet.
 
+**Konfigurationsbeispiel (CLI > YAML > Defaults):**
+
+1. `config/modules/router/capture.yaml` definiert Standard-BPFs und Zielordner.
+2. Ein casespezifisches Profil (`cases/router_demo/config/router/capture.yaml`) überschreibt diese Werte für den Einzelfall.
+3. Laufzeit-Flags wie `--bpf "not port 22" --duration 300` haben höchste Priorität und werden im Provenienz-Journal vermerkt.
+
+> **Pfadkontrolle:** Führen Sie `forensic-cli router manifest write --dry-run` aus, um den erwarteten Pfadbaum mit der YAML-Konfiguration zu vergleichen. Das Log (`cases/<case>/logs/router/manifest-*.log`) dokumentiert Abweichungen und konserviert den Chain-of-Custody-Kontext.
+
 ## Chain of Custody & Provenienz
 
 - Jeder Befehl erzeugt einen Eintrag in `cases/<case>/meta/chain_of_custody.jsonl`.
