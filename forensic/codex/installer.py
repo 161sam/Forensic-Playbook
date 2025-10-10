@@ -22,7 +22,6 @@ from . import (
     _repository_root,
 )
 
-
 try:  # pragma: no cover - environment dependent
     from forensic.utils.cmd import run_cmd  # type: ignore[attr-defined]
 except (ImportError, AttributeError):  # pragma: no cover - fallback path

@@ -21,7 +21,6 @@ from .common import (
     resolve_parameters,
 )
 
-
 CATEGORY_ORDER = [
     "devices",
     "ddns",

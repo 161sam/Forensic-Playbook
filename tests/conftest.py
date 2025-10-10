@@ -27,7 +27,7 @@ def _patch_router_append_jsonl(monkeypatch: pytest.MonkeyPatch) -> None:
             return value.as_posix()
         if isinstance(value, dict):
             return {key: _deterministic(value[key]) for key in sorted(value)}
-        if isinstance(value, (list, tuple, set)):
+        if isinstance(value, list | tuple | set):
             transformed = [_deterministic(item) for item in value]
             return [item for _, item in sorted((json.dumps(item, sort_keys=True), item) for item in transformed)]
         return original_deterministic(value)

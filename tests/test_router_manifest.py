@@ -1,10 +1,11 @@
+"""Tests for router manifest module outputs."""
+
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
 from forensic.modules.router.manifest import RouterManifestModule
-
 
 TIMESTAMP = "20240101T000000Z"
 

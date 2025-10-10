@@ -10,6 +10,10 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
+import forensic.codex.installer as codex_installer
+import forensic.codex.runner as codex_runner
+from forensic.cli import cli
+
 requests_stub = types.ModuleType("requests")
 
 
@@ -30,10 +34,6 @@ class _StubRequestException(Exception):
 requests_stub.Session = _StubSession
 requests_stub.RequestException = _StubRequestException
 sys.modules.setdefault("requests", requests_stub)
-
-import forensic.codex.installer as codex_installer
-import forensic.codex.runner as codex_runner
-from forensic.cli import cli
 
 
 def _invoke(runner: CliRunner, args: list[str]) -> dict:

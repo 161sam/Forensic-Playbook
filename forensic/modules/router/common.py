@@ -11,7 +11,7 @@ import subprocess
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from forensic.core.config import load_yaml
 from forensic.core.module import ForensicModule
@@ -122,7 +122,7 @@ def normalize_bool(value: Any) -> bool:
 
     if isinstance(value, bool):
         return value
-    if isinstance(value, (int, float)):
+    if isinstance(value, int | float):
         return bool(value)
     if isinstance(value, str):
         lowered = value.strip().lower()
@@ -151,7 +151,7 @@ def legacy_invocation(
     *,
     dry_run: bool = False,
     timeout: int = 900,
-) -> "RouterResult":
+) -> RouterResult:
     """Execute a legacy router script with safeguards."""
 
     result = RouterResult(status="skipped")
@@ -215,7 +215,7 @@ def _deterministic(value: Any) -> Any:
 
     if isinstance(value, dict):
         return {key: _deterministic(value[key]) for key in sorted(value)}
-    if isinstance(value, (list, tuple, set)):
+    if isinstance(value, list | tuple | set):
         return [_deterministic(item) for item in sorted(value, key=lambda item: json.dumps(item, sort_keys=True))]
     return value
 
@@ -279,7 +279,7 @@ class RouterResult:
         status: str = "skipped",
         hints: Optional[Sequence[str]] = None,
         metadata: Optional[Mapping[str, Any]] = None,
-    ) -> "RouterResult":
+    ) -> RouterResult:
         """Populate the result as a guard message."""
 
         self.status = status

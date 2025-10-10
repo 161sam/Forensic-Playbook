@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any, Dict
 
@@ -11,6 +10,8 @@ import pytest
 from forensic import build_mcp_tool_payload
 from forensic.core.framework import ForensicFramework
 from forensic.mcp.client import MCPClient, MCPConfig, MCPResponse
+
+
 @pytest.fixture(name="framework")
 def _framework(tmp_path: Path) -> ForensicFramework:
     return ForensicFramework(workspace=tmp_path / "framework-workspace")

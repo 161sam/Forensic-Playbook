@@ -8,7 +8,6 @@ from pathlib import Path
 
 from forensic.modules.router.extract import CATEGORY_ORDER, RouterExtractModule
 
-
 TIMESTAMP = "20240101T000000Z"
 
 
