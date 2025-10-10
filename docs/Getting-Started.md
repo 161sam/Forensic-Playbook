@@ -492,32 +492,32 @@ forensic-cli module run timeline --param source=/mnt/evidence
 
 ### Scenario 7: Router Artefact Collection (Guarded Python Modules)
 
-**Objective:** Replace the legacy router Bash scripts with idempotent Python
-helpers that honour dry-run safeguards and provenance logging.
+**Objective:** Guard router forensics with deterministic Python modules that
+mirror the legacy scripts while keeping dry-run previews the default.
 
 ```bash
-# Prepare an isolated workspace (no filesystem changes in --dry-run)
-forensic-cli router env init --root ~/cases/router_demo --dry-run
+# Dry-run the full workflow first (no filesystem writes)
+forensic-cli router env init --case demo_case --dry-run
+forensic-cli router extract ui --case demo_case --param input=./evidence/router_exports --dry-run
+forensic-cli router manifest write --case demo_case --param source=./cases/demo_case/router/20240101T000000Z --dry-run
+forensic-cli router summarize --case demo_case --param source=./cases/demo_case/router/20240101T000000Z --dry-run
 
-# Plan capture directories before enabling tcpdump/dumpcap
-forensic-cli router capture setup --if eth1 --bpf "not port 22" --dry-run
-
-# Extract router UI artefacts without writing files
-forensic-cli router extract ui --input /mnt/router_dump --out ~/cases/router_demo/extract --dry-run
-
-# Catalogue evidence with hashes (defaults from config/modules/router/manifest.yaml)
-forensic-cli router manifest write --source ~/cases/router_demo/extract --out ~/cases/router_demo/manifest.json --dry-run
-
-# Summarise findings into Markdown (sections configurable via router/summarize.yaml)
-forensic-cli router summarize --in ~/cases/router_demo/extract --out ~/cases/router_demo/summary.md --dry-run
+# When satisfied, run without --dry-run (still using synthetic fixtures)
+forensic-cli router extract ui --case demo_case --param input=./evidence/router_exports --no-dry-run
+forensic-cli router manifest write --case demo_case --param source=./cases/demo_case/router/20240101T000000Z --no-dry-run
+forensic-cli router summarize --case demo_case --param source=./cases/demo_case/router/20240101T000000Z --no-dry-run
 ```
 
 **Notes:**
 
-- Router commands follow the precedence **CLI > YAML > built-in defaults** with
-  ready-to-edit templates in `config/modules/router/`.
-- `--legacy` is available on every sub-command to preview the original Bash
-  implementation or to execute it explicitly when validating migrations.
+- Router commands honour **CLI > YAML > built-in defaults**. Edit
+  `config/modules/router/*.yaml` for team-wide defaults.
+- All regression tests use text/JSON fixtures created at runtime—binary PCAPs or
+  firmware dumps stay out of scope for CI.
+- Reuse the timestamped extraction directory reported by `router extract ui`
+  when calling `router manifest write` and `router summarize`.
+- Use `--legacy` on each sub-command if you need to compare against the Bash
+  originals during validation.
 
 ---
 

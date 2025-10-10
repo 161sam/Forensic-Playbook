@@ -70,13 +70,13 @@ bevor die finale Tabelle aktualisiert wird.
 | Analysis | `timeline` | Guarded | log2timeline.py / mactime | — | Requires fls, log2timeline.py, mactime (missing locally) |
 | Reporting | `exporter` | Guarded | report_pdf extra (weasyprint) | — | Requires wkhtmltopdf (missing locally) |
 | Reporting | `generator` | Guarded | jinja2 templates | — | — |
-| Router | `capture` | MVP | — | — | MVP baseline implementation |
-| Router | `common` | MVP | — | — | MVP baseline implementation |
-| Router | `env` | MVP | — | — | MVP baseline implementation |
-| Router | `extract` | MVP | — | — | MVP baseline implementation |
-| Router | `manifest` | MVP | — | — | MVP baseline implementation |
-| Router | `pipeline` | MVP | — | — | MVP baseline implementation |
-| Router | `summarize` | MVP | — | — | MVP baseline implementation |
+| Router | `capture` | Guarded | router-suite | Dry-run default; tools optional | Guarded python guard replacing tcpdump scripts |
+| Router | `common` | Guarded | router-suite | Dry-run default; tools optional | Shared router helpers |
+| Router | `env` | Guarded | router-suite | Dry-run default; tools optional | Guarded workspace bootstrap |
+| Router | `extract` | Guarded | router-suite | Dry-run default; tools optional | Deterministic UI artefact parsing |
+| Router | `manifest` | Guarded | router-suite | Dry-run default; tools optional | Deterministic evidence manifest |
+| Router | `pipeline` | Guarded | router-suite | Dry-run default; tools optional | Guarded orchestration pipeline |
+| Router | `summarize` | Guarded | router-suite | Dry-run default; tools optional | Markdown summary generator |
 | Triage | `persistence` | Guarded | filesystem inspection | — | — |
 | Triage | `quick_triage` | Guarded | POSIX utilities | — | — |
 | Triage | `system_info` | Guarded | platform / socket APIs | — | — |
@@ -103,9 +103,27 @@ forensic-cli --workspace ~/cases report generate --case demo_case --fmt html --d
 ```bash
 forensic-cli router env init --case demo --dry-run
 forensic-cli router extract ui --case demo --param input=./evidence/router_exports --dry-run
-forensic-cli router manifest write --case demo
-forensic-cli router summarize --case demo
+forensic-cli router manifest write --case demo --param source=./cases/demo/router/20240101T000000Z
+forensic-cli router summarize --case demo --param source=./cases/demo/router/20240101T000000Z
 ```
+
+All router helpers default to dry-run previews. Switch to real execution only
+once the plan looks correct and synthetic fixtures are ready—binary captures are
+deliberately out of scope for regression tests.
+
+#### Router Skripte → Guarded Module Mapping
+
+| Skript (`router/scripts/*`) | Guarded Modul |
+| --- | --- |
+| `prepare_env.sh` | `forensic.modules.router.env.RouterEnvModule` |
+| `tcpdump_setup.sh`, `tcpdump_passive_capture.sh`, `tcpdump_passive_stop.sh` | `forensic.modules.router.capture.RouterCaptureModule` |
+| `extract_*.sh`, `collect_router_ui.py`, `analyze_ui_artifacts.sh` | `forensic.modules.router.extract.RouterExtractModule` |
+| `generate_evidence_manifest.sh` | `forensic.modules.router.manifest.RouterManifestModule` |
+| `summarize_report.sh` | `forensic.modules.router.summarize.RouterSummarizeModule` |
+| `run_forensic_pipeline.sh` | `forensic.modules.router.pipeline.RouterPipelineModule` |
+
+> ℹ️ Tests rely on deterministic text fixtures and archives generated at runtime.
+> Avoid binary samples (PCAPs, firmware dumps) to keep the suite portable.
 
 Weitere Beispiele: [Minimaler E2E-Workflow](docs/examples/minimal-e2e.md), [Network→Timeline Tutorial](docs/tutorials/02_network-timeline-walkthrough.md).
 

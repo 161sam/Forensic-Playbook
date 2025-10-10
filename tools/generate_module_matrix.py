@@ -50,6 +50,13 @@ BACKEND_HINTS = {
     "forensic.modules.triage.persistence": "filesystem inspection",
     "forensic.modules.triage.quick_triage": "POSIX utilities",
     "forensic.modules.triage.system_info": "platform / socket APIs",
+    "forensic.modules.router.capture": "router-suite",
+    "forensic.modules.router.common": "router-suite",
+    "forensic.modules.router.env": "router-suite",
+    "forensic.modules.router.extract": "router-suite",
+    "forensic.modules.router.manifest": "router-suite",
+    "forensic.modules.router.pipeline": "router-suite",
+    "forensic.modules.router.summarize": "router-suite",
 }
 
 STATUS_OVERRIDES = {
@@ -60,12 +67,26 @@ STATUS_OVERRIDES = {
     "forensic.modules.triage.persistence": "Guarded",
     "forensic.modules.triage.quick_triage": "Guarded",
     "forensic.modules.triage.system_info": "Guarded",
+    "forensic.modules.router.capture": "Guarded",
+    "forensic.modules.router.common": "Guarded",
+    "forensic.modules.router.env": "Guarded",
+    "forensic.modules.router.extract": "Guarded",
+    "forensic.modules.router.manifest": "Guarded",
+    "forensic.modules.router.pipeline": "Guarded",
+    "forensic.modules.router.summarize": "Guarded",
 }
 
 GUARD_HINTS = {
     "forensic.modules.acquisition.disk_imaging": "Root + block device access",
     "forensic.modules.acquisition.memory_dump": "--enable-live-capture (Linux)",
     "forensic.modules.acquisition.network_capture": "--enable-live-capture + root",
+    "forensic.modules.router.capture": "Dry-run default; tools optional",
+    "forensic.modules.router.common": "Dry-run default; tools optional",
+    "forensic.modules.router.env": "Dry-run default; tools optional",
+    "forensic.modules.router.extract": "Dry-run default; tools optional",
+    "forensic.modules.router.manifest": "Dry-run default; tools optional",
+    "forensic.modules.router.pipeline": "Dry-run default; tools optional",
+    "forensic.modules.router.summarize": "Dry-run default; tools optional",
 }
 
 # Certain guarded modules provide fallbacks where any tool in the group is
@@ -187,10 +208,10 @@ def build_rows() -> List[ModuleRow]:
 
         status_override = STATUS_OVERRIDES.get(import_path)
 
-        if import_error is not None:
-            status = "Missing"
-        elif status_override:
+        if status_override:
             status = status_override
+        elif import_error is not None:
+            status = "Missing"
         elif tools:
             status = "Guarded"
         else:
