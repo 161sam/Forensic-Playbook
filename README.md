@@ -34,8 +34,8 @@ Weitere Details (inklusive Paketlisten für Kali/Ubuntu) finden Sie im [User Gui
 | [Tutorials](docs/tutorials/01_quick-triage-linux.md) | Schritt-für-Schritt-Anleitungen (Triage, Netzwerk→Timeline, Registry, Router). |
 | [Examples](docs/examples/minimal-e2e.md) | Copy-&-Paste-Workflows für E2E, IoC-Hunting und Reporting. |
 | [API Reference](docs/api/CLI.md) | CLI-Befehlsübersicht und Python-SDK-Beispiele. |
-| [Codex/MCP Workflow](docs/mcp/codex-workflow.md) | NL→Framework-Integration inklusive Guard-Prinzipien. |
-
+| [Codex/MCP Workflow](docs/mcp/codex-workflow.md) | Dualer Pfad zwischen CLI/SDK und Codex-Automatisierung. |
+| [Forensic Mode Guardrails](docs/mcp/forensic-mode.md) | Best Practices für Agents, Confirm-Gates und deterministische Exporte. |
 ## Projektstatus
 
 | Bereich | Status |
@@ -127,7 +127,7 @@ deliberately out of scope for regression tests.
 
 Weitere Beispiele: [Minimaler E2E-Workflow](docs/examples/minimal-e2e.md), [Network→Timeline Tutorial](docs/tutorials/02_network-timeline-walkthrough.md).
 
-## Codex/MCP in Kürze
+## Automatisierung mit Codex/MCP
 
 ```bash
 forensic-cli --workspace ~/cases codex install --dry-run
@@ -136,8 +136,7 @@ forensic-cli --workspace ~/cases mcp expose --json > ~/cases/tooling/mcp_catalog
 forensic-cli --workspace ~/cases mcp run --tool diagnostics.ping --local --json
 ```
 
-Detaillierte Abläufe, Prompt-Beispiele und Guardrails stehen in [docs/mcp/codex-workflow.md](docs/mcp/codex-workflow.md) und
-[docs/mcp/forensic-mode.md](docs/mcp/forensic-mode.md).
+Die Befehle spiegeln den Dual-Workflow wider: zuerst CLI/SDK-Dry-Runs planen, anschließend optional Codex/MCP-Agenten einsetzen. Ausführliche Leitfäden mit Prompt-Beispielen finden sich in [docs/mcp/codex-workflow.md](docs/mcp/codex-workflow.md); die Guardrails stehen in [docs/mcp/forensic-mode.md](docs/mcp/forensic-mode.md).
 
 ## Mitmachen
 

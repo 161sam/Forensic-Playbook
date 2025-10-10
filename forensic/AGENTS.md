@@ -23,6 +23,11 @@ This package contains the primary Python code for the framework, CLI, MCP client
 - `forensic-cli codex status`
 - `forensic-cli mcp expose --compact`
 - `forensic-cli mcp run --tool modules.list --local`
+- System prompt: [`forensic/mcp/prompts/forensic_mode.txt`](mcp/prompts/forensic_mode.txt)
+
+### Prompt Examples
+- *Module briefing:* „Zeige, wie `forensic-cli modules run timeline --dry-run` den MCP-Katalog informiert und verweise auf `forensic_mode.txt`.“
+- *Adapter audit:* „Bestätige, dass `forensic.mcp.registry.build_catalog` nach einem neuen Modul aktualisiert wird und dokumentiere Logs unter `<workspace>/codex_logs/`."
 
 If a requested change would violate these guardrails (e.g., unguarded host modification), decline and propose a safer alternative.
 <!-- END FORENSIC MODE AGENT INSTRUCTIONS -->

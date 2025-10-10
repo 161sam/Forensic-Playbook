@@ -12,6 +12,11 @@ These wrappers provide Python interfaces over external forensic binaries (Sleuth
 ## MCP/CLI Integration
 - Use these wrappers from modules or MCP tools; never duplicate subprocess logic in higher layers.
 - If adding new wrappers, expose safe defaults (e.g., timeline start/end) and allow dry-run previews where feasible.
+- Mirror guard messaging from [`forensic/mcp/prompts/forensic_mode.txt`](../mcp/prompts/forensic_mode.txt) so adapters and wrappers stay consistent.
+
+### Prompt Examples
+- *Dry-run wrapper:* „Plane einen Aufruf von `forensic.tools.timeline.build` im Dry-Run und erläutere laut Prompt `forensic_mode.txt`, wo Logs landen.“
+- *Local MCP test:* „Nutze `forensic-cli mcp run --tool diagnostics.ping --local` und verifiziere, dass der Wrapper nur Read-Only-Zugriffe nutzt.“
 
 ## Quick Reference
 - Available via `forensic.tools` package imports.

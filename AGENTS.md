@@ -26,6 +26,11 @@ You are operating in **Forensic Mode**. Assume every action happens on potential
 - `forensic-cli mcp status`
 - `forensic-cli mcp run --tool diagnostics.ping --local`
 - `forensic-cli case list`
+- System prompt: [`forensic/mcp/prompts/forensic_mode.txt`](forensic/mcp/prompts/forensic_mode.txt)
+
+### Prompt Examples
+- *Planning:* “Führe `forensic-cli codex install --dry-run` im Workspace `/mnt/usb_rw/cases/demo` aus und fasse die geplanten Schritte zusammen.”
+- *Execution with gate:* “Nachdem der Dry-Run sauber ist: bitte `forensic-cli mcp run --tool modules.list --local` starten und die Ergebnisse nach `<workspace>/codex_logs/` protokollieren.”
 
 ## Documentation Expectations
 - When editing documentation, include clear guard-rail messaging (dry-run options, CoC reminders, deterministic outputs).
