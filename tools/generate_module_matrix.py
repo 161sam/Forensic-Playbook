@@ -142,6 +142,35 @@ ALTERNATIVE_TOOL_GROUPS = {
 }
 
 
+def _format_tool_choices(import_path: str, tools: Sequence[str]) -> str:
+    """Return a human friendly representation of required tooling."""
+
+    groups = ALTERNATIVE_TOOL_GROUPS.get(import_path, [])
+    tools_set = set(tools)
+    consumed: set[str] = set()
+    parts: list[str] = []
+
+    for group in groups:
+        if group.issubset(tools_set):
+            choices = sorted(group)
+            if not choices:
+                continue
+            if len(choices) == 1:
+                parts.append(choices[0])
+            elif len(choices) == 2:
+                parts.append(" or ".join(choices))
+            else:
+                head = ", ".join(choices[:-1])
+                parts.append(f"{head}, or {choices[-1]}")
+            consumed.update(group)
+
+    for tool in tools:
+        if tool not in consumed:
+            parts.append(tool)
+
+    return ", ".join(parts)
+
+
 @dataclass
 class ModuleRow:
     category: str
@@ -219,12 +248,13 @@ def format_notes(
         return f"Import error: {import_error}"
 
     if status == "Guarded" and tools:
+        tool_display = _format_tool_choices(import_path, tools)
         available, missing = _classify_tool_availability(import_path, tools)
         if missing and available:
-            return f"Requires {', '.join(tools)} (missing: {', '.join(missing)})"
+            return f"Requires {tool_display} (missing: {', '.join(missing)})"
         if missing:
-            return f"Requires {', '.join(tools)} (missing locally)"
-        return f"Requires {', '.join(tools)} (all available)"
+            return f"Requires {tool_display} (missing locally)"
+        return f"Requires {tool_display} (all available)"
 
     if status == "MVP":
         return MVP_DEFAULT_NOTES
