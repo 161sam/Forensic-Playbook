@@ -86,39 +86,105 @@ def sample_iocs():
 
 
 class TestDiskImagingModule:
-    """Test DiskImagingModule"""
+    """Guarded disk imaging behaviour tests."""
 
     def test_module_properties(self, temp_case_dir):
-        """Test module basic properties"""
+        """The module advertises guarded disk imaging."""
         module = DiskImagingModule(case_dir=temp_case_dir, config={})
 
         assert module.name == "disk_imaging"
-        assert "Disk imaging" in module.description
+        assert "disk imaging" in module.description.lower()
         assert module.requires_root
 
-    def test_parameter_validation(self, temp_case_dir):
-        """Test parameter validation"""
+    def test_guard_missing_source(self, temp_case_dir):
+        """Running without a source returns a friendly guard result."""
         module = DiskImagingModule(case_dir=temp_case_dir, config={})
 
-        # Valid parameters
-        assert module.validate_params({"source": "/dev/sda", "format": "raw"})
+        result = module.run(None, {})
 
-        # Missing source
-        assert not module.validate_params({"format": "raw"})
+        assert result.status == "failed"
+        guard = result.metadata.get("guard")
+        assert guard is not None
+        assert "No source device" in guard["message"]
+        assert result.errors == []
 
-    @patch("subprocess.run")
-    def test_raw_imaging(self, mock_run, temp_case_dir):
-        """Test RAW disk imaging"""
-        mock_run.return_value = Mock(returncode=0, stdout=b"", stderr=b"")
-
+    def test_dry_run_missing_tool(self, temp_case_dir, monkeypatch):
+        """Dry-run surfaces missing tooling without executing imaging."""
         module = DiskImagingModule(case_dir=temp_case_dir, config={})
+        source = temp_case_dir / "disk.img"
+        source.write_bytes(b"demo")
 
-        # Mock disk size check
-        with patch.object(module, "_get_disk_size", return_value=1024**3):
-            result = module.run(None, {"source": "/dev/sda", "format": "raw"})
+        monkeypatch.setattr(module, "_is_block_device", lambda _path: True)
+        monkeypatch.setattr(module, "_verify_tool", lambda tool: False)
 
-        assert result.status in ["success", "failed"]  # May fail in test environment
+        result = module.run(
+            None,
+            {
+                "source": str(source),
+                "tool": "dd",
+                "dry_run": True,
+            },
+        )
 
+        assert result.status == "partial"
+        guard = result.metadata.get("guard")
+        assert guard is not None
+        assert "missing" in guard["message"].lower()
+        assert result.errors == ["Dry-run detected missing tooling. No imaging executed."]
+
+    def test_successful_imaging_flow(self, temp_case_dir, monkeypatch):
+        """Successful imaging produces deterministic artefacts and hashes."""
+        module = DiskImagingModule(case_dir=temp_case_dir, config={})
+        source = temp_case_dir / "evidence.raw"
+        source.write_bytes(b"source-bytes")
+
+        monkeypatch.setattr(module, "_is_block_device", lambda path: False)
+        monkeypatch.setattr(module, "_verify_tool", lambda tool: True)
+
+        def fake_image_with_ddrescue(src, dst):
+            dst.write_bytes(b"imagedata")
+            log_path = dst.with_suffix(".ddrescue.log")
+            log_path.write_text("log", encoding="utf-8")
+            metadata = {
+                "ddrescue_phase2_returncode": 0,
+                "ddrescue_log": str(log_path),
+            }
+            commands = [
+                ["ddrescue", "-f", "-n", str(src), str(dst), str(log_path)],
+                ["ddrescue", "-f", "-r", "3", str(src), str(dst), str(log_path)],
+            ]
+            return True, metadata, commands
+
+        monkeypatch.setattr(module, "_image_with_ddrescue", fake_image_with_ddrescue)
+        monkeypatch.setattr(module, "_hash_device", lambda *_: "sourcehash")
+
+        def fake_compute_hash(path, algorithm="sha256"):
+            name = Path(path).name
+            if name.endswith(".meta.json"):
+                return "metahash"
+            return "imagehash"
+
+        monkeypatch.setattr(module, "_compute_hash", fake_compute_hash)
+
+        result = module.run(
+            None,
+            {
+                "source": str(source),
+                "tool": "ddrescue",
+                "allow_file_source": True,
+                "force": True,
+            },
+        )
+
+        assert result.status == "success"
+        assert result.output_path and result.output_path.exists()
+        meta_path = Path(result.metadata["metadata_file"])
+        assert meta_path.exists()
+        hashes = result.metadata["hashes"]
+        paths = [entry["path"] for entry in hashes]
+        assert str(result.output_path) in paths
+        assert any(entry["algorithm"] == "sha256" for entry in hashes)
+        assert result.errors == []
 
 # ============================================================================
 # Filesystem Analysis Tests
