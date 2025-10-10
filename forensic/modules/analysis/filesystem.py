@@ -24,8 +24,12 @@ from ...core.evidence import Evidence
 from ...core.module import AnalysisModule, ModuleResult
 from ...core.time_utils import utc_isoformat
 
+from ...tools import sleuthkit as sleuthkit_wrapper
+
 
 class FilesystemAnalysisModule(AnalysisModule):
+    TOOL_WRAPPERS = {"Sleuthkit": sleuthkit_wrapper}
+
     """
     Filesystem analysis module using Sleuthkit
 
@@ -427,6 +431,7 @@ class FilesystemAnalysisModule(AnalysisModule):
                 try:
                     # Pipe blkcat to strings
                     with open(strings_file, "w") as f:
+                        # TODO: use forensic.tools.sleuthkit wrapper for blkcat/strings integration
                         blkcat_proc = subprocess.Popen(
                             blkcat_cmd, stdout=subprocess.PIPE
                         )
@@ -447,6 +452,7 @@ class FilesystemAnalysisModule(AnalysisModule):
 
             try:
                 with open(strings_file, "w") as f:
+                    # TODO: use forensic.tools.sleuthkit wrapper for string extraction
                     subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, timeout=600)
 
                 return strings_file
@@ -479,6 +485,7 @@ class FilesystemAnalysisModule(AnalysisModule):
             cmd.extend([str(image), str(inode)])
 
             try:
+                # TODO: use forensic.tools.sleuthkit wrapper for icat access
                 result = subprocess.run(cmd, capture_output=True, timeout=60)
 
                 if result.returncode == 0:

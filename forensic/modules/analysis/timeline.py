@@ -24,8 +24,12 @@ from ...core.evidence import Evidence
 from ...core.module import AnalysisModule, ModuleResult
 from ...core.time_utils import ZoneInfo, utc_isoformat, utc_slug
 
+from ...tools import plaso as plaso_wrapper, sleuthkit as sleuthkit_wrapper
+
 
 class TimelineModule(AnalysisModule):
+    TOOL_WRAPPERS = {"Plaso": plaso_wrapper, "Sleuthkit": sleuthkit_wrapper}
+
     """
     Timeline generation module
 
@@ -348,6 +352,7 @@ class TimelineModule(AnalysisModule):
         self.logger.info(f"Running: {' '.join(cmd)}")
 
         try:
+            # TODO: use forensic.tools.plaso wrapper for log2timeline execution
             result = subprocess.run(
                 cmd, capture_output=True, text=True, timeout=3600  # 1 hour timeout
             )
@@ -393,6 +398,7 @@ class TimelineModule(AnalysisModule):
         self.logger.info(f"Running: {' '.join(psort_cmd)}")
 
         try:
+            # TODO: use forensic.tools.plaso wrapper for psort execution
             result = subprocess.run(
                 psort_cmd, capture_output=True, text=True, timeout=1800
             )
@@ -436,6 +442,7 @@ class TimelineModule(AnalysisModule):
 
         try:
             with open(body_file, "w") as f:
+                # TODO: use forensic.tools.sleuthkit wrapper for fls execution
                 result = subprocess.run(
                     cmd, stdout=f, stderr=subprocess.PIPE, text=True, timeout=1800
                 )
@@ -474,6 +481,7 @@ class TimelineModule(AnalysisModule):
 
         try:
             with open(timeline_file, "w") as f:
+                # TODO: use forensic.tools.sleuthkit wrapper for mactime execution
                 result = subprocess.run(
                     mactime_cmd,
                     stdout=f,

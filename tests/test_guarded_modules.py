@@ -9,12 +9,15 @@ tooling or binary fixtures.
 from __future__ import annotations
 
 from pathlib import Path
+import re
 from typing import Dict
 
 import pytest
+from click.testing import CliRunner
 
 from forensic.modules.acquisition.live_response import LiveResponseModule
 from forensic.modules.acquisition.network_capture import NetworkCaptureModule
+from forensic.cli import cli
 from forensic.modules.analysis.network import NetworkAnalysisModule
 from forensic.modules.reporting.generator import ReportGenerator
 from forensic.modules.triage.persistence import PersistenceModule
@@ -225,3 +228,16 @@ def test_quick_triage_dry_run_respects_configured_target(
     planned_directory = Path(planned_directory_text)
     assert not planned_directory.exists()
 
+
+
+def test_diagnostics_lists_guarded_wrappers(tmp_path: Path) -> None:
+    runner = CliRunner()
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    result = runner.invoke(cli, ["--workspace", str(workspace), "diagnostics"])
+    assert result.exit_code == 0, result.output
+    output = result.output
+    assert "Guarded tool wrappers:" in output
+    assert "Module integrations:" in output
+    for name in ["Sleuthkit", "Plaso", "Volatility", "YARA", "bulk_extractor", "Autopsy"]:
+        assert re.search(rf"{name}:", output)

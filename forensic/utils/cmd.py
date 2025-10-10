@@ -83,4 +83,39 @@ def run(
         raise CommandError(f"Command failed ({exc.returncode}): {quoted}") from exc
 
 
-__all__ = ["Command", "CommandError", "ensure_tool", "run", "which"]
+def run_cmd(
+    cmd: Command,
+    *,
+    cwd: Optional[Path] = None,
+    timeout: int = 300,
+    env: Optional[Mapping[str, str]] = None,
+    check: bool = False,
+    capture_output: bool = True,
+    text: bool = True,
+) -> subprocess.CompletedProcess:
+    """Execute ``cmd`` safely and return the completed process."""
+
+    if timeout <= 0:
+        raise ValueError("timeout must be greater than zero")
+
+    command = _normalise_command(cmd)
+
+    try:
+        return subprocess.run(
+            command,
+            check=check,
+            capture_output=capture_output,
+            text=text,
+            timeout=timeout,
+            cwd=str(cwd) if cwd else None,
+            env=dict(env) if env is not None else None,
+        )
+    except subprocess.TimeoutExpired as exc:
+        quoted = " ".join(shlex.quote(arg) for arg in command)
+        raise CommandError(f"Command timed out after {timeout}s: {quoted}") from exc
+    except subprocess.CalledProcessError as exc:
+        quoted = " ".join(shlex.quote(arg) for arg in exc.cmd)
+        raise CommandError(f"Command failed ({exc.returncode}): {quoted}") from exc
+
+
+__all__ = ["Command", "CommandError", "ensure_tool", "run", "run_cmd", "which"]

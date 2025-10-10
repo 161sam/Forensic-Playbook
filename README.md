@@ -47,6 +47,56 @@ modules. When running modules via the CLI the precedence is always **CLI
 parameter > YAML configuration > built-in defaults**. The effective parameters
 are recorded in the provenance log of each run.
 
+## Project structure
+
+```
+Forensic-Playbook/
+├── README.md
+├── ARCHITECTURE.md
+├── Projektstruktur-v2.0.md
+├── REPORT.md
+├── config/
+│   ├── framework.yaml
+│   └── modules/
+├── forensic/
+│   ├── __init__.py
+│   ├── cli.py
+│   ├── core/
+│   ├── modules/
+│   ├── tools/
+│   └── utils/
+├── pipelines/
+│   └── *.yaml
+├── tools/
+│   ├── generate_module_matrix.py
+│   ├── migrate_iocs.py
+│   ├── run_minimal_flow.py
+│   └── validate_project_layout.py
+├── tests/
+│   └── …
+└── docs/
+```
+
+The top-level `tools/` directory hosts repository helpers (for example the module
+matrix generator and the new layout validator). These scripts are not the same as
+the runtime wrappers located under `forensic/tools/`. The latter expose guarded
+interfaces for optional third-party binaries so that modules can detect missing
+dependencies without crashing.
+
+### Tool-Wrapper (Guarded)
+
+| Wrapper | Primäre Binaries/Module | Beispiel-Check | Hinweise |
+|---------|--------------------------|----------------|----------|
+| sleuthkit | `tsk_version`, `mmls`, `fls` | `mmls -V` | Read-only Partition- & Dateisichten; Dry-Run verfügbar |
+| plaso | `log2timeline.py`, `psort.py` | `log2timeline.py --version` | Keine produktiven Runs im CI; Wrapper liefert Guard-Hinweise |
+| volatility | `volatility3`, `vol`, `python3 -m volatility3` | `volatility3 --version` | Optionales Extra; Wrapper zeigt pslist-Hilfe statt Dumps |
+| yara | `yara` | `yara --version` | Scans nur mit `allow_execution=True`, sonst Dry-Run |
+| bulk_extractor | `bulk_extractor` | `bulk_extractor -V` | Versionscheck; keine Analyse-Läufe im CI |
+| autopsy | `autopsy`, `autopsy64.exe` | n/a | GUI-Hinweis statt automatischer Ausführung |
+
+The GitHub Actions workflow calls `python tools/validate_project_layout.py` to
+ensure the tree remains aligned with this structure.
+
 ## CLI usage
 
 After installing the package (`pip install -e .`) the CLI is available as
@@ -184,6 +234,7 @@ the provenance log.
 
 ```
 pip install -r requirements.txt
+python tools/validate_project_layout.py
 pytest -q
 ruff check .
 black --check .

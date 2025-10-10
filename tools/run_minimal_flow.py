@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Repo-Hilfen, nicht mit `forensic.tools` verwechseln.
 """Execute the minimal end-to-end flow used in CI."""
 from __future__ import annotations
 

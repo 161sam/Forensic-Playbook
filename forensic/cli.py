@@ -22,12 +22,22 @@ from .modules.acquisition.memory_dump import MemoryDumpModule
 from .modules.acquisition.network_capture import NetworkCaptureModule
 from .modules.analysis.filesystem import FilesystemAnalysisModule
 from .modules.analysis.malware import MalwareAnalysisModule
+from .modules.analysis.memory import MemoryAnalysisModule
 from .modules.analysis.timeline import TimelineModule
 from .modules.reporting.exporter import get_pdf_renderer
 from .modules.reporting.generator import ReportGenerator
 from .modules.triage.persistence import PersistenceModule
 from .modules.triage.quick_triage import QuickTriageModule
 from .modules.triage.system_info import SystemInfoModule
+
+from .tools import (
+    autopsy as autopsy_wrapper,
+    bulk_extractor as bulk_extractor_wrapper,
+    plaso as plaso_wrapper,
+    sleuthkit as sleuthkit_wrapper,
+    volatility as volatility_wrapper,
+    yara as yara_wrapper,
+)
 
 REPORT_FORMAT_CHOICES = ["html", "json", "md", "markdown"]
 if get_pdf_renderer() is not None:
@@ -846,6 +856,88 @@ def diagnostics(ctx: click.Context) -> None:
         tool_lines.append(f"  - {label}: {message}")
         tool_details[label] = {"available": available, "missing": missing}
 
+    wrapper_registry = {
+        "Autopsy": autopsy_wrapper,
+        "bulk_extractor": bulk_extractor_wrapper,
+        "Plaso": plaso_wrapper,
+        "Sleuthkit": sleuthkit_wrapper,
+        "Volatility": volatility_wrapper,
+        "YARA": yara_wrapper,
+    }
+
+    wrapper_cache: dict[tuple[int, str], dict[str, Any]] = {}
+
+    def _wrapper_state(label: str, wrapper_module: Any) -> dict[str, Any]:
+        key = (id(wrapper_module), label)
+        if key not in wrapper_cache:
+            wrapper_cache[key] = {
+                "label": label,
+                "module": wrapper_module,
+                "available": wrapper_module.available(),
+                "version": wrapper_module.version(),
+                "requirements": wrapper_module.requirements(),
+                "capabilities": wrapper_module.capabilities(),
+            }
+        return wrapper_cache[key]
+
+    wrapper_lines = ["Guarded tool wrappers:"]
+    wrapper_details: list[dict[str, Any]] = []
+    for label, wrapper_module in wrapper_registry.items():
+        state = _wrapper_state(label, wrapper_module)
+        status = "available" if state["available"] else "missing"
+        version_text = state["version"] or "unknown"
+        requirements_text = ", ".join(state["requirements"]) or "n/a"
+        wrapper_lines.append(
+            f"  - {label}: {status} (version: {version_text}; requirements: {requirements_text})"
+        )
+        wrapper_details.append(
+            {
+                "wrapper": label,
+                "available": state["available"],
+                "version": state["version"],
+                "requirements": state["requirements"],
+                "capabilities": state["capabilities"],
+            }
+        )
+
+    module_wrapper_lines = ["Module integrations:"]
+    module_wrapper_details: list[dict[str, Any]] = []
+    module_classes = [
+        FilesystemAnalysisModule,
+        TimelineModule,
+        MemoryAnalysisModule,
+        MalwareAnalysisModule,
+    ]
+    for module_cls in module_classes:
+        wrappers = getattr(module_cls, "TOOL_WRAPPERS", {})
+        if not wrappers:
+            continue
+        messages: list[str] = []
+        wrapper_info: list[dict[str, Any]] = []
+        for label, wrapper_module in wrappers.items():
+            state = _wrapper_state(label, wrapper_module)
+            if state["available"]:
+                version_text = state["version"] or "unknown"
+                messages.append(f"{label} available (version: {version_text})")
+            else:
+                requirements_text = ", ".join(state["requirements"]) or "n/a"
+                messages.append(f"{label} missing (expected: {requirements_text})")
+            wrapper_info.append(
+                {
+                    "name": label,
+                    "available": state["available"],
+                    "version": state["version"],
+                    "requirements": state["requirements"],
+                    "capabilities": state["capabilities"],
+                }
+            )
+        module_wrapper_lines.append(
+            f"  - {module_cls.__name__}: {'; '.join(messages)}"
+        )
+        module_wrapper_details.append(
+            {"module": module_cls.__name__, "wrappers": wrapper_info}
+        )
+
     optional_packages = {
         "volatility3": "volatility3",
         "pyshark": "pyshark",
@@ -883,6 +975,10 @@ def diagnostics(ctx: click.Context) -> None:
         "",
         *tool_lines,
         "",
+        *wrapper_lines,
+        "",
+        *module_wrapper_lines,
+        "",
         *package_lines,
         "",
         *guard_lines,
@@ -895,6 +991,8 @@ def diagnostics(ctx: click.Context) -> None:
         "workspace": str(workspace),
         "paths": path_details,
         "tools": tool_details,
+        "wrappers": wrapper_details,
+        "module_wrappers": module_wrapper_details,
         "python_packages": package_details,
         "module_guards": {
             "status": guard_status,

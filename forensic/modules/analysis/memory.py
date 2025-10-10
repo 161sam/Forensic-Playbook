@@ -24,8 +24,12 @@ from ...core.evidence import Evidence
 from ...core.module import AnalysisModule, ModuleResult
 from ...core.time_utils import utc_isoformat
 
+from ...tools import volatility as volatility_wrapper
+
 
 class MemoryAnalysisModule(AnalysisModule):
+    TOOL_WRAPPERS = {"Volatility": volatility_wrapper}
+
     """
     Memory forensics module using Volatility
 
@@ -586,6 +590,7 @@ class MemoryAnalysisModule(AnalysisModule):
 
         try:
             with open(strings_file, "w") as f:
+                # TODO: use forensic.tools.volatility wrapper for string extraction
                 subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, timeout=600)
 
             return strings_file

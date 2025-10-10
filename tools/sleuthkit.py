@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Repo-Hilfen, nicht mit `forensic.tools` verwechseln.
 """
 Sleuthkit (TSK) Tool Wrapper
 Comprehensive wrapper for The Sleuth Kit forensic tools
