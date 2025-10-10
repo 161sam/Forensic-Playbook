@@ -186,6 +186,13 @@ forensic-cli evidence add \
 #### 3.3 Router Artefact Staging (Guarded CLI)
 
 ```bash
+forensic-cli router env init --case demo --dry-run
+forensic-cli router extract ui --case demo --param input=./evidence/router_exports --dry-run
+forensic-cli router manifest write --case demo
+forensic-cli router summarize --case demo
+```
+
+```bash
 # Dry-run the router environment bootstrap
 forensic-cli router env init --root forensic_workspace/cases/CASE_20251008_143025/router --dry-run
 

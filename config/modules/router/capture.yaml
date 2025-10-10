@@ -1,8 +1,4 @@
-# Default configuration for router capture helpers.
-default_bpf: "not port 22"
-pcap_dir: router/capture
-meta_dir: router/capture/meta
-hash_algorithm: sha256
-duration: 300
-tool: tcpdump
-timeout_sec: 300
+router_capture:
+  default_bpf: "not port 22"
+  duration: 60
+  ring_buffer: false

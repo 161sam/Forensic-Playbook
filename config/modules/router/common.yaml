@@ -1,0 +1,4 @@
+router:
+  timezone: "UTC"
+  output_dir: "router"
+  timestamp_format: "%Y%m%dT%H%M%SZ"

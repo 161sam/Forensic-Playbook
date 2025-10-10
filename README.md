@@ -98,6 +98,15 @@ $default_cmd --param compute_hashes=true
 forensic-cli --workspace ~/cases report generate --case demo_case --fmt html --dry-run
 ```
 
+### Router-Suite Quickstart (Guarded)
+
+```bash
+forensic-cli router env init --case demo --dry-run
+forensic-cli router extract ui --case demo --param input=./evidence/router_exports --dry-run
+forensic-cli router manifest write --case demo
+forensic-cli router summarize --case demo
+```
+
 Weitere Beispiele: [Minimaler E2E-Workflow](docs/examples/minimal-e2e.md), [Network→Timeline Tutorial](docs/tutorials/02_network-timeline-walkthrough.md).
 
 ## Codex/MCP in Kürze

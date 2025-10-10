@@ -1356,107 +1356,147 @@ def router(ctx: click.Context) -> None:
     ctx.ensure_object(dict)
 
 
+def _load_router_case(
+    ctx: click.Context, command: str, case_id: str
+):
+    framework: ForensicFramework = ctx.obj["framework"]
+    try:
+        return framework.load_case(case_id)
+    except ValueError as exc:
+        message = f"✗ {exc}"
+        _emit_status(
+            ctx,
+            command,
+            status="error",
+            message=message,
+            errors=[str(exc)],
+            exit_code=1,
+        )
+        return None
+
+
+def _collect_router_params(
+    ctx: click.Context,
+    command: str,
+    *,
+    case,
+    dry_run: bool,
+    extra: Dict[str, Any] | None = None,
+    param: tuple[str, ...] = (),
+) -> Dict[str, Any] | None:
+    try:
+        parsed = _parse_key_value_pairs(param)
+    except click.BadParameter as exc:
+        message = f"✗ {exc}"
+        _emit_status(
+            ctx,
+            command,
+            status="error",
+            message=message,
+            errors=[str(exc)],
+            exit_code=1,
+        )
+        return None
+
+    params: Dict[str, Any] = dict(parsed)
+    if extra:
+        params.update({key: value for key, value in extra.items() if value is not None})
+
+    params["case"] = case.case_dir
+    params["case_id"] = case.case_id
+    params["dry_run"] = dry_run
+    return params
+
+
 @router.group(name="env")
 def router_env_group() -> None:
     """Environment preparation commands."""
 
 
 @router_env_group.command("init")
-@click.option("--root", type=click.Path(), help="Workspace root for router artifacts")
-@click.option("--dry-run", is_flag=True, help="Preview actions without modifying the filesystem")
-@click.option("--legacy", is_flag=True, help="Invoke the legacy prepare_env.sh script")
+@click.option("--case", "case_id", required=True, help="Case identifier to scope router outputs")
+@click.option(
+    "--root",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Optional override for the router workspace root",
+)
+@click.option(
+    "--dry-run/--no-dry-run",
+    default=True,
+    show_default=True,
+    help="Preview environment setup without writing to disk.",
+)
 @click.pass_context
-def router_env_init(ctx: click.Context, root: str | None, dry_run: bool, legacy: bool) -> None:
-    """Initialise the router workspace layout."""
+def router_env_init(
+    ctx: click.Context,
+    case_id: str,
+    root: Path | None,
+    dry_run: bool,
+) -> None:
+    """Initialise the router workspace layout for a case."""
 
-    params = {"root": root, "dry_run": dry_run, "legacy": legacy}
+    case = _load_router_case(ctx, "router env init", case_id)
+    if case is None:
+        return
+
+    params: Dict[str, Any] = {
+        "case": case.case_dir,
+        "case_id": case.case_id,
+        "dry_run": dry_run,
+    }
+    if root:
+        params["root"] = root
+
     result = router_env.init_environment(params)
     _router_emit(ctx, "router env init", result)
 
 
 @router.group(name="capture")
 def router_capture_group() -> None:
-    """Passive network capture helpers."""
+    """Guarded router capture helpers."""
 
 
 @router_capture_group.command("setup")
-@click.option("--if", "interface", help="Network interface to prepare")
-@click.option("--pcap-dir", help="Override capture directory")
-@click.option("--meta-dir", help="Override metadata directory")
-@click.option("--dry-run", is_flag=True, help="Preview planned actions")
-@click.option("--legacy", is_flag=True, help="Invoke the legacy tcpdump_setup.sh script")
+@click.option("--case", "case_id", required=True, help="Case identifier for capture planning")
+@click.option(
+    "--param",
+    "param",
+    multiple=True,
+    type=str,
+    help="Override capture parameters (key=value).",
+)
+@click.option(
+    "--dry-run/--no-dry-run",
+    default=True,
+    show_default=True,
+    help="Preview capture setup without filesystem changes.",
+)
 @click.pass_context
 def router_capture_setup(
     ctx: click.Context,
-    interface: str | None,
-    pcap_dir: str | None,
-    meta_dir: str | None,
+    case_id: str,
+    param: tuple[str, ...],
     dry_run: bool,
-    legacy: bool,
 ) -> None:
-    """Prepare directories for tcpdump capture."""
+    """Prepare capture directories under the case workspace."""
 
-    params = {
-        "interface": interface,
-        "pcap_dir": pcap_dir,
-        "meta_dir": meta_dir,
-        "dry_run": dry_run,
-        "legacy": legacy,
-    }
+    case = _load_router_case(ctx, "router capture setup", case_id)
+    if case is None:
+        return
+
+    params = _collect_router_params(
+        ctx,
+        "router capture setup",
+        case=case,
+        dry_run=dry_run,
+        param=param,
+    )
+    if params is None:
+        return
+
     result = router_capture.setup(params)
     _router_emit(ctx, "router capture setup", result)
-
-
-@router_capture_group.command("start")
-@click.option("--if", "interface", help="Network interface to capture")
-@click.option("--bpf", help="BPF filter expression")
-@click.option("--duration", type=int, help="Segment duration in seconds")
-@click.option("--tool", help="Capture tool to use (tcpdump/dumpcap)")
-@click.option("--pcap-dir", help="Override capture directory")
-@click.option("--meta-dir", help="Override metadata directory")
-@click.option("--enable-live-capture", is_flag=True, help="Acknowledge live capture execution")
-@click.option("--dry-run", is_flag=True, help="Preview planned tcpdump command")
-@click.option("--legacy", is_flag=True, help="Invoke the legacy tcpdump_passive_capture.sh script")
-@click.pass_context
-def router_capture_start(
-    ctx: click.Context,
-    interface: str | None,
-    bpf: str | None,
-    duration: int | None,
-    tool: str | None,
-    pcap_dir: str | None,
-    meta_dir: str | None,
-    enable_live_capture: bool,
-    dry_run: bool,
-    legacy: bool,
-) -> None:
-    """Start a guarded passive capture."""
-
-    params = {
-        "interface": interface,
-        "bpf": bpf,
-        "duration": duration,
-        "tool": tool,
-        "pcap_dir": pcap_dir,
-        "meta_dir": meta_dir,
-        "enable_live_capture": enable_live_capture,
-        "dry_run": dry_run,
-        "legacy": legacy,
-    }
-    result = router_capture.start(params)
-    _router_emit(ctx, "router capture start", result)
-
-
-@router_capture_group.command("stop")
-@click.option("--dry-run", is_flag=True, help="Show stop guidance without terminating processes")
-@click.option("--legacy", is_flag=True, help="Invoke the legacy tcpdump_passive_stop.sh script")
-@click.pass_context
-def router_capture_stop(ctx: click.Context, dry_run: bool, legacy: bool) -> None:
-    """Provide safe instructions for stopping a passive capture."""
-
-    params = {"dry_run": dry_run, "legacy": legacy}
-    result = router_capture.stop(params)
-    _router_emit(ctx, "router capture stop", result)
 
 
 @router.group(name="extract")
@@ -1464,43 +1504,47 @@ def router_extract_group() -> None:
     """Router artifact extraction helpers."""
 
 
-def _register_extract_command(name: str) -> None:
-    @router_extract_group.command(name)
-    @click.option("--input", "input_path", type=click.Path(), help="Source directory for router artifacts", required=True)
-    @click.option("--out", "output_dir", type=click.Path(), help="Destination directory for extracted data")
-    @click.option("--dry-run", is_flag=True, help="Preview extraction without writing output")
-    @click.option("--legacy", is_flag=True, help="Invoke the matching legacy extraction script")
-    @click.pass_context
-    def _cmd(
-        ctx: click.Context,
-        input_path: str,
-        output_dir: str | None,
-        dry_run: bool,
-        legacy: bool,
-    ) -> None:
-        params = {
-            "input": input_path,
-            "out": output_dir,
-            "dry_run": dry_run,
-            "legacy": legacy,
-        }
-        result = router_extract.extract(name, params)
-        _router_emit(ctx, f"router extract {name}", result)
+@router_extract_group.command("ui")
+@click.option("--case", "case_id", required=True, help="Case identifier for extraction")
+@click.option(
+    "--param",
+    "param",
+    multiple=True,
+    type=str,
+    help="Extraction parameter override (key=value).",
+)
+@click.option(
+    "--dry-run/--no-dry-run",
+    default=True,
+    show_default=True,
+    help="Preview extraction steps without writing output.",
+)
+@click.pass_context
+def router_extract_ui(
+    ctx: click.Context,
+    case_id: str,
+    param: tuple[str, ...],
+    dry_run: bool,
+) -> None:
+    """Extract router UI artefacts into the case workspace."""
 
-    _cmd.__name__ = f"router_extract_{name}"
+    case = _load_router_case(ctx, "router extract ui", case_id)
+    if case is None:
+        return
 
+    params = _collect_router_params(
+        ctx,
+        "router extract ui",
+        case=case,
+        dry_run=dry_run,
+        extra={"kind": "ui"},
+        param=param,
+    )
+    if params is None:
+        return
 
-for _extract_name in [
-    "ui",
-    "ddns",
-    "devices",
-    "eventlog",
-    "portforwards",
-    "session_csrf",
-    "tr069",
-    "backups",
-]:
-    _register_extract_command(_extract_name)
+    result = router_extract.extract("ui", params)
+    _router_emit(ctx, "router extract ui", result)
 
 
 @router.group(name="manifest")
@@ -1509,21 +1553,43 @@ def router_manifest_group() -> None:
 
 
 @router_manifest_group.command("write")
-@click.option("--out", "output_path", type=click.Path(), required=True, help="Manifest file to create (.json or .csv)")
-@click.option("--source", type=click.Path(), help="Source directory to catalogue")
-@click.option("--dry-run", is_flag=True, help="Preview manifest generation")
-@click.option("--legacy", is_flag=True, help="Invoke the legacy manifest script")
+@click.option("--case", "case_id", required=True, help="Case identifier for manifest generation")
+@click.option(
+    "--param",
+    "param",
+    multiple=True,
+    type=str,
+    help="Manifest parameter override (key=value).",
+)
+@click.option(
+    "--dry-run/--no-dry-run",
+    default=True,
+    show_default=True,
+    help="Preview manifest generation without writing files.",
+)
 @click.pass_context
 def router_manifest_write(
     ctx: click.Context,
-    output_path: str,
-    source: str | None,
+    case_id: str,
+    param: tuple[str, ...],
     dry_run: bool,
-    legacy: bool,
 ) -> None:
     """Generate a deterministic manifest for router artifacts."""
 
-    params = {"out": output_path, "source": source, "dry_run": dry_run, "legacy": legacy}
+    case = _load_router_case(ctx, "router manifest write", case_id)
+    if case is None:
+        return
+
+    params = _collect_router_params(
+        ctx,
+        "router manifest write",
+        case=case,
+        dry_run=dry_run,
+        param=param,
+    )
+    if params is None:
+        return
+
     result = router_manifest.write_manifest(params)
     _router_emit(ctx, "router manifest write", result)
 
@@ -1534,37 +1600,94 @@ def router_pipeline_group() -> None:
 
 
 @router_pipeline_group.command("run")
-@click.option("--plan", type=click.Path(), help="YAML plan describing pipeline steps")
-@click.option("--dry-run", is_flag=True, help="Preview pipeline execution")
-@click.option("--legacy", is_flag=True, help="Invoke the legacy run_forensic_pipeline.sh script")
+@click.option("--case", "case_id", required=True, help="Case identifier for pipeline execution")
+@click.option(
+    "--with-capture",
+    is_flag=True,
+    help="Include the capture step (requires guarded enablement).",
+)
+@click.option(
+    "--param",
+    "param",
+    multiple=True,
+    type=str,
+    help="Pipeline parameter override (key=value).",
+)
+@click.option(
+    "--dry-run/--no-dry-run",
+    default=True,
+    show_default=True,
+    help="Preview pipeline execution without writing artefacts.",
+)
 @click.pass_context
-def router_pipeline_run(ctx: click.Context, plan: str | None, dry_run: bool, legacy: bool) -> None:
-    """Execute the router forensic pipeline."""
+def router_pipeline_run(
+    ctx: click.Context,
+    case_id: str,
+    with_capture: bool,
+    param: tuple[str, ...],
+    dry_run: bool,
+) -> None:
+    """Execute the guarded router forensic pipeline."""
 
-    params = {"plan": plan, "dry_run": dry_run, "legacy": legacy}
+    case = _load_router_case(ctx, "router pipeline run", case_id)
+    if case is None:
+        return
+
+    params = _collect_router_params(
+        ctx,
+        "router pipeline run",
+        case=case,
+        dry_run=dry_run,
+        extra={"with_capture": with_capture},
+        param=param,
+    )
+    if params is None:
+        return
+
     result = router_pipeline.run_pipeline(params)
     _router_emit(ctx, "router pipeline run", result)
 
 
 @router.command("summarize")
-@click.option("--in", "input_dir", type=click.Path(), required=True, help="Directory containing analysis artifacts")
-@click.option("--out", "output_path", type=click.Path(), required=True, help="Summary file to generate (.json or .md)")
-@click.option("--dry-run", is_flag=True, help="Preview summary generation")
-@click.option("--legacy", is_flag=True, help="Invoke the legacy summarize_report.sh script")
+@click.option("--case", "case_id", required=True, help="Case identifier for summary generation")
+@click.option(
+    "--param",
+    "param",
+    multiple=True,
+    type=str,
+    help="Summary parameter override (key=value).",
+)
+@click.option(
+    "--dry-run/--no-dry-run",
+    default=True,
+    show_default=True,
+    help="Preview summary output without writing files.",
+)
 @click.pass_context
 def router_summarize_cmd(
     ctx: click.Context,
-    input_dir: str,
-    output_path: str,
+    case_id: str,
+    param: tuple[str, ...],
     dry_run: bool,
-    legacy: bool,
 ) -> None:
     """Summarise router analysis findings."""
 
-    params = {"in": input_dir, "out": output_path, "dry_run": dry_run, "legacy": legacy}
+    case = _load_router_case(ctx, "router summarize", case_id)
+    if case is None:
+        return
+
+    params = _collect_router_params(
+        ctx,
+        "router summarize",
+        case=case,
+        dry_run=dry_run,
+        param=param,
+    )
+    if params is None:
+        return
+
     result = router_summary.summarize(params)
     _router_emit(ctx, "router summarize", result)
-
 
 def _ensure_legacy_enabled(ctx: click.Context) -> None:
     if not ctx.obj.get("legacy_enabled"):
