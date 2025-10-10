@@ -1208,9 +1208,11 @@ class ReportGenerator(ReportingModule):
         alerts = data.get("alerts") if isinstance(data, dict) else None
         statistics = data.get("statistics") if isinstance(data, dict) else None
 
-        title = escape(case.get("name") or case.get("case_id") or "Forensic Report")
-        investigator = escape(case.get("investigator", "n/a"))
-        created_at = escape(case.get("created_at", "n/a"))
+        raw_title = case.get("name") or case.get("case_id") or "Forensic Report"
+        title = escape(str(raw_title))
+
+        investigator = escape(str(case.get("investigator", "n/a")))
+        created_at = escape(str(case.get("created_at", "n/a")))
         description = case.get("description")
 
         alert_html = ""
@@ -1234,7 +1236,7 @@ class ReportGenerator(ReportingModule):
             )
 
         description_html = (
-            f'<p class="case-description">{escape(description)}</p>'
+            f"<p class=\"case-description\">{escape(str(description))}</p>"
             if description
             else ""
         )
