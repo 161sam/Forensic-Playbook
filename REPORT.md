@@ -5,9 +5,10 @@
 Die Phase-3-Härtung hebt alle zuvor als „MVP" geführten Module auf den Guarded-
 Standard. Guarded Module liefern jetzt konsistente Dry-Run-Pfade, prüfen externe
 Tools mit freundlichen Hinweisen und protokollieren deterministische Exporte in
-der Provenienz- und Chain-of-Custody-Logik. Die Dokumentation (README,
-Getting-Started, Walkthrough) und die automatisch generierte Modulmatrix sind
-synchronisiert.
+der Provenienz- und Chain-of-Custody-Logik. Zusätzlich stehen Codex- und MCP-
+Workflows bereit (`forensic-cli codex …`, `forensic-cli mcp …`) inklusive SDK-
+Exports für Automatisierung. Die Dokumentation (README, Getting-Started,
+Walkthrough) und die automatisch generierte Modulmatrix sind synchronisiert.
 
 ## Modulstatus (Vorher → Nachher)
 
@@ -35,7 +36,8 @@ synchronisiert.
 - Modulmatrix über `tools/generate_module_matrix.py` aktualisiert (alle zuvor
   MVP → Guarded, Backend/Guard-Spalten synchron).
 - README, Getting-Started und Walkthrough erklären Guard-Level, Dry-Run,
-  Konfigurations-Priorität sowie Runtime-PCAP-Synth/JSON-Fallback.
+  Konfigurations-Priorität, Runtime-PCAP-Synth/JSON-Fallback sowie die neuen
+  Codex/MCP-Workflows.
 - CI hält optionale PDF-Erstellung tolerant und dokumentiert fehlende Renderer in
   den Provenienzlogs.
 - Abschlussstatus in REPORT.md dokumentiert; Änderungen sind idempotent.
