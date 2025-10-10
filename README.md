@@ -59,7 +59,7 @@ bevor die finale Tabelle aktualisiert wird.
 | Kategorie | Modul | Status | Backend/Extra | Guard | Notizen |
 | --- | --- | --- | --- | --- | --- |
 | Acquisition | `disk_imaging` | Guarded | ddrescue / ewfacquire | Root + block device access | Requires ddrescue, ewfacquire (missing locally) |
-| Acquisition | `live_response` | Guarded | coreutils (uname, ps, netstat) | — | Requires netstat, ss (all available) |
+| Acquisition | `live_response` | Guarded | coreutils (uname, ps, netstat) | — | Requires netstat, ss (missing locally) |
 | Acquisition | `memory_dump` | Guarded | avml | --enable-live-capture (Linux) | Requires avml (missing locally) |
 | Acquisition | `network_capture` | Guarded | tcpdump / dumpcap | --enable-live-capture + root | — |
 | Analysis | `filesystem` | Guarded | sleuthkit (fls, blkcat) | — | Requires fls (missing locally) |
@@ -70,13 +70,13 @@ bevor die finale Tabelle aktualisiert wird.
 | Analysis | `timeline` | Guarded | log2timeline.py / mactime | — | Requires fls, log2timeline.py, mactime (missing locally) |
 | Reporting | `exporter` | Guarded | report_pdf extra (weasyprint) | — | Requires wkhtmltopdf (missing locally) |
 | Reporting | `generator` | Guarded | jinja2 templates | — | — |
-| Router | `capture` | Guarded | router-suite | Dry-run default; tools optional | Guarded python guard replacing tcpdump scripts |
-| Router | `common` | Guarded | router-suite | Dry-run default; tools optional | Shared router helpers |
-| Router | `env` | Guarded | router-suite | Dry-run default; tools optional | Guarded workspace bootstrap |
-| Router | `extract` | Guarded | router-suite | Dry-run default; tools optional | Deterministic UI artefact parsing |
-| Router | `manifest` | Guarded | router-suite | Dry-run default; tools optional | Deterministic evidence manifest |
-| Router | `pipeline` | Guarded | router-suite | Dry-run default; tools optional | Guarded orchestration pipeline |
-| Router | `summarize` | Guarded | router-suite | Dry-run default; tools optional | Markdown summary generator |
+| Router | `capture` | Guarded | router-suite | Dry-run default; tools optional | — |
+| Router | `common` | Guarded | router-suite | Dry-run default; tools optional | — |
+| Router | `env` | Guarded | router-suite | Dry-run default; tools optional | — |
+| Router | `extract` | Guarded | router-suite | Dry-run default; tools optional | — |
+| Router | `manifest` | Guarded | router-suite | Dry-run default; tools optional | — |
+| Router | `pipeline` | Guarded | router-suite | Dry-run default; tools optional | — |
+| Router | `summarize` | Guarded | router-suite | Dry-run default; tools optional | — |
 | Triage | `persistence` | Guarded | filesystem inspection | — | — |
 | Triage | `quick_triage` | Guarded | POSIX utilities | — | — |
 | Triage | `system_info` | Guarded | platform / socket APIs | — | — |
