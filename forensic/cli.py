@@ -10,6 +10,7 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Dict, Optional
 
 import click
@@ -17,9 +18,11 @@ import click
 from . import tools as runtime_tools
 from .core.evidence import EvidenceType
 from .core.framework import ForensicFramework
-from .mcp import MCPClient, MCPConfig, ToolExecutionResult
-from .mcp.tools import build_expose_payload
-from .mcp.tools import run_tool as run_mcp_tool
+from .mcp import ToolExecutionResult
+from .mcp.adapters import run as run_mcp_tool
+from .mcp.registry import build_catalog as build_mcp_catalog
+from .mcp.servers import list_statuses as list_mcp_server_statuses
+from .mcp.servers import summarise as summarise_mcp_statuses
 from .modules.acquisition.disk_imaging import DiskImagingModule
 from .modules.acquisition.live_response import LiveResponseModule
 from .modules.acquisition.memory_dump import MemoryDumpModule
@@ -435,55 +438,59 @@ def mcp() -> None:
     is_flag=True,
     help="Emit compact JSON without indentation",
 )
+@click.option(
+    "--out",
+    "output_file",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Write catalogue to file instead of stdout.",
+)
 @click.pass_context
-def mcp_expose(ctx: click.Context, compact: bool) -> None:
-    """Print the MCP tool catalogue as JSON."""
+def mcp_expose(ctx: click.Context, compact: bool, output_file: Path | None) -> None:
+    """Print (or persist) the MCP tool catalogue as JSON."""
 
     framework: ForensicFramework = ctx.obj["framework"]
-    payload = build_expose_payload(framework)
+    payload = build_mcp_catalog(framework)
     indent = None if compact else 2
-    click.echo(json.dumps(payload, indent=indent, sort_keys=True))
+    rendered = json.dumps(payload, indent=indent, sort_keys=True)
+
+    if output_file is not None:
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        output_file.write_text(rendered + "\n", encoding="utf-8")
+        click.echo(str(output_file))
+        return
+
+    click.echo(rendered)
 
 
 @mcp.command("status")
-@click.option("--endpoint", default=None, help="Override MCP endpoint URL")
-@click.option("--token", default=None, help="Authentication token (if required)")
-@click.option(
-    "--timeout",
-    type=float,
-    default=None,
-    help="HTTP timeout in seconds (default 5.0)",
-)
 @click.pass_context
-def mcp_status(
-    ctx: click.Context,
-    endpoint: str | None,
-    token: str | None,
-    timeout: float | None,
-) -> None:
-    """Perform a health check against the configured MCP endpoint."""
+def mcp_status(ctx: click.Context) -> None:
+    """Report availability of built-in MCP server connectors."""
 
-    framework: ForensicFramework = ctx.obj["framework"]
-    config = MCPConfig.from_sources(
-        framework_config=framework.config,
-        endpoint=endpoint,
-        token=token,
-        timeout=timeout,
-    )
+    statuses = list_mcp_server_statuses()
+    summary = summarise_mcp_statuses(statuses)
+    details = []
+    for entry in summary["statuses"]:
+        message = entry.get("message")
+        label = f"{entry['name']}: {entry['status']}"
+        if message:
+            label = f"{label} – {message}"
+        details.append(label)
 
-    client = MCPClient(config)
-    response = client.status()
-    client.close()
-
-    details = [f"Endpoint: {config.endpoint}"]
-    if response.status is not None:
-        details.append(f"HTTP status: {response.status}")
-
-    data = {"config": config.to_dict(), "response": response.data}
-    errors = [response.error] if response.error else []
-
-    status = "success" if response.ok else "error"
-    message = "MCP endpoint reachable" if response.ok else "Unable to reach MCP endpoint"
+    overall = summary["overall"]
+    if overall == "success":
+        status = "success"
+        message = "MCP connectors available"
+        exit_code = None
+    elif overall == "warning":
+        status = "warning"
+        message = "Some MCP connectors are not yet configured"
+        exit_code = None
+    else:
+        status = "error"
+        message = "One or more MCP connectors unavailable"
+        exit_code = 1
 
     _emit_status(
         ctx,
@@ -491,22 +498,13 @@ def mcp_status(
         status=status,
         message=message,
         details=details,
-        data=data,
-        errors=errors,
-        exit_code=None if response.ok else 1,
+        data={"servers": summary["statuses"]},
+        exit_code=exit_code,
     )
 
 
 @mcp.command("run")
 @click.argument("tool")
-@click.option("--endpoint", default=None, help="Override MCP endpoint URL")
-@click.option("--token", default=None, help="Authentication token (if required)")
-@click.option(
-    "--timeout",
-    type=float,
-    default=None,
-    help="HTTP timeout in seconds (default 5.0)",
-)
 @click.option(
     "--arg",
     "arguments",
@@ -516,71 +514,36 @@ def mcp_status(
 @click.option(
     "--local",
     is_flag=True,
-    help="Execute tool locally without contacting the MCP server",
+    help="Execute via in-process adapters instead of remote connectors",
+)
+@click.option(
+    "--dry-run/--no-dry-run",
+    default=True,
+    help="Keep execution in dry-run mode when supported (default: enabled)",
 )
 @click.pass_context
 def mcp_run(
     ctx: click.Context,
     tool: str,
-    endpoint: str | None,
-    token: str | None,
-    timeout: float | None,
     arguments: tuple[str, ...],
     local: bool,
+    dry_run: bool,
 ) -> None:
-    """Execute an MCP tool either via HTTP or using the local adapter."""
+    """Execute an MCP tool via the adapter layer."""
 
     framework: ForensicFramework = ctx.obj["framework"]
     parsed_arguments = _parse_key_value_pairs(arguments)
 
-    if local:
-        result = run_mcp_tool(framework, tool, parsed_arguments)
-        _emit_mcp_tool_result(ctx, "mcp.run.local", tool, result)
-        return
-
-    config = MCPConfig.from_sources(
-        framework_config=framework.config,
-        endpoint=endpoint,
-        token=token,
-        timeout=timeout,
+    result = run_mcp_tool(
+        framework,
+        tool,
+        parsed_arguments,
+        local=local,
+        dry_run=dry_run,
     )
 
-    client = MCPClient(config)
-    response = client.run_tool(tool, parsed_arguments)
-    client.close()
-
-    details = [f"Endpoint: {config.endpoint}", f"Tool: {tool}"]
-    if response.status is not None:
-        details.append(f"HTTP status: {response.status}")
-
-    data = {
-        "tool": tool,
-        "arguments": parsed_arguments,
-        "config": config.to_dict(),
-        "response": response.data,
-    }
-    errors = [response.error] if response.error else []
-
-    status = "success" if response.ok else "error"
-    message = (
-        f"Tool '{tool}' executed via MCP"
-        if response.ok
-        else f"Failed to execute tool '{tool}' via MCP"
-    )
-
-    if not response.ok:
-        details.append("Hint: use --local to execute without MCP server if appropriate.")
-
-    _emit_status(
-        ctx,
-        "mcp.run",
-        status=status,
-        message=message,
-        details=details,
-        data=data,
-        errors=errors,
-        exit_code=None if response.ok else 1,
-    )
+    command = "mcp.run.local" if local else "mcp.run.remote"
+    _emit_mcp_tool_result(ctx, command, tool, result)
 
 
 @cli.group()
@@ -1375,6 +1338,22 @@ def _load_router_case(
         return None
 
 
+def _resolve_router_case(
+    ctx: click.Context,
+    command: str,
+    case_id: str | None,
+    *,
+    root: Path | None = None,
+):
+    if case_id:
+        return _load_router_case(ctx, command, case_id)
+
+    framework: ForensicFramework = ctx.obj["framework"]
+    workspace = Path(framework.workspace or Path.cwd())
+    fallback_root = root or workspace / "router"
+    return SimpleNamespace(case_id="router-ad-hoc", case_dir=fallback_root)
+
+
 def _collect_router_params(
     ctx: click.Context,
     command: str,
@@ -1414,7 +1393,12 @@ def router_env_group() -> None:
 
 
 @router_env_group.command("init")
-@click.option("--case", "case_id", required=True, help="Case identifier to scope router outputs")
+@click.option(
+    "--case",
+    "case_id",
+    default=None,
+    help="Optional case identifier to scope router outputs",
+)
 @click.option(
     "--root",
     type=click.Path(path_type=Path),
@@ -1430,13 +1414,13 @@ def router_env_group() -> None:
 @click.pass_context
 def router_env_init(
     ctx: click.Context,
-    case_id: str,
+    case_id: str | None,
     root: Path | None,
     dry_run: bool,
 ) -> None:
     """Initialise the router workspace layout for a case."""
 
-    case = _load_router_case(ctx, "router env init", case_id)
+    case = _resolve_router_case(ctx, "router env init", case_id, root=root)
     if case is None:
         return
 
@@ -1458,7 +1442,12 @@ def router_capture_group() -> None:
 
 
 @router_capture_group.command("setup")
-@click.option("--case", "case_id", required=True, help="Case identifier for capture planning")
+@click.option(
+    "--case",
+    "case_id",
+    default=None,
+    help="Optional case identifier for capture planning",
+)
 @click.option(
     "--param",
     "param",
@@ -1475,13 +1464,13 @@ def router_capture_group() -> None:
 @click.pass_context
 def router_capture_setup(
     ctx: click.Context,
-    case_id: str,
+    case_id: str | None,
     param: tuple[str, ...],
     dry_run: bool,
 ) -> None:
     """Prepare capture directories under the case workspace."""
 
-    case = _load_router_case(ctx, "router capture setup", case_id)
+    case = _resolve_router_case(ctx, "router capture setup", case_id)
     if case is None:
         return
 
@@ -1499,13 +1488,151 @@ def router_capture_setup(
     _router_emit(ctx, "router capture setup", result)
 
 
+@router_capture_group.command("start")
+@click.option(
+    "--case",
+    "case_id",
+    default=None,
+    help="Optional case identifier for capture execution",
+)
+@click.option("--if", "interface", type=str, default=None, help="Network interface to monitor")
+@click.option("--duration", type=int, default=None, help="Capture duration in seconds")
+@click.option("--bpf", type=str, default=None, help="Optional BPF filter expression")
+@click.option(
+    "--pcap-dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Directory for PCAP output",
+)
+@click.option(
+    "--meta-dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Directory for capture metadata",
+)
+@click.option("--tool", type=str, default=None, help="Capture binary to use")
+@click.option(
+    "--enable-live-capture",
+    is_flag=True,
+    help="Perform a real capture instead of a dry-run preview",
+)
+@click.option(
+    "--param",
+    "param",
+    multiple=True,
+    type=str,
+    help="Additional capture parameter override (key=value).",
+)
+@click.option(
+    "--dry-run/--no-dry-run",
+    default=True,
+    show_default=True,
+    help="Preview capture start without executing commands.",
+)
+@click.pass_context
+def router_capture_start(
+    ctx: click.Context,
+    case_id: str | None,
+    interface: str | None,
+    duration: int | None,
+    bpf: str | None,
+    pcap_dir: Path | None,
+    meta_dir: Path | None,
+    tool: str | None,
+    enable_live_capture: bool,
+    param: tuple[str, ...],
+    dry_run: bool,
+) -> None:
+    """Stage or execute a guarded router capture."""
+
+    case = _resolve_router_case(ctx, "router capture start", case_id)
+    if case is None:
+        return
+
+    extra: Dict[str, Any] = {
+        "interface": interface,
+        "duration": duration,
+        "bpf": bpf,
+        "pcap_dir": str(pcap_dir) if pcap_dir else None,
+        "meta_dir": str(meta_dir) if meta_dir else None,
+        "tool": tool,
+        "enable_live_capture": enable_live_capture,
+    }
+
+    params = _collect_router_params(
+        ctx,
+        "router capture start",
+        case=case,
+        dry_run=dry_run,
+        extra=extra,
+        param=param,
+    )
+    if params is None:
+        return
+
+    result = router_capture.start(params)
+    _router_emit(ctx, "router capture start", result)
+
+
+@router_capture_group.command("stop")
+@click.option(
+    "--case",
+    "case_id",
+    default=None,
+    help="Optional case identifier for stopping captures",
+)
+@click.option(
+    "--param",
+    "param",
+    multiple=True,
+    type=str,
+    help="Additional stop parameter override (key=value).",
+)
+@click.option(
+    "--dry-run/--no-dry-run",
+    default=True,
+    show_default=True,
+    help="Preview stop guidance without terminating processes.",
+)
+@click.pass_context
+def router_capture_stop(
+    ctx: click.Context,
+    case_id: str | None,
+    param: tuple[str, ...],
+    dry_run: bool,
+) -> None:
+    """Provide guarded guidance for stopping router captures."""
+
+    case = _resolve_router_case(ctx, "router capture stop", case_id)
+    if case is None:
+        return
+
+    params = _collect_router_params(
+        ctx,
+        "router capture stop",
+        case=case,
+        dry_run=dry_run,
+        param=param,
+    )
+    if params is None:
+        return
+
+    result = router_capture.stop(params)
+    _router_emit(ctx, "router capture stop", result)
+
+
 @router.group(name="extract")
 def router_extract_group() -> None:
     """Router artifact extraction helpers."""
 
 
 @router_extract_group.command("ui")
-@click.option("--case", "case_id", required=True, help="Case identifier for extraction")
+@click.option(
+    "--case",
+    "case_id",
+    default=None,
+    help="Optional case identifier for extraction",
+)
 @click.option(
     "--param",
     "param",
@@ -1522,13 +1649,13 @@ def router_extract_group() -> None:
 @click.pass_context
 def router_extract_ui(
     ctx: click.Context,
-    case_id: str,
+    case_id: str | None,
     param: tuple[str, ...],
     dry_run: bool,
 ) -> None:
     """Extract router UI artefacts into the case workspace."""
 
-    case = _load_router_case(ctx, "router extract ui", case_id)
+    case = _resolve_router_case(ctx, "router extract ui", case_id)
     if case is None:
         return
 
@@ -1553,7 +1680,12 @@ def router_manifest_group() -> None:
 
 
 @router_manifest_group.command("write")
-@click.option("--case", "case_id", required=True, help="Case identifier for manifest generation")
+@click.option(
+    "--case",
+    "case_id",
+    default=None,
+    help="Optional case identifier for manifest generation",
+)
 @click.option(
     "--param",
     "param",
@@ -1570,13 +1702,13 @@ def router_manifest_group() -> None:
 @click.pass_context
 def router_manifest_write(
     ctx: click.Context,
-    case_id: str,
+    case_id: str | None,
     param: tuple[str, ...],
     dry_run: bool,
 ) -> None:
     """Generate a deterministic manifest for router artifacts."""
 
-    case = _load_router_case(ctx, "router manifest write", case_id)
+    case = _resolve_router_case(ctx, "router manifest write", case_id)
     if case is None:
         return
 
@@ -1600,7 +1732,12 @@ def router_pipeline_group() -> None:
 
 
 @router_pipeline_group.command("run")
-@click.option("--case", "case_id", required=True, help="Case identifier for pipeline execution")
+@click.option(
+    "--case",
+    "case_id",
+    default=None,
+    help="Optional case identifier for pipeline execution",
+)
 @click.option(
     "--with-capture",
     is_flag=True,
@@ -1622,14 +1759,14 @@ def router_pipeline_group() -> None:
 @click.pass_context
 def router_pipeline_run(
     ctx: click.Context,
-    case_id: str,
+    case_id: str | None,
     with_capture: bool,
     param: tuple[str, ...],
     dry_run: bool,
 ) -> None:
     """Execute the guarded router forensic pipeline."""
 
-    case = _load_router_case(ctx, "router pipeline run", case_id)
+    case = _resolve_router_case(ctx, "router pipeline run", case_id)
     if case is None:
         return
 
@@ -1649,7 +1786,12 @@ def router_pipeline_run(
 
 
 @router.command("summarize")
-@click.option("--case", "case_id", required=True, help="Case identifier for summary generation")
+@click.option(
+    "--case",
+    "case_id",
+    default=None,
+    help="Optional case identifier for summary generation",
+)
 @click.option(
     "--param",
     "param",
@@ -1666,13 +1808,13 @@ def router_pipeline_run(
 @click.pass_context
 def router_summarize_cmd(
     ctx: click.Context,
-    case_id: str,
+    case_id: str | None,
     param: tuple[str, ...],
     dry_run: bool,
 ) -> None:
     """Summarise router analysis findings."""
 
-    case = _load_router_case(ctx, "router summarize", case_id)
+    case = _resolve_router_case(ctx, "router summarize", case_id)
     if case is None:
         return
 
