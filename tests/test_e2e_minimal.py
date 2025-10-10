@@ -18,8 +18,8 @@ from forensic.core.chain_of_custody import ChainOfCustody, append_coc
 from forensic.core.evidence import Evidence, EvidenceState, EvidenceType
 from forensic.core.framework import ForensicFramework
 from forensic.modules.analysis.network import NetworkAnalysisModule
-from forensic.modules.reporting.generator import ReportGenerator
 from forensic.modules.reporting import exporter as report_exporter
+from forensic.modules.reporting.generator import ReportGenerator
 from forensic.utils import cmd as cmd_utils
 from forensic.utils import hashing, timefmt
 from forensic.utils import io as io_utils

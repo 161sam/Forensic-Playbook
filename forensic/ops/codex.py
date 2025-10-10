@@ -106,7 +106,7 @@ class OperationLogger:
             log_file.parent.mkdir(parents=True, exist_ok=True)
             self._stream = log_file.open("a", encoding="utf-8")
 
-    def __enter__(self) -> "OperationLogger":
+    def __enter__(self) -> OperationLogger:
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:  # pragma: no cover - context manager protocol

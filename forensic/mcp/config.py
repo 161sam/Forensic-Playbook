@@ -34,7 +34,7 @@ class MCPConfig:
         token: Optional[str] = None,
         timeout: Optional[float] = None,
         env_prefix: str = "FORENSIC_MCP_",
-    ) -> "MCPConfig":
+    ) -> MCPConfig:
         """Merge configuration from CLI flags, config files and environment."""
 
         config_section = (framework_config or {}).get("mcp", {})
