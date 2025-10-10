@@ -26,16 +26,16 @@ Weitere Details (inklusive Paketlisten für Kali/Ubuntu) finden Sie im [User Gui
 
 | Thema | Beschreibung |
 | --- | --- |
-| [User Guide](docs/User-Guide.md) | Endnutzerhandbuch mit Installation, Workflows, Troubleshooting und FAQ. |
-| [Developer Guide](docs/Developer-Guide.md) | Architektur, Modulentwicklung, Tests/CI, Release-Flow, Contribution. |
-| [Getting Started](docs/Getting-Started.md) | Kompakte Einstiegshilfe mit Guard- und Dry-Run-Konzepten. |
-| [Architecture](docs/ARCHITECTURE.md) | Komponentenübersicht, Guard-Flows und Erweiterbarkeit. |
-| [Module-Katalog](docs/MODULES/analysis.md) | Referenz für Acquisition/Analysis/Triage/Reporting inklusive Parameter-Tabellen. |
+| [User Guide](docs/User-Guide.md) | Installation, Config-Priorität, Standard-Workflows (Disk, Netzwerk→Timeline, Router) sowie Troubleshooting/FAQ. |
+| [Developer Guide](docs/Developer-Guide.md) | Architektur-Überblick, Modul-Skeleton, Coding-Standards, Tests & Release-Flow. |
+| [Module-Katalog](docs/MODULES/analysis.md) | Parameter/Outputs für Analysis, Acquisition, Triage, Reporting, Router. |
+| [Examples](docs/examples/minimal-e2e.md) | Leichtgewichtige Workflows ohne Binär-Fixtures (E2E, IoC, Reporting). |
 | [Tutorials](docs/tutorials/01_quick-triage-linux.md) | Schritt-für-Schritt-Anleitungen (Triage, Netzwerk→Timeline, Registry, Router). |
-| [Examples](docs/examples/minimal-e2e.md) | Copy-&-Paste-Workflows für E2E, IoC-Hunting und Reporting. |
-| [API Reference](docs/api/CLI.md) | CLI-Befehlsübersicht und Python-SDK-Beispiele. |
-| [Codex/MCP Workflow](docs/mcp/codex-workflow.md) | Dualer Pfad zwischen CLI/SDK und Codex-Automatisierung. |
-| [Forensic Mode Guardrails](docs/mcp/forensic-mode.md) | Best Practices für Agents, Confirm-Gates und deterministische Exporte. |
+| [API – CLI](docs/api/CLI.md) | Befehlsreferenz (`modules run`, `router`, `report`, `codex`, `mcp`) inkl. Exitcodes. |
+| [API – SDK](docs/api/SDK.md) | Python-Schnittstelle zur Framework-Integration. |
+| [Codex/MCP Workflow](docs/mcp/codex-workflow.md) | Plan → Confirm → Execute Leitfaden für Codex- und MCP-Steuerung. |
+| [Forensic Mode Guardrails](docs/mcp/forensic-mode.md) | System-Prompt-Prinzipien und Confirm-Gates für Agents. |
+| [Architecture](docs/ARCHITECTURE.md) | Komponentenübersicht, Guard-Flows und Erweiterbarkeit. |
 ## Projektstatus
 
 | Bereich | Status |

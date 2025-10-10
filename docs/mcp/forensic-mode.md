@@ -43,6 +43,13 @@ Du agierst im Forensic Mode. Führe zuerst einen Dry-Run durch, fasse geplante S
 Plane eine Timeline-Analyse für den Fall `net_timeline`. Beginne mit einem Dry-Run, liste betroffene Artefakte auf und bestätige, dass alle Pfade innerhalb des Workspaces bleiben.
 ```
 
+**Plan → Confirm → Execute:**
+```
+1. Plane `forensic-cli modules run timeline --dry-run ...` und gib Logpfade + Artefaktvorschau zurück.
+2. Warte auf "Confirm" mit Ticket-ID. Ohne Freigabe keine Live-Ausführung.
+3. Führe erst danach `forensic-cli modules run timeline ...` ohne `--dry-run` aus und protokolliere Ergebnisse.
+```
+
 ## Confirm-Gates & Exportregeln
 
 - Jede automatisierte Ausführung verlangt eine dokumentierte Freigabe (Prompt-Reply, CLI-Flag oder Ticket-ID).

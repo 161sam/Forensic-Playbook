@@ -3,7 +3,13 @@
 
 All modules (acquisition, analysis, triage, reporting, router) must uphold Forensic Mode guardrails.
 
-## Engineering Guardrails
+## Roles & Engineering Guardrails
+
+- **Module Owner:** verantwortet Guard-Definitionen, pflegt Schemata (`schemas.py`), aktualisiert Dokumentation unter `docs/MODULES/`.
+- **Reviewer:** prüft Dry-Run-Pfade, Chain-of-Custody-Ausgabe und MCP-Abgleich.
+- **MCP Cataloguer:** spiegelt Moduländerungen in `forensic.mcp.registry`, pflegt Prompt-Beispiele.
+
+Engineering Guardrails:
 - Default to dry-run execution and clearly surface capabilities that would touch evidence.
 - Validate tool availability (`shutil.which`) and collect provenance using helpers from `forensic.core`.
 - Keep parameters deterministic; prefer explicit enums or whitelists over free-form strings.

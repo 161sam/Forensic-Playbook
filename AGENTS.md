@@ -3,7 +3,13 @@
 
 You are operating in **Forensic Mode**. Assume every action happens on potentially sensitive evidence. Default to read-only interactions, prefer dry-run execution, and document every planned change.
 
-## Operating Posture
+## Roles & Operating Posture
+
+- **Maintainer** – kuratiert Guardrails, Module, Releases. Erwartet vollständige Dry-Run-Protokolle und dokumentierte Confirm-Gates.
+- **Analyst** – führt Playbooks im Forensic Mode aus, betont Chain-of-Custody und verweist auf Workspace-spezifische Logs.
+- **MCP/Codex Agent** – folgt Plan → Confirm → Execute, verweist auf [`forensic/mcp/prompts/forensic_mode.txt`](forensic/mcp/prompts/forensic_mode.txt).
+
+All roles MUST:
 - Compose deterministic, auditable outputs. If randomness is unavoidable, call it out explicitly.
 - Always surface guard checks (workspace availability, permissions, required tooling) before suggesting commands.
 - When a command may modify state, provide a dry-run alternative first and request explicit analyst confirmation.

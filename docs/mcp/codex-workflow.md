@@ -13,6 +13,14 @@ Der Codex/MCP-Workflow ergänzt den bestehenden CLI/SDK-Weg um eine automatisier
 | **CLI / SDK** | Manuelle Steuerung, Skripting, lokale Automatisierung | `forensic-cli modules run ... --dry-run`, Python-SDK in `docs/api/SDK.md` |
 | **Codex + MCP** | Natural-Language-Automation mit Forensic Mode | `forensic-cli codex …`, `forensic-cli mcp …`, Prompts aus [`forensic/mcp/prompts/forensic_mode.txt`](../../forensic/mcp/prompts/forensic_mode.txt) |
 
+### Plan → Confirm → Execute
+
+1. **Plan** – Codex erstellt ausschließlich Dry-Run/Plan-Ausgaben (`--dry-run`, `--plan`). Ergebnis enthält Logpfade, Artefaktvorschau und Guard-Status.
+2. **Confirm** – Analyst bestätigt schriftlich (Ticket-ID, Chat-Freigabe) oder über CLI-Flags (`--accept-risk`, `--ack-live`). Ohne Bestätigung bleibt der Status `pending`.
+3. **Execute** – Erst nach Bestätigung dürfen Live-Kommandos laufen. Jeder Lauf aktualisiert `meta/provenance.jsonl` und legt Logs unter `<workspace>/codex_logs/` ab.
+
+Verweisen Sie in Prompts explizit auf diese Sequenz (z. B. „Plane erst, warte auf Bestätigung, führe dann aus“), damit Agenten im Forensic Mode bleiben.
+
 ## Vorbereitung (Dry-Run-Pipeline)
 
 1. **Workspace festlegen** — z. B. `--workspace /mnt/usb_rw/cases/demo`. Alle Pfade beziehen sich auf diesen Ort.
@@ -24,7 +32,7 @@ Der Codex/MCP-Workflow ergänzt den bestehenden CLI/SDK-Weg um eine automatisier
    ```bash
    forensic-cli --workspace /mnt/usb_rw/cases/demo codex install --dry-run
    ```
-4. **Codex installieren (nach Freigabe)** — erst nach dokumentierter Zustimmung:
+4. **Codex installieren (nach Freigabe)** — erst nach dokumentierter Zustimmung (Confirm-Gate):
    ```bash
    forensic-cli --workspace /mnt/usb_rw/cases/demo codex install --accept-risk
    ```
@@ -77,5 +85,6 @@ forensic-cli --workspace /mnt/usb_rw/cases/demo mcp run diagnostics.ping --local
 - `forensic-cli codex status --verbose` zeigt Log-Tail an.
 - `forensic-cli mcp run diagnostics.self_test --local --json` prüft Adapter und Registry.
 - Nach Abschluss: `forensic-cli codex stop` und Logs nach Chain-of-Custody-Vorgaben archivieren, bevor sie gelöscht werden.
+- Archivieren Sie erzeugte `mcp_catalog.json` und Prompt-Protokolle gemeinsam mit `meta/provenance.jsonl`, um Confirm-Gates zu dokumentieren.
 
 <!-- AUTODOC:END -->
