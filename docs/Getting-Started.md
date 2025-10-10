@@ -1,3 +1,4 @@
+<!-- AUTODOC:BEGIN -->
 # Getting Started with Forensic-Playbook v2.0
 
 **Quick Start Guide for Forensic Investigators**
@@ -548,3 +549,4 @@ forensic-cli router summarize --in ~/cases/router_demo/extract --out ~/cases/rou
 ---
 
 **Happy Investigating! 🔍**
+<!-- AUTODOC:END -->

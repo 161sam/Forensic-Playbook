@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import sys
+import re
 from pathlib import Path
 from typing import Iterable, List
 
@@ -107,6 +108,37 @@ def _check_repo_tool_shims() -> List[str]:
     return issues
 
 
+
+
+LINK_PATTERN = re.compile(r'\[([^\]]+)\]\(([^\)]+)\)')
+
+
+def _check_doc_links() -> List[str]:
+    docs_root = REPO_ROOT / "docs"
+    if not docs_root.exists():
+        return []
+    warnings: List[str] = []
+    for md_path in docs_root.rglob("*.md"):
+        try:
+            content = md_path.read_text(encoding="utf-8")
+        except OSError:
+            warnings.append(f"{md_path.relative_to(REPO_ROOT)} (unreadable)")
+            continue
+        for match in LINK_PATTERN.finditer(content):
+            target = match.group(2).strip()
+            if not target or target.startswith(("http://", "https://", "mailto:", "#")):
+                continue
+            if target.startswith(("tel:", "javascript:", "data:")):
+                continue
+            base = target.split('#', 1)[0]
+            if not base:
+                continue
+            candidate = (md_path.parent / base).resolve()
+            if not candidate.exists():
+                warnings.append(f"{md_path.relative_to(REPO_ROOT)} -> {target}")
+    return sorted(set(warnings))
+
+
 def _report_missing(title: str, items: List[str]) -> None:
     print(f"- {title}")
     for item in items:
@@ -131,9 +163,19 @@ def main() -> int:
             has_missing = True
             _report_missing(title, items)
 
+    link_warnings = _check_doc_links()
+    if link_warnings:
+        print("- Documentation link warnings (soft-fail)")
+        for item in link_warnings:
+            print(f"  • {item}")
+
     if has_missing:
         print("\nLayout validation failed. See missing items above.")
         return 1
+
+    if link_warnings:
+        print("\nLayout validation completed with warnings.")
+        return 0
 
     print("All required layout elements are present.")
     return 0

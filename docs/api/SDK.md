@@ -1,98 +1,131 @@
-# Forensic SDK Quickstart (Forensic Mode)
+<!-- AUTODOC:BEGIN -->
+---
+title: "Python SDK Reference"
+description: "Programmatic usage patterns for the Forensic-Playbook Python SDK."
+---
 
-The Python SDK mirrors the guarded behaviour of `forensic-cli`. All examples respect Forensic Mode guardrails: prefer dry-runs, record provenance, and keep outputs deterministic.
+# Überblick
 
-## Initialization
+Das Python-SDK stellt dieselben Guarded-Funktionen wie die CLI bereit. Kernstück ist `ForensicFramework` aus `forensic.core.framework`,
+welches Fälle verwaltet, Module registriert und Provenienz schreibt. Alle Beispiele nutzen Dry-Run-Strategien und arbeiten innerhalb
+eines dedizierten Workspace-Verzeichnisses.
+
+## Grundlegendes Setup
+
 ```python
 from pathlib import Path
-from forensic import ForensicFramework
+from forensic.core.framework import ForensicFramework
+from forensic.modules.triage.quick_triage import QuickTriageModule
 
-workspace = Path("./forensic_workspace_demo")
+workspace = Path("~/cases").expanduser()
 framework = ForensicFramework(workspace=workspace)
+framework.register_module("quick_triage", QuickTriageModule)
+case = framework.ensure_case("sdk_demo", description="SDK quickstart", investigator="Analyst")
 ```
-- The workspace is created automatically (read/write within the demo path).
-- Logs live under `workspace / "logs"` and the case database under `workspace / "cases.db"`.
 
-## Create or Load a Case
+- `ensure_case` lädt einen bestehenden Fall oder legt ihn deterministisch an.
+- Beim Konstruktor erstellt das Framework automatisch `workspace/logs/` und `meta/provenance.jsonl`.
+
+## Dry-Run eines Moduls
+
 ```python
-case = framework.create_case(
-    name="Demo Incident",
-    description="Guarded SDK quickstart",
-    investigator="Analyst Alice",
+plan = framework.execute_module(
+    "quick_triage",
+    params={"profile": "minimal"},
+    dry_run=True,
 )
-# Subsequent runs can reuse the case via framework.load_case(case.case_id)
+print(plan)
 ```
-Every case creation is logged to the chain-of-custody database.
 
-## Register and Execute Modules
-Built-in modules are already registered when using the CLI, but the SDK allows custom modules:
+- `dry_run=True` verhindert Dateischreibungen und liefert eine Plan-Map (geplante Pfade, benötigte Tools).
+- Guard-Fehler lösen `ModuleGuardError` aus und enthalten Hinweise auf fehlende Abhängigkeiten.
+
+## Reguläre Ausführung
+
 ```python
-from forensic.core.module import ForensicModule, ModuleResult
-
-class HelloModule(ForensicModule):
-    def run(self, evidence, params):
-        return ModuleResult(
-            result_id="hello-0001",
-            module_name="hello",
-            status="success",
-            timestamp=self._timestamp(),
-            findings=[{"message": "Hello from Forensic Mode"}],
-            metadata={"dry_run": bool(params.get("dry_run", False))},
-        )
-
-framework.register_module("hello", HelloModule)
-framework.load_case(case.case_id)
-result = framework.execute_module("hello", params={"dry_run": True})
+result = framework.execute_module(
+    "quick_triage",
+    params={"profile": "extended"},
+    dry_run=False,
+)
+print(result.status)
+print(result.metadata["output_directory"])
 ```
-- Always load the target case before execution.
-- Include dry-run metadata so downstream tooling can report it.
 
-## Generate Reports Programmatically
+- Rückgabewerte sind `ModuleResult`-Instanzen (Status, Artefakte, Fehlerliste).
+- Alle Artefakte erhalten Hashes, die im Chain-of-Custody-Stream (`case/meta/chain_of_custody.jsonl`) aufgezeichnet werden.
+
+## Parameterauflösung
+
 ```python
-from forensic.modules.reporting.generator import ReportGenerator
-
-framework.load_case(case.case_id)
-reporter = ReportGenerator(case_dir=case.case_dir, config=framework.config)
-report_result = reporter.run(None, {"format": "html", "dry_run": True})
+resolved = framework.resolve_module_parameters(
+    "filesystem_analysis",
+    overrides={"image": "evidence/disk01.E01"},
+)
+print(resolved.source)
+print(resolved.params)
 ```
-- Dry-run mode plans file outputs without writing them. Inspect `report_result.metadata["planned_output"]` for the intended path.
 
-## MCP Client Shortcuts
-The SDK exposes a guarded MCP client for integrating with Codex:
+- CLI-Logik (`CLI > YAML > Defaults`) ist wiederverwendbar. `resolved.source` enthält die Herkunft jedes Parameters.
+
+## Reports via SDK
+
 ```python
-from forensic import MCPClient, MCPConfig, build_mcp_tool_payload, run_mcp_tool
+report = framework.generate_report(
+    case_id="sdk_demo",
+    fmt="html",
+    output_path=workspace / "cases" / "sdk_demo" / "reports" / "sdk_demo.html",
+    dry_run=True,
+)
+print(report["planned_output"])
+```
 
-config = MCPConfig(endpoint="http://127.0.0.1:5000/", timeout=5.0)
-client = MCPClient(config)
+- `dry_run=True` verifiziert Templates ohne Dateien zu schreiben.
+- Nach Freigabe (`dry_run=False`) werden Artefakte und Hashes im Case-Verzeichnis abgelegt.
+
+## Router-Workflows programmatisch
+
+Die Router-Suite wird derzeit primär über die CLI angesprochen. Für automatisierte Abläufe bietet sich ein kontrollierter
+`subprocess.run`-Aufruf an, der wie jedes andere Modul zuerst einen Dry-Run durchführt:
+
+```python
+import subprocess
+subprocess.run(
+    [
+        "forensic-cli",
+        "router",
+        "capture",
+        "plan",
+        "--root", str(workspace / "router_demo"),
+        "--if", "eth1",
+        "--bpf", "not port 22",
+        "--duration", "180",
+        "--dry-run",
+    ],
+    check=True,
+)
+```
+
+- Der Plan wird als JSON unter `<root>/manifests/capture_plan.json` abgelegt und kann anschliessend im SDK weiterverarbeitet werden.
+- Entfernen Sie `--dry-run` nur nach schriftlicher Freigabe und setzen Sie zusätzlich `--enable-live`.
+
+## MCP-Integration
+
+```python
+from forensic.mcp.client import MCPClient
+client = MCPClient.from_config(workspace)
 status = client.status()
-print(status.to_dict())
-client.close()
-
-# Local execution without HTTP
-framework.load_case(case.case_id)
-local_result = run_mcp_tool(framework, "diagnostics.ping", {})
-print(local_result.to_dict())
+print(status)
 ```
-- Use `build_mcp_tool_payload(framework)` to fetch the current tool catalogue (mirrors `forensic-cli mcp expose`).
-- Prefer local execution during testing; remote execution should target a guarded MCP server started via `forensic-cli codex start --dry-run` first.
 
-## Codex Helpers
-Codex automation is available via high-level helpers:
-```python
-from forensic import install_codex_environment, start_codex_server, stop_codex_server, get_codex_status
-from forensic.ops.codex import resolve_paths
+- `MCPClient` kapselt HTTP- und Local-Adapter-Aufrufe.
+- Verwenden Sie `client.run_tool("diagnostics.ping", local=True)` für Tests ohne Netzwerkzugriff.
 
-paths = resolve_paths()
-install_codex_environment(paths, dry_run=True)
-start_codex_server(paths, dry_run=True)
-status = get_codex_status(paths)
-print(status.to_status_payload("sdk.status"))
-stop_codex_server(paths, dry_run=True)
-```
-- Always begin with `dry_run=True` to verify planned actions and log locations under `<workspace>/codex_logs/`.
+## Best Practices
 
-## Next Steps
-- Consult `docs/Getting-Started.md` for end-to-end workflows covering CLI and MCP interactions.
-- Use `tests/` as references for writing deterministic unit tests with mocks/fixtures.
+- **Logs sammeln:** Jeder SDK-Aufruf schreibt nach `workspace/logs/forensic_<timestamp>.log`.
+- **Dry-Run dokumentieren:** Bewahren Sie geplante Ergebnisse gemeinsam mit finalen Artefakten auf.
+- **Konfiguration versionieren:** Änderungen in `config/framework.yaml` oder `config/modules/*.yaml` sollten in Git dokumentiert werden.
+- **Fehlerbehandlung:** Fang `ModuleGuardError` und `ModuleExecutionError`, um Benutzerfreundliche Meldungen an UIs zurückzugeben.
 
-Stay within Forensic Mode guardrails: log provenance, highlight dry-run vs execution, and decline unsafe requests.
+<!-- AUTODOC:END -->
