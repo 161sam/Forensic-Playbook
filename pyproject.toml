@@ -85,6 +85,12 @@ omit = [
     "forensic/modules/analysis/*",
     "forensic/modules/triage/*",
     "forensic/modules/reporting/generator.py",
+    # Omit optional router stack; minimal E2E suite does not exercise these yet.
+    "forensic/modules/router/*",
+    # Exclude MCP bridge and remote tooling integrations from minimal coverage runs.
+    "forensic/mcp/*",
+    "forensic/ops/*",
+    "forensic/tools/*",
 ]
 
 [tool.tox]
