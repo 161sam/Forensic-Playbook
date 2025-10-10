@@ -9,6 +9,13 @@ from typing import Any, Callable, Dict, List, Optional
 
 from ..core.framework import ForensicFramework
 from ..modules.reporting.generator import ReportGenerator
+from ..modules.router import capture as router_capture
+from ..modules.router import env as router_env
+from ..modules.router import extract as router_extract
+from ..modules.router import manifest as router_manifest
+from ..modules.router import pipeline as router_pipeline
+from ..modules.router import summarize as router_summarize
+from ..modules.router.common import RouterResult
 
 from .schemas import MCPToolArgument, MCPToolDescriptor
 
@@ -142,6 +149,32 @@ def _module_status_to_result(status: str) -> str:
     if normalized in {"partial", "skipped"}:
         return "warning"
     return "error"
+
+
+def _router_status_to_result(status: str) -> str:
+    normalized = status.lower()
+    if normalized in {"success", "completed", "ok"}:
+        return "success"
+    if normalized in {"partial", "skipped", "warning"}:
+        return "warning"
+    return "error"
+
+
+def _router_result_to_tool_result(
+    action: str, result: RouterResult
+) -> ToolExecutionResult:
+    data: Dict[str, Any] = {"timestamp": result.timestamp, "details": list(result.details)}
+    if result.data:
+        data["payload"] = dict(result.data)
+    if result.artifacts:
+        data["artifacts"] = [dict(item) for item in result.artifacts]
+
+    return ToolExecutionResult(
+        status=_router_status_to_result(result.status),
+        message=result.message or action,
+        data=data,
+        errors=list(result.errors),
+    )
 
 
 def _diagnostics_handler(
@@ -324,6 +357,84 @@ def _reports_generate_handler(
     )
 
 
+def _router_env_init_handler(
+    framework: ForensicFramework, arguments: Dict[str, Any]
+) -> ToolExecutionResult:
+    params = dict(arguments)
+    params.setdefault("root", str(framework.workspace / "router"))
+    result = router_env.init_environment(params)
+    return _router_result_to_tool_result("Router environment initialisation", result)
+
+
+def _router_capture_setup_handler(
+    framework: ForensicFramework, arguments: Dict[str, Any]
+) -> ToolExecutionResult:
+    params = dict(arguments)
+    base = framework.workspace / "router"
+    params.setdefault("pcap_dir", str(base / "capture"))
+    params.setdefault("meta_dir", str(base / "capture" / "meta"))
+    result = router_capture.setup(params)
+    return _router_result_to_tool_result("Router capture setup", result)
+
+
+def _router_capture_start_handler(
+    framework: ForensicFramework, arguments: Dict[str, Any]
+) -> ToolExecutionResult:
+    params = dict(arguments)
+    base = framework.workspace / "router"
+    params.setdefault("pcap_dir", str(base / "capture"))
+    params.setdefault("meta_dir", str(base / "capture" / "meta"))
+    result = router_capture.start(params)
+    return _router_result_to_tool_result("Router capture start", result)
+
+
+def _router_capture_stop_handler(
+    framework: ForensicFramework, arguments: Dict[str, Any]
+) -> ToolExecutionResult:
+    params = dict(arguments)
+    result = router_capture.stop(params)
+    return _router_result_to_tool_result("Router capture stop", result)
+
+
+def _router_extract_handler(
+    framework: ForensicFramework, arguments: Dict[str, Any]
+) -> ToolExecutionResult:
+    params = dict(arguments)
+    kind = params.pop("kind", None)
+    if not kind:
+        return ToolExecutionResult(
+            status="error",
+            message="Missing router extract kind",
+            errors=["Argument 'kind' is required"],
+        )
+    result = router_extract.extract(str(kind), params)
+    return _router_result_to_tool_result(f"Router extract {kind}", result)
+
+
+def _router_manifest_write_handler(
+    framework: ForensicFramework, arguments: Dict[str, Any]
+) -> ToolExecutionResult:
+    params = dict(arguments)
+    result = router_manifest.write_manifest(params)
+    return _router_result_to_tool_result("Router manifest write", result)
+
+
+def _router_pipeline_run_handler(
+    framework: ForensicFramework, arguments: Dict[str, Any]
+) -> ToolExecutionResult:
+    params = dict(arguments)
+    result = router_pipeline.run_pipeline(params)
+    return _router_result_to_tool_result("Router pipeline run", result)
+
+
+def _router_summarize_handler(
+    framework: ForensicFramework, arguments: Dict[str, Any]
+) -> ToolExecutionResult:
+    params = dict(arguments)
+    result = router_summarize.summarize(params)
+    return _router_result_to_tool_result("Router summarize", result)
+
+
 def get_tool_catalog(framework: ForensicFramework) -> List[MCPTool]:
     """Return the list of available MCP tools."""
 
@@ -388,6 +499,103 @@ def get_tool_catalog(framework: ForensicFramework) -> List[MCPTool]:
                 ToolArgument("dry_run", "If true, only plan the report"),
             ],
             returns="Report generation metadata",
+        ),
+        MCPTool(
+            name="router.env.init",
+            description="Initialise the guarded router workspace layout",
+            handler=_router_env_init_handler,
+            arguments=[
+                ToolArgument(
+                    "root",
+                    "Router workspace root (defaults to <workspace>/router)",
+                    required=False,
+                ),
+                ToolArgument("dry_run", "Preview actions without modifying files"),
+                ToolArgument("legacy", "Invoke legacy prepare_env.sh wrapper"),
+            ],
+        ),
+        MCPTool(
+            name="router.capture.setup",
+            description="Prepare directories required for passive router capture",
+            handler=_router_capture_setup_handler,
+            arguments=[
+                ToolArgument("pcap_dir", "Directory for capture PCAP files"),
+                ToolArgument("meta_dir", "Directory for capture metadata"),
+                ToolArgument("dry_run", "Preview without creating directories"),
+                ToolArgument("legacy", "Invoke legacy tcpdump_setup.sh"),
+            ],
+        ),
+        MCPTool(
+            name="router.capture.start",
+            description="Start a guarded router capture (disabled unless enable_live_capture is true)",
+            handler=_router_capture_start_handler,
+            arguments=[
+                ToolArgument("interface", "Network interface to monitor"),
+                ToolArgument("duration", "Capture duration in seconds"),
+                ToolArgument("bpf", "Optional BPF filter"),
+                ToolArgument("pcap_dir", "Directory for capture PCAP files"),
+                ToolArgument("meta_dir", "Directory for capture metadata"),
+                ToolArgument("tool", "Capture binary to use (default tcpdump)"),
+                ToolArgument(
+                    "enable_live_capture",
+                    "Must be true to perform a real capture; otherwise guard message",
+                ),
+                ToolArgument("dry_run", "Preview capture command only"),
+                ToolArgument("legacy", "Invoke legacy tcpdump_passive_capture.sh"),
+            ],
+        ),
+        MCPTool(
+            name="router.capture.stop",
+            description="Provide guarded guidance for stopping router captures",
+            handler=_router_capture_stop_handler,
+            arguments=[
+                ToolArgument("dry_run", "Show stop guidance without terminating processes"),
+                ToolArgument("legacy", "Invoke legacy tcpdump_passive_stop.sh"),
+            ],
+        ),
+        MCPTool(
+            name="router.extract",
+            description="Extract router artefacts of a specific kind",
+            handler=_router_extract_handler,
+            arguments=[
+                ToolArgument("kind", "Extraction kind (ui, ddns, devices, ...)", required=True),
+                ToolArgument("input", "Source directory containing raw router data", required=True),
+                ToolArgument("out", "Destination directory for extracted artefacts"),
+                ToolArgument("dry_run", "Preview extraction without writing output"),
+                ToolArgument("legacy", "Invoke matching legacy extraction script"),
+            ],
+        ),
+        MCPTool(
+            name="router.manifest.write",
+            description="Generate a deterministic manifest for router artefacts",
+            handler=_router_manifest_write_handler,
+            arguments=[
+                ToolArgument("out", "Manifest file to create", required=True),
+                ToolArgument("source", "Source directory to catalogue"),
+                ToolArgument("dry_run", "Preview manifest generation"),
+                ToolArgument("legacy", "Invoke legacy manifest script"),
+            ],
+        ),
+        MCPTool(
+            name="router.pipeline.run",
+            description="Execute the router forensic pipeline (dry-run by default)",
+            handler=_router_pipeline_run_handler,
+            arguments=[
+                ToolArgument("plan", "Optional YAML pipeline description"),
+                ToolArgument("dry_run", "Preview pipeline steps without executing"),
+                ToolArgument("legacy", "Invoke legacy run_forensic_pipeline.sh"),
+            ],
+        ),
+        MCPTool(
+            name="router.summarize",
+            description="Summarise router analysis findings",
+            handler=_router_summarize_handler,
+            arguments=[
+                ToolArgument("in", "Directory containing analysis artefacts", required=True),
+                ToolArgument("out", "Summary file to generate", required=True),
+                ToolArgument("dry_run", "Preview summary generation"),
+                ToolArgument("legacy", "Invoke legacy summarize_report.sh"),
+            ],
         ),
     ]
 
