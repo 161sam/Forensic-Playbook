@@ -3,7 +3,13 @@
 
 These wrappers provide Python interfaces over external forensic binaries (Sleuthkit, Volatility, etc.).
 
-## Guardrails
+## Roles & Guardrails
+
+- **Wrapper Maintainer:** erstellt/aktualisiert Wrapper in `forensic.tools.*`, synchronisiert Doku und Tests.
+- **Module Consumer:** nutzt Wrapper aus Modulen/MCP und meldet fehlende Guard-Informationen.
+- **Diagnostics Owner:** erweitert `forensic-cli diagnostics` um neue Tool-Prüfungen.
+
+Guardrails:
 - Before calling external tools, verify availability and capture command lines for provenance.
 - Ensure wrappers operate in read-only mode unless an explicit, well-documented flag enables modification.
 - Return structured objects/dicts rather than raw stdout. Convert paths to `Path` objects.

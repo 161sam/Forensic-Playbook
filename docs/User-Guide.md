@@ -6,259 +6,243 @@ description: "Operational handbook for analysts using the Forensic-Playbook fram
 
 # Überblick
 
-Der **Forensic-Playbook User Guide** richtet sich an Incident-Responder, Threat-Hunter und Digitale-Forensik-Analysten, die mit dem Framework deterministische Untersuchungen durchführen möchten. Die Anleitung folgt dem Forensic-Mode-Grundsatz: **dry-run zuerst, Guard-Checks respektieren, Chain of Custody lückenlos dokumentieren**.
+Der **User Guide** vermittelt Incident-Respondern und Forensik-Analystinnen einen durchgehenden Workflow vom Setup bis zur MCP-Automatisierung. Alle Beispiele folgen den Forensic-Mode-Prinzipien: **Dry-Run zuerst**, Guard-Prüfungen respektieren, Provenienz sichern.
 
-## Zielgruppe & Voraussetzungen
-
-| Rolle | Erwartete Kenntnisse |
-| --- | --- |
-| Ersthelfer / Triage-Team | Grundlegende CLI-Kenntnisse, Verständnis von Beweisquellen |
-| Forensik-Analyst | Erfahrung mit Linux (Kali/Ubuntu), Vertrautheit mit Hashing & Logging |
-| Berichtsteam | Kenntnis des Chain-of-Custody-Prozesses, Markdown/HTML |
-
-**Technische Voraussetzungen**
-
-- Linux: Kali 2024.x, Ubuntu 22.04 LTS oder Debian 12 (getestet)
-- Python ≥ 3.10 (System oder dedizierte VM)
-- Optional: wkhtmltopdf, yara, volatility3, tcpdump/dumpcap – Module melden fehlende Tools mit Guard-Warnungen
-
-## Installation & Erstkonfiguration
+## Installation & Setup
 
 ```bash
-# Systempakete aktualisieren (Kali/Ubuntu)
-sudo apt update
-sudo apt install -y git python3 python3-venv python3-pip sleuthkit yara
-
-# Repository klonen
-git clone https://github.com/161sam/Forensic-Playbook.git
-cd Forensic-Playbook
-
-# Virtuelle Umgebung anlegen
+# Repository klonen und virtuelle Umgebung anlegen
 python3 -m venv .venv
 source .venv/bin/activate
-
-# Framework installiert die CLI im Editiermodus
 pip install -e .
 
-# Diagnose ausführen (dry-run standardmäßig aktiviert)
-forensic-cli diagnostics --summary
+# Optionale Extras (bei Bedarf)
+pip install "forensic-playbook[pcap]"      # Netzwerk-Parsing
+pip install "forensic-playbook[report_pdf]" # PDF-Export
+
+# Diagnose im Dry-Run (prüft Guard-Status)
+forensic-cli diagnostics --summary --dry-run
 ```
 
-> **Hinweis:** Alle Module prüfen vor Ausführung ihre Abhängigkeiten. Fehlende Tools führen zu einer Guard-Warnung statt eines Abbruchs. Die vollständigen Logs finden Sie unter `<workspace>/logs/` sowie im Provenienz-Journal `meta/provenance.jsonl`.
+- Unterstützte Plattformen: Kali 2024.x, Ubuntu 22.04 LTS, Debian 12 (Python ≥ 3.10).
+- Alle Module schreiben Logs unter `<workspace>/logs/` und Provenienz nach `cases/<case>/meta/`.
 
-### Konfigurations-Präzedenz
+### Konfigurations-Priorität
 
-Die Konfiguration folgt strikt der Reihenfolge **CLI > YAML > Defaults**. Dies gilt für Framework-Einstellungen sowie für Module.
+Die Auflösung der Parameter ist strikt determiniert:
+
+1. **CLI-Flags** (`--param key=value`, `--workspace`, `--dry-run`).
+2. **Case-spezifische YAMLs** (`cases/<id>/config/**/*.yaml`).
+3. **Globale Defaults** (`config/framework.yaml`, `config/modules/*.yaml`).
 
 ```bash
-# 1. Built-in Defaults
-#    (forensic/core/config.py, Module-Basisklassen)
-
-# 2. YAML-Konfiguration
-#    config/framework.yaml
-#    config/modules/<module>.yaml
-
-# 3. CLI-Parameter
-forensic-cli modules run network_capture   --workspace ~/cases/demo   --case demo_case   --param interface=eth0   --param duration=120
+forensic-cli --workspace ~/cases modules run network \
+    --case demo_case \
+    --param pcap_json=cases/demo_case/input/flows.json \
+    --dry-run
 ```
 
-> Die aufgelösten Parameter werden im Fallverzeichnis `cases/<id>/meta/resolved_config.yaml` und in `meta/provenance.jsonl` protokolliert. Damit bleibt nachvollziehbar, welche Quelle den Wert geliefert hat.
+Der endgültige Parameter-Satz wird in `meta/provenance.jsonl` dokumentiert.
 
 ### Guards & Dry-Run
 
-Alle **Guarded Modules** erzwingen Vorabprüfungen:
-
-- **Tool-Checks:** `forensic-cli diagnostics` meldet fehlende Binärdateien oder Python-Extras.
-- **Privilege-Checks:** Module mit Live-Zugriff verlangen Root-Rechte *und* optionale Flags wie `--enable-live-capture`.
-- **Dry-Run-First:** Ohne `--dry-run` verweigern sensible Module die Ausführung. Im Dry-Run werden Befehle, Zielpfade und Log-Orte simuliert.
+Guarded Module prüfen vor der Ausführung Tooling, Privilegien und Pfadgrenzen. Typische Guard-Fehler resultieren in `status="skipped"` statt Exceptions.
 
 ```bash
-# Guard-Checks einsehen
-forensic-cli diagnostics --modules acquisition.analysis
+# Guard-Check für ein Modul
+forensic-cli diagnostics --modules acquisition.disk_imaging --dry-run
 
-# Dry-Run einer Akquisition
-forensic-cli modules run disk_imaging   --case demo_case   --param source=/dev/sdz   --param out=/evidence/disk.img   --dry-run
+# Dry-Run zeigt geplante Schritte und Zielpfade
+forensic-cli modules run disk_imaging \
+    --case demo_case \
+    --param source=/dev/nvme0n1 \
+    --param out=cases/demo_case/acquisition/disk01.E01 \
+    --dry-run
 ```
 
 ## Standard-Workflows
 
-### 1. Fall (Case) anlegen und Evidence registrieren
+### 1. Disk Acquisition
 
 ```bash
-# Workspace vorbereiten (read-only Planung)
-forensic-cli --workspace ~/cases demo plan --dry-run
+# Workspace vorbereiten
+forensic-cli --workspace ~/cases case create \
+    --name demo_case \
+    --description "Workstation DFIR Walkthrough"
 
-# Fall erstellen
-forensic-cli --workspace ~/cases case create   --name "demo_case"   --description "Incident 2025-05"   --investigator "Analyst"   --timezone "UTC"
+# Dry-Run planen (keine Schreibzugriffe)
+forensic-cli --workspace ~/cases modules run disk_imaging \
+    --case demo_case \
+    --param source=/dev/nvme0n1 \
+    --param out=cases/demo_case/acquisition/disk01.E01 \
+    --dry-run
 
-# Beweise hinzufügen
-forensic-cli --workspace ~/cases evidence add   --case demo_case --path /mnt/images/disk01.E01 --type disk
-forensic-cli --workspace ~/cases evidence add   --case demo_case --path /mnt/memory/host01.avml --type memory
-```
-
-- Artefakte werden unter `cases/<case>/evidence/` verlinkt.
-- Hashes + Metadaten landen in `cases/<case>/meta/chain_of_custody.jsonl`.
-
-### 2. Diagnostics & Guard-Status überprüfen
-
-```bash
-# Überblick über Module, Guards, fehlende Tools
-a. forensic-cli diagnostics --summary
-b. forensic-cli diagnostics --modules acquisition --format table
-```
-
-> **Interpretation:** `Guard=hard` bedeutet, dass ohne Root/Flag keine Ausführung erfolgt. Optional installierbare Extras (`pcap`, `report_pdf`, `yara`) werden in der Spalte `Extras` angezeigt.
-
-### 3. Evidence Acquisition
-
-#### Dry-Run (Pflicht in sensiblen Umgebungen)
-
-```bash
-# Disk-Imaging simulieren
-forensic-cli modules run disk_imaging   --case demo_case   --param source=/dev/nvme0n1   --param out=cases/demo_case/acquisition/disk01.E01   --dry-run
-```
-
-#### Gesicherte Ausführung
-
-```bash
-# Live-Ausführung (nach Freigabe)
-sudo forensic-cli modules run disk_imaging   --case demo_case   --param source=/dev/nvme0n1   --param out=cases/demo_case/acquisition/disk01.E01   --param hash=sha256   --enable-live-capture
+# Nach Freigabe (Root + Flag erforderlich)
+sudo forensic-cli --workspace ~/cases modules run disk_imaging \
+    --case demo_case \
+    --param source=/dev/nvme0n1 \
+    --param out=cases/demo_case/acquisition/disk01.E01 \
+    --param hash=sha256 \
+    --enable-live-capture
 ```
 
 - Logs: `cases/demo_case/logs/modules/disk_imaging-*.log`
-- Provenienz: `cases/demo_case/meta/provenance.jsonl`
-- Hashes: `cases/demo_case/acquisition/hashes.json`
+- Hashliste: `cases/demo_case/acquisition/hashes.json`
+- Chain-of-Custody: `cases/demo_case/meta/chain_of_custody.jsonl`
 
-### 4. Netzwerk- & Timeline-Analyse
-
-Der Netzwerkpfad nutzt synthetische PCAP-Fixtures. Falls keine Live-Capture-Daten verfügbar sind, erzeugt die CLI JSON-Fallbacks.
+### 2. Network → Timeline Analyse (JSON-Fallback)
 
 ```bash
-# Netzwerkmodul mit Synth-PCAP
-forensic-cli modules run network   --case demo_case   --param source=fixtures/pcap/minimal.pcap   --dry-run
+# Synth-Flows bereitstellen (keine Binär-Fixtures)
+mkdir -p ~/cases/demo_case/input
+cat <<'JSON' > ~/cases/demo_case/input/flows.json
+{
+  "flows": [
+    {
+      "src": "10.0.0.5", "dst": "10.0.0.2",
+      "src_port": 12345, "dst_port": 8080,
+      "protocol": "TCP", "packets": 10, "bytes": 5120,
+      "start_ts": "2024-01-02T00:00:05Z", "end_ts": "2024-01-02T00:00:10Z"
+    }
+  ],
+  "dns": [
+    {"timestamp": "2024-01-02T00:00:00Z", "query": "example.org", "query_type": 1}
+  ],
+  "http": [
+    {
+      "timestamp": "2024-01-02T00:00:00Z",
+      "method": "GET", "host": "portal.example.org", "uri": "/status",
+      "user_agent": "Mozilla/5.0", "indicators": {"encoded_uri": false}
+    }
+  ]
+}
+JSON
 
-# Fallback generiert JSON-Zusammenfassung, wenn scapy fehlt
-a. forensic-cli modules run network --case demo_case --param source=fixtures/pcap/minimal.pcap
-b. Artefakte: cases/demo_case/analysis/network/*.json
+# Netzwerkmodul planen und ausführen
+forensic-cli --workspace ~/cases modules run network \
+    --case demo_case \
+    --param pcap_json=cases/demo_case/input/flows.json \
+    --dry-run
+forensic-cli --workspace ~/cases modules run network \
+    --case demo_case \
+    --param pcap_json=cases/demo_case/input/flows.json
 
-# Timeline basierend auf Netzwerkbefunden
-a. forensic-cli modules run timeline        --case demo_case        --param source=cases/demo_case/analysis/network        --param format=csv
-b. Ergebnis: cases/demo_case/analysis/timeline/timeline.csv
+# Timeline auf Basis der Netzwerkbefunde
+forensic-cli --workspace ~/cases modules run timeline \
+    --case demo_case \
+    --param source=cases/demo_case/analysis/network \
+    --param format=csv \
+    --dry-run
+forensic-cli --workspace ~/cases modules run timeline \
+    --case demo_case \
+    --param source=cases/demo_case/analysis/network \
+    --param format=csv
 ```
 
-### 5. Reports erzeugen (HTML & optional PDF)
+Artefakte werden unter `analysis/network/` und `analysis/timeline/` abgelegt. Weitere Details liefert das [Network-Timeline-Tutorial](tutorials/02_network-timeline-walkthrough.md).
+
+### 3. Berichtserstellung
 
 ```bash
-# HTML-Report (Standard)
-forensic-cli report generate   --case demo_case   --fmt html   --out cases/demo_case/reports/demo_case.html
+# HTML als Standard
+forensic-cli --workspace ~/cases report generate \
+    --case demo_case \
+    --fmt html \
+    --out cases/demo_case/reports/demo_case.html \
+    --dry-run
+forensic-cli --workspace ~/cases report generate \
+    --case demo_case \
+    --fmt html \
+    --out cases/demo_case/reports/demo_case.html
 
-# PDF nur, wenn Extras vorhanden sind
-forensic-cli report generate   --case demo_case   --fmt pdf   --out cases/demo_case/reports/demo_case.pdf   --dry-run  # prüft wkhtmltopdf/weasyprint Verfügbarkeit
+# PDF nur bei installiertem Extra (Dry-Run prüft Renderer)
+forensic-cli --workspace ~/cases report generate \
+    --case demo_case \
+    --fmt pdf \
+    --out cases/demo_case/reports/demo_case.pdf \
+    --dry-run
 ```
 
-> **Guard-Hinweis:** Fehlt die PDF-Engine, markiert der Report-Generator die Ausgabe als `skipped` und verweist auf HTML. Alle Exporte werden mit Hashwert und Zeitstempel im Chain-of-Custody-Protokoll ergänzt.
+Hashwerte und Exportpfade landen automatisch im Chain-of-Custody-Protokoll. Für Layoutoptionen siehe [MODULES/reporting.md](MODULES/reporting.md).
 
-## Router-Forensik (CLI-Gruppe `forensic-cli router`)
-
-Die Router-Suite ersetzt Legacy-Shellskripte durch Guarded-Python-Befehle. Jeder Unterbefehl akzeptiert `--dry-run` und respektiert Konfigurationsprofile in `config/modules/router/`.
+### 4. Router-Suite Quickstart
 
 ```bash
-# Umgebung vorbereiten (keine Änderungen ohne Freigabe)
-forensic-cli router env init   --root ~/cases/router_demo   --profile default   --dry-run
+# Umgebung (Dry-Run prüft Pfade)
+forensic-cli router env init \
+    --workspace ~/cases \
+    --case demo_case \
+    --profile default \
+    --dry-run
 
-# Capture-Plan prüfen
-forensic-cli router capture plan   --if eth1   --bpf "not port 22"   --duration 300   --dry-run
+# Extraktion & Manifest (JSON-only Artefakte)
+forensic-cli router extract ui \
+    --workspace ~/cases \
+    --case demo_case \
+    --param source=cases/demo_case/router/raw_ui \
+    --dry-run
+forensic-cli router manifest write \
+    --workspace ~/cases \
+    --case demo_case \
+    --param source=cases/demo_case/router/extract \
+    --dry-run
 
-# Artefakte extrahieren
-forensic-cli router extract ui   --input /mnt/router_dump   --out ~/cases/router_demo/extract   --dry-run
-
-# Manifest schreiben & Hashes prüfen
-forensic-cli router manifest write   --source ~/cases/router_demo/extract   --out ~/cases/router_demo/manifest.json
-
-# Ergebnisse zusammenfassen
-forensic-cli router summarize   --in ~/cases/router_demo/extract   --out ~/cases/router_demo/summary.md
+# Analyse & Pipeline
+forensic-cli router summarize \
+    --workspace ~/cases \
+    --case demo_case \
+    --param source=cases/demo_case/router/extract \
+    --dry-run
+forensic-cli router pipeline run \
+    --workspace ~/cases \
+    --case demo_case \
+    --dry-run
 ```
 
-> **Legacy-Vergleich:** Mit `--legacy` lässt sich die historische Bash-Implementierung anzeigen. Ohne ausdrückliche Freigabe werden keine Live-Captures gestartet.
+Die Router-Module spiegeln Legacy-Skripte, protokollieren Schritte nach `logs/router/` und schreiben JSON-Manifeste. Details stehen in [MODULES/router.md](MODULES/router.md).
 
-**Konfigurationsbeispiel (CLI > YAML > Defaults):**
+## MCP & Codex Kurzstart
 
-1. `config/modules/router/capture.yaml` definiert Standard-BPFs und Zielordner.
-2. Ein casespezifisches Profil (`cases/router_demo/config/router/capture.yaml`) überschreibt diese Werte für den Einzelfall.
-3. Laufzeit-Flags wie `--bpf "not port 22" --duration 300` haben höchste Priorität und werden im Provenienz-Journal vermerkt.
+```bash
+# Installation & Dienste (Dry-Run Pflicht)
+forensic-cli --workspace ~/cases codex install --dry-run
+forensic-cli --workspace ~/cases codex install --accept-risk
+forensic-cli --workspace ~/cases codex start --foreground --dry-run
+forensic-cli --workspace ~/cases codex start --foreground
 
-> **Pfadkontrolle:** Führen Sie `forensic-cli router manifest write --dry-run` aus, um den erwarteten Pfadbaum mit der YAML-Konfiguration zu vergleichen. Das Log (`cases/<case>/logs/router/manifest-*.log`) dokumentiert Abweichungen und konserviert den Chain-of-Custody-Kontext.
+# Status prüfen
+forensic-cli --workspace ~/cases codex status --json
+forensic-cli --workspace ~/cases mcp status --json
 
-## Chain of Custody & Provenienz
+# Werkzeugkatalog & Testlauf
+forensic-cli --workspace ~/cases mcp expose --json \
+    > ~/cases/demo_case/tooling/mcp_catalog.json
+forensic-cli --workspace ~/cases mcp run diagnostics.ping \
+    --local \
+    --json
+```
 
-- Jeder Befehl erzeugt einen Eintrag in `cases/<case>/meta/chain_of_custody.jsonl`.
-- Hashberechnungen werden in `hashes.json` je Modul abgelegt.
-- Der Provenienz-Stream `meta/provenance.jsonl` enthält Quelle, Parameter, Guard-Level und Pfade.
-- Für MCP-Läufe werden zusätzliche Logs unter `<workspace>/codex_logs/` geschrieben.
+- Logs liegen deterministisch in `<workspace>/codex_logs/`.
+- Prompt-Guardrails sind in [mcp/forensic-mode.md](mcp/forensic-mode.md) dokumentiert.
+- Der Ablauf „Plan → Confirm → Execute“ ist verpflichtend; Codex führt Live-Schritte nur nach Freigabe aus. Der vollständige Workflow steht in [mcp/codex-workflow.md](mcp/codex-workflow.md).
 
-**Empfehlung:** Archivieren Sie Workspace-Logs (`logs/*.log`) gemeinsam mit dem Fall, um Audit-Anforderungen zu erfüllen.
+## Troubleshooting & FAQ
 
-## Troubleshooting
-
-| Symptom | Ursache | Abhilfe |
+| Symptom | Diagnose (Dry-Run) | Lösung |
 | --- | --- | --- |
-| `permission denied` bei Acquisition | Kein Root / `--enable-live-capture` fehlt | Dry-Run prüfen, dann mit sudo + Flag ausführen |
-| Meldung „Missing dependency“ | Tool oder Python-Extra fehlt | `forensic-cli diagnostics --modules <name>` → Installationshinweis folgen |
-| Keine Ergebnisse im Report | Modul lieferte leere Artefakte | `cases/<case>/logs/modules/*.log` prüfen, Parameter anpassen, ggf. erneut ausführen |
-| MCP-Tool nicht sichtbar | MCP-Adapter läuft nicht | `forensic-cli codex status` & `forensic-cli mcp expose` prüfen |
+| Fehlende Tools (`status=skipped`) | `forensic-cli diagnostics --modules <name>` | Fehlende Pakete installieren oder Extras aktivieren (`pip install forensic-playbook[pcap]`). |
+| Keine Schreibrechte im Workspace | `forensic-cli --workspace /pfad diagnostics --summary --dry-run` | Pfade auf `/mnt/usb_rw` oder Nutzerverzeichnis legen; Root nur mit Freigabe. |
+| PDF-Export schlägt fehl | `forensic-cli report generate ... --fmt pdf --dry-run` | Renderer installieren oder auf HTML zurückfallen; Hinweis im Report beachten. |
+| MCP-Status meldet Offline | `forensic-cli codex status --verbose` | Logs unter `<workspace>/codex_logs/` prüfen, Dienst neu starten (`codex stop`, dann `start`). |
+| Unklare Parameterquelle | `jq` auf `meta/provenance.jsonl` | Eintrag zeigt Quelle (`cli`, `case_config`, `default`) inkl. Timestamp und Hash. |
 
-## Beispiele (Copy & Paste)
+**Weitere Fragen**
 
-### Schnellstart (CLI)
-
-```bash
-forensic-cli --workspace ~/cases diagnostics --summary
-forensic-cli --workspace ~/cases case create --name demo_case --description "Onboarding"
-forensic-cli --workspace ~/cases evidence add --case demo_case --path /mnt/evidence/disk01.E01 --type disk
-forensic-cli --workspace ~/cases modules run quick_triage --case demo_case --dry-run
-```
-
-### SDK-Minimalbeispiel
-
-```python
-from pathlib import Path
-from forensic.core.framework import ForensicFramework
-from forensic.modules.triage.quick_triage import QuickTriageModule
-
-workspace = Path("~/cases").expanduser()
-framework = ForensicFramework(workspace=workspace)
-framework.register_module("quick_triage", QuickTriageModule)
-case = framework.load_case("demo_case")
-framework.execute_module("quick_triage", params={"profile": "default"}, dry_run=True)
-```
-
-## Glossar
-
-- **Guard-Level:** Einstufung des Sicherheitsniveaus (`soft`, `medium`, `hard`); bestimmt, welche Checks vor Ausführung stattfinden.
-- **Dry-Run:** Simulierte Ausführung ohne Änderung am System oder an Beweisen.
-- **Chain of Custody (CoC):** Lückenlose Dokumentation aller Zugriffe und Artefakte eines Falls.
-- **Provenienz-Log:** Maschinenlesbare Nachweise der Parameter, Pfade und Ergebnisse jedes Moduls.
-- **Workspace:** Oberster Ordner für Fälle, Logs, temporäre Dateien (`forensic-cli --workspace`).
-- **MCP (Model Context Protocol):** Schnittstelle, über die Codex Forensic-Playbook-Tools aufruft.
-
-## FAQ
-
-**Wie aktualisiere ich das Framework sicher?**  
-Nutzen Sie `git pull` im Repository, aktivieren Sie das virtuelle Environment und führen Sie `pip install -e .` erneut aus. Prüfen Sie anschließend `forensic-cli diagnostics` im Dry-Run.
-
-**Kann ich Module parallel ausführen?**  
-Ja, solange sich die Artefaktpfade nicht überschneiden. Nutzen Sie getrennte Workspaces oder Cases, um CoC-Kollisionen zu vermeiden.
-
-**Was passiert ohne optionale Extras?**  
-Module liefern reduzierte Ergebnisse (z. B. JSON-Fallbacks) und protokollieren den fehlenden Pfad im Provenienz-Log. Die CLI beendet sich ohne Fehler.
-
-**Wie integriere ich MCP/Codex?**  
-Folgen Sie [docs/mcp/codex-workflow.md](mcp/codex-workflow.md). Starten Sie immer mit `forensic-cli codex install --dry-run` und aktivieren Sie den Service erst nach Freigabe.
-
-**Wie exportiere ich Berichte für das Incident-Response-Team?**  
-Erstellen Sie zuerst den HTML-Report, prüfen Sie ihn, und konvertieren Sie optional in PDF. Packen Sie anschließend `reports/`, `meta/` und relevante Logs in ein Archiv für die Weitergabe.
+- *Wie aktualisiere ich das Framework?* — `git pull`, virtuelles Environment aktivieren, `pip install -e .`, danach `forensic-cli diagnostics --summary --dry-run`.
+- *Kann ich Module parallel ausführen?* — Ja, sofern Artefaktpfade getrennt sind. Nutzen Sie getrennte Cases oder Workspaces, um Überschneidungen zu vermeiden.
+- *Wie teile ich Ergebnisse mit Incident-Response?* — HTML-Report prüfen, optional PDF erzeugen, anschließend `reports/`, `meta/` und relevante Logs (inkl. Hashdateien) archivieren.
 
 ---
 
-Weitere vertiefende Informationen finden Sie in den [Tutorials](tutorials/01_quick-triage-linux.md), [Modul-Referenzen](MODULES/acquisition.md) sowie im [Developer Guide](Developer-Guide.md).
+Weiterführende Ressourcen: [Developer Guide](Developer-Guide.md), [CLI-Referenz](api/CLI.md), [Modul-Katalog](MODULES/analysis.md), [Minimaler E2E-Workflow](examples/minimal-e2e.md) und das [Network-Timeline-Tutorial](tutorials/02_network-timeline-walkthrough.md).
 <!-- AUTODOC:END -->

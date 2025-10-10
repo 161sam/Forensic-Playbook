@@ -3,7 +3,13 @@
 
 This package contains the primary Python code for the framework, CLI, MCP clients, and runtime wrappers. Operate in **Forensic Mode**:
 
-## Engineering Directives
+## Roles & Engineering Directives
+
+- **Core Maintainer:** synchronisiert Framework-APIs, pflegt Provenienz-Modelle, reviewed Guard-Änderungen.
+- **Module Author:** erweitert `forensic.modules.*`, aktualisiert Module-Kataloge und MCP-Registry.
+- **MCP Adapter Maintainer:** stellt CLI-Änderungen über [`forensic/mcp`](mcp) bereit, aktualisiert den Prompt.
+
+Engineering Guardrails:
 - Maintain deterministic behaviour and side-effect free imports. Never mutate global state at import time.
 - Prefer standard library constructs (`pathlib.Path`, `subprocess.run`, `venv`) and respect existing guard rails (dry-run flags, capability checks).
 - When adding CLI commands, route status output through `_emit_status` and provide structured data suitable for JSON mode.

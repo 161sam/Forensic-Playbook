@@ -1,14 +1,12 @@
 <!-- AUTODOC:BEGIN -->
 ---
 title: "CLI Reference"
-description: "Snapshot of forensic-cli commands and options."
+description: "Reference for forensic-cli commands, parameters, exit codes, and guard behaviour."
 ---
 
 # Überblick
 
-Die Forensic-Playbook-CLI (`forensic-cli`) bietet einen Guarded-Einstieg in alle Framework-Funktionen. Jede Ausführung erstellt
-Logdateien im Workspace (`forensic_workspace/logs/`) und schreibt Provenienz-Einträge. Verwenden Sie `--dry-run`, um geplante
-Schritte zu validieren, bevor Artefakte geschrieben werden.
+`forensic-cli` ist der Guarded-Einstiegspunkt für alle Framework-Funktionen. Jeder Aufruf respektiert die Forensic-Mode-Regeln: Dry-Run zuerst, Logs im Workspace, vollständige Provenienz. Aktivieren Sie `--json`, wenn strukturierte Ausgaben benötigt werden.
 
 ## Globale Optionen
 
@@ -18,145 +16,171 @@ Usage: forensic-cli [OPTIONS] COMMAND [ARGS]...
   Forensic Framework CLI.
 
 Options:
-  --workspace PATH        Workspace directory
-  --config PATH           Config file
-  -v, --verbose           Verbose output
-  --json                  Emit JSON status objects
-  --quiet                 Suppress human-readable output
+  --workspace PATH        Workspace directory (default: ./forensic_workspace)
+  --config PATH           Optional override for framework config YAML.
+  -v, --verbose           Increase verbosity (stack traces bei Fehlern).
+  --json                  Emit JSON status objects.
+  --quiet                 Suppress human-readable output.
   --legacy / --no-legacy  Enable wrappers for deprecated shell scripts.
   --help                  Show this message and exit.
 ```
 
-> Tipp: `--quiet` reduziert die Konsole auf CLI-Ausgaben, Logs werden trotzdem unter `forensic_workspace/logs/forensic_<timestamp>.log` geschrieben.
+- Logs landen deterministisch in `<workspace>/logs/forensic_<timestamp>.log`.
+- Provenienz wird in `cases/<case>/meta/provenance.jsonl` ergänzt.
+
+## Parameter-Konventionen
+
+| Option | Bedeutung | Beispiel |
+| --- | --- | --- |
+| `--param key=value` | Übergibt modul- oder router-spezifische Parameter. Mehrfach nutzbar. | `--param pcap_json=cases/demo_case/input/flows.json` |
+| `--dry-run` | Plant Aktionen ohne Artefakte zu schreiben. Pflichtschritt für sensible Module. | `forensic-cli modules run disk_imaging --dry-run` |
+| `--json` | Strukturierte Ausgabe für Automationspipelines. | `forensic-cli modules run network --json --dry-run` |
+| Exitcodes | `0` = Erfolg/Guard-Warnung, `1` = Fehler (z. B. Guard verweigert Ausführung). | Guard-Fehler -> Exitcode `0`, Feld `status="warning"`. |
+| Output-Pfade | Werden im Resultat (`output_path`, `metadata.artifacts`) und im Provenienz-Log dokumentiert. | `cases/demo_case/analysis/network/network.json` |
 
 ## Case Management
 
-```text
-Usage: forensic-cli case [OPTIONS] COMMAND [ARGS]...
+```bash
+# Case anlegen
+forensic-cli --workspace ~/cases case create \
+    --name demo_case \
+    --description "Router + Timeline Investigation"
 
-  Case management commands.
-
-Options:
-  --help  Show this message and exit.
-
-Commands:
-  create  Create a new case.
-  init    Scaffold a minimal investigation case for quick demos.
-  list    List all cases.
-  load    Load an existing case.
+# Übersicht vorhandener Cases
+a. forensic-cli --workspace ~/cases case list
+b. forensic-cli --workspace ~/cases case load --name demo_case --json
 ```
 
-Guard-Hinweis: Beim Aufruf werden Module automatisch registriert und der aktuelle Workspace protokolliert (`forensic_workspace/logs/...`).
+Alle Case-Befehle sind read-only, außer `create`. Der Workspace wird im Logfile notiert.
 
-## Module-Befehle
+## Diagnostics & Guard-Checks
 
-```text
-Usage: forensic-cli modules [OPTIONS] COMMAND [ARGS]...
+```bash
+# Gesamtstatus
+forensic-cli --workspace ~/cases diagnostics --summary --dry-run
 
-  Module operations.
-
-Options:
-  --help  Show this message and exit.
-
-Commands:
-  list  List available modules.
-  run   Run a module with optional parameters.
+# Kategorie-spezifischer Guard-Report
+forensic-cli --workspace ~/cases diagnostics --modules analysis --json
 ```
 
-- `modules list` zeigt Guard-Level, fehlende Tools und Extras.
-- `modules run <name> --dry-run` simuliert Ausführung, schreibt aber keine Artefakte.
+Die Ausgabe listet fehlende Tools, optionale Extras und Guard-Levels. Warnings erzeugen Exitcode `0` (mit `status="warning"`).
 
-## Diagnostics
+## Module ausführen
 
-```text
-Usage: forensic-cli diagnostics [OPTIONS]
+```bash
+# Modulverfügbarkeit
+forensic-cli --workspace ~/cases modules list --json
 
-  Display environment diagnostics and guard information.
+# Dry-Run mit Parametern
+forensic-cli --workspace ~/cases modules run network \
+    --case demo_case \
+    --param pcap_json=cases/demo_case/input/flows.json \
+    --dry-run \
+    --json
 
-Options:
-  --help  Show this message and exit.
+# Live-Lauf (nach Freigabe)
+forensic-cli --workspace ~/cases modules run timeline \
+    --case demo_case \
+    --param source=cases/demo_case/analysis/network \
+    --param format=csv
 ```
 
-Das Kommando validiert Tooling, optionale Extras und meldet Guard-Status für jedes Modul. Logs landen im Workspace.
+- Statusmapping: `success|partial|skipped` → Exitcode `0`, `error` → Exitcode `1`.
+- Artefakte werden unter `metadata.artifacts` sowie `output_path` ausgewiesen.
+- Parameterquellen (`cli`, `case_config`, `default`) werden im Provenienz-Log vermerkt.
 
 ## Reporting
 
-```text
-Usage: forensic-cli report [OPTIONS] COMMAND [ARGS]...
+```bash
+# HTML-Report planen
+forensic-cli --workspace ~/cases report generate \
+    --case demo_case \
+    --fmt html \
+    --out cases/demo_case/reports/demo_case.html \
+    --dry-run
 
-  Reporting commands.
-
-Options:
-  --help  Show this message and exit.
-
-Commands:
-  generate  Generate a case report using the reporting module.
+# PDF nur mit Extras
+forensic-cli --workspace ~/cases report generate \
+    --case demo_case \
+    --fmt pdf \
+    --out cases/demo_case/reports/demo_case.pdf \
+    --dry-run
 ```
 
-`report generate` akzeptiert Parameter wie `--fmt`, `--out` und `--dry-run`. Fehlt eine PDF-Engine, wird der Lauf als `skipped` markiert und verweist auf den HTML-Report.
+Fehlende Renderer führen zu `status="warning"`, Exitcode `0`, inklusive Hinweis im `metadata.errors` Feld.
 
-## Router-Suite
+## Router-Gruppe
 
-```text
-Usage: forensic-cli router [OPTIONS] COMMAND [ARGS]...
+```bash
+# Umgebung vorbereiten
+a. forensic-cli router env init --workspace ~/cases --case demo_case --profile default --dry-run
 
-  Router forensic workflow helpers with dry-run safeguards.
+# Artefakte extrahieren
+forensic-cli router extract ui \
+    --workspace ~/cases \
+    --case demo_case \
+    --param source=cases/demo_case/router/raw_ui \
+    --dry-run
 
-Options:
-  --help  Show this message and exit.
+# Manifest & Zusammenfassung
+forensic-cli router manifest write \
+    --workspace ~/cases \
+    --case demo_case \
+    --param source=cases/demo_case/router/extract \
+    --dry-run
+forensic-cli router summarize \
+    --workspace ~/cases \
+    --case demo_case \
+    --param source=cases/demo_case/router/extract \
+    --json
 
-Commands:
-  capture    Passive network capture helpers.
-  env        Environment preparation commands.
-  extract    Router artifact extraction helpers.
-  manifest   Evidence manifest helpers.
-  pipeline   Router pipeline orchestration commands.
-  summarize  Summarise router analysis findings.
+# Pipeline-Run (führt env→capture→extract→summarize sequentiell aus)
+forensic-cli router pipeline run --workspace ~/cases --case demo_case --dry-run
 ```
 
-Jedes Unterkommando erzwingt einen Dry-Run, bevor Live-Schritte (`capture run`, `env init`) schreibend tätig werden.
-
-## MCP-Adapter
-
-```text
-Usage: forensic-cli mcp [OPTIONS] COMMAND [ARGS]...
-
-  Interact with MCP servers and tool adapters.
-
-Options:
-  --help  Show this message and exit.
-
-Commands:
-  expose  Print the MCP tool catalogue as JSON.
-  run     Execute an MCP tool either via HTTP or using the local adapter.
-  status  Perform a health check against the configured MCP endpoint.
-```
-
-`mcp expose` liefert den Tool-Katalog für Codex. `mcp run` akzeptiert `--tool`, `--local`, `--json` für deterministische Ausgaben.
+Alle Router-Kommandos protokollieren Ergebnisse nach `cases/<case>/logs/router/` und respektieren `config/modules/router/*.yaml`.
 
 ## Codex-Steuerung
 
-```text
-Usage: forensic-cli codex [OPTIONS] COMMAND [ARGS]...
+```bash
+# Installation und Dienststart (Dry-Run Pflicht)
+forensic-cli --workspace ~/cases codex install --dry-run
+forensic-cli --workspace ~/cases codex install --accept-risk
+forensic-cli --workspace ~/cases codex start --foreground --dry-run
+forensic-cli --workspace ~/cases codex start --foreground
 
-  Guarded helpers for the Codex + MCP workflow.
-
-Options:
-  --help  Show this message and exit.
-
-Commands:
-  install  Install or update the Codex forensic environment.
-  start    Start the guarded MCP server for Codex.
-  status   Report the status of the Codex MCP server.
-  stop     Stop the Codex MCP server.
+# Status / Logs
+forensic-cli --workspace ~/cases codex status --json
+forensic-cli --workspace ~/cases codex status --verbose
 ```
 
-Alle Kommandos akzeptieren `--dry-run`. Installation und Start protokollieren Logs unter `<workspace>/codex_logs/`.
+Logs werden unter `<workspace>/codex_logs/` abgelegt. `status` liefert sowohl Exitcode `0` als auch strukturierte Feldinformationen (`service`, `pid`, `port`). Weitere Schritte siehe [mcp/codex-workflow.md](../mcp/codex-workflow.md).
 
-## Berichts- und Provenienzhinweise
+## MCP-Werkzeuge
 
-- Jeder CLI-Aufruf erzeugt eine Logdatei unter `forensic_workspace/logs/` mit Zeitstempel.
-- Provenienz (`meta/provenance.jsonl`) dokumentiert Parameterquellen (CLI, YAML, Defaults) pro Ausführung.
-- Verwenden Sie `--json` für maschinenlesbare Zusammenfassungen in Automationspipelines.
+```bash
+# Tool-Katalog exportieren
+forensic-cli --workspace ~/cases mcp expose --json \
+    > ~/cases/demo_case/tooling/mcp_catalog.json
 
+# Health-Checks
+forensic-cli --workspace ~/cases mcp status --json
+
+# Tool lokal ausführen
+forensic-cli --workspace ~/cases mcp run diagnostics.ping \
+    --local \
+    --json \
+    --dry-run
+```
+
+- `mcp run` gibt `status`, `logs`, `artifacts` zurück. Exitcode folgt dem Tool-Status (`success/warning` → `0`, `error` → `1`).
+- Verwenden Sie `--plan` oder `--dry-run`, um Guard-Anforderungen zu erfüllen, bevor Live-Schritte freigegeben werden.
+
+## Weitere Ressourcen
+
+- [User Guide](../User-Guide.md) – Standard-Workflows, Troubleshooting.
+- [Module-Katalog](../MODULES/analysis.md) – Parameterlisten und JSON-Schemata pro Kategorie.
+- [Forensic Mode Guardrails](../mcp/forensic-mode.md) – Plan → Confirm → Execute für MCP/Codex.
+
+Alle Beispiele verzichten bewusst auf Binär-Fixtures und verwenden deterministische Pfade. Ergänzen Sie Dry-Run-Protokolle in der Fallakte, bevor Sie Live-Läufe starten.
 <!-- AUTODOC:END -->
