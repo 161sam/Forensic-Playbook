@@ -82,6 +82,31 @@ def _check_pipelines() -> List[str]:
     return []
 
 
+def _check_repo_tool_shims() -> List[str]:
+    runtime_dir = REPO_ROOT / "forensic" / "tools"
+    runtime_wrappers = {
+        path.name
+        for path in runtime_dir.glob("*.py")
+        if path.name != "__init__.py"
+    }
+    repo_tools_dir = REPO_ROOT / "tools"
+    issues: List[str] = []
+    for path in repo_tools_dir.glob("*.py"):
+        if path.name == "__init__.py":
+            continue
+        if path.name in runtime_wrappers:
+            try:
+                content = path.read_text(encoding="utf-8")
+            except OSError:
+                issues.append(f"{path.relative_to(REPO_ROOT)} (unable to read)")
+                continue
+            if "from forensic.tools" not in content:
+                issues.append(
+                    f"{path.relative_to(REPO_ROOT)} should import forensic.tools.{path.stem} instead of duplicating code"
+                )
+    return issues
+
+
 def _report_missing(title: str, items: List[str]) -> None:
     print(f"- {title}")
     for item in items:
@@ -96,6 +121,7 @@ def main() -> int:
         ("Module directories", _missing_paths(MODULE_DIRECTORIES)),
         ("Python package markers", _missing_package_inits(PACKAGE_DIRECTORIES)),
         ("Pipeline definitions", _check_pipelines()),
+        ("Repo tool shims", _check_repo_tool_shims()),
     ]
 
     has_missing = False

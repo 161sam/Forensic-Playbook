@@ -47,10 +47,21 @@ modules. When running modules via the CLI the precedence is always **CLI
 parameter > YAML configuration > built-in defaults**. The effective parameters
 are recorded in the provenance log of each run.
 
+## Dual workflows
+
+Forensic Playbook now supports two complementary workflows:
+
+1. **CLI / SDK (manual control)** — run guarded commands with `forensic-cli` or automate via the Python SDK. Every command exposes dry-run modes and records provenance.
+2. **Codex + MCP (natural language)** — operate the same capabilities through Codex in Forensic Mode. The MCP adapter exposes safe tools and maps natural language to deterministic plans.
+
+Both workflows share configuration precedence (CLI > case config > defaults) and write logs/artifacts inside the active workspace or case directories.
+
 ## CLI usage
 
 After installing the package (`pip install -e .`) the CLI is available as
 `forensic-cli`.
+
+### CLI / SDK workflow
 
 List available modules and see which ones are skipped because of missing tools
 or elevated guard requirements:
@@ -95,6 +106,11 @@ Generate a report preview without writing files:
 forensic-cli report generate --case CASE123 --fmt md --dry-run
 ```
 
+Programmatic automation is available through the SDK helpers exported in
+`forensic/__init__.py`. See `docs/api/SDK.md` for guarded examples that cover
+case creation, module execution, report generation, and local MCP tool
+invocations.
+
 ### Router forensics workflow
 
 The router toolkit migrates the legacy shell scripts under `router/scripts/` to
@@ -116,6 +132,43 @@ logs, CSRF/session data and router backups follow the same pattern. Use
 sub-command supports `--legacy` to preview or invoke the original Bash scripts
 when required for parity validation.
 
+### Codex + MCP workflow
+
+Codex automation runs through a guarded MCP server. Always begin with dry-run
+installs to confirm planned actions and log locations (`<workspace>/codex_logs/`).
+
+```bash
+# prepare the Codex workspace (dry-run first)
+forensic-cli codex install --dry-run
+
+# start the MCP server (foreground useful for debugging)
+forensic-cli codex start --foreground --dry-run
+
+# check current status (PID, port, HTTP probe)
+forensic-cli codex status
+
+# stop the server safely
+forensic-cli codex stop
+```
+
+Once the server is running, expose the MCP tool catalogue (deterministically
+sorted) and execute tools via HTTP or locally:
+
+```bash
+# JSON description (consumed by Codex / MCP clients)
+forensic-cli mcp expose
+
+# Health-check the endpoint (honours config + environment overrides)
+forensic-cli mcp status
+
+# Run a tool via HTTP (falls back to local execution with --local)
+forensic-cli mcp run --tool modules.list --local
+```
+
+The system prompt that governs Codex interactions lives at
+`forensic/mcp/prompts/forensic_mode.txt` and reinforces dry-run first,
+chain-of-custody logging, and deterministic outputs.
+
 ## Project structure (v2.0)
 
 ```text
@@ -126,6 +179,8 @@ Forensic-Playbook/
 │   └── framework.yaml
 ├── forensic/
 │   ├── cli.py
+│   ├── ops/
+│   │   └── codex.py
 │   ├── core/
 │   │   ├── chain_of_custody.py
 │   │   ├── config.py
@@ -160,6 +215,13 @@ Forensic-Playbook/
 │   │   ├── sleuthkit.py
 │   │   ├── volatility.py
 │   │   └── yara.py
+│   ├── mcp/
+│   │   ├── client.py
+│   │   ├── config.py
+│   │   ├── prompts/
+│   │   │   └── forensic_mode.txt
+│   │   ├── schemas.py
+│   │   └── tools.py
 │   └── utils/
 │       ├── cmd.py
 │       ├── hashing.py
@@ -170,6 +232,10 @@ Forensic-Playbook/
 │   ├── disk_forensics.yaml
 │   ├── incident_response.yaml
 │   └── malware_analysis.yaml
+├── docs/
+│   ├── api/
+│   │   └── SDK.md
+│   └── … (architecture, migration guides, walkthroughs)
 ├── tests/
 │   ├── data/
 │   ├── utils/
@@ -179,13 +245,14 @@ Forensic-Playbook/
     ├── generate_module_matrix.py  # Repo-Hilfen, nicht mit forensic.tools verwechseln
     ├── migrate_iocs.py            # Repo-Hilfen, nicht mit forensic.tools verwechseln
     ├── run_minimal_flow.py        # Repo-Hilfen, nicht mit forensic.tools verwechseln
-    └── sleuthkit.py               # Repo-Hilfen, nicht mit forensic.tools verwechseln
+    └── sleuthkit.py               # Shim -> forwards to forensic.tools.sleuthkit
 ```
 
 `forensic/tools` enthält die **guarded Runtime-Wrapper** für externe
 Werkzeuge. Das Top-Level-Verzeichnis `tools/` bleibt den
-Repository-Hilfsskripten vorbehalten (z. B. CI-Validierungen) und darf nicht mit
-den neuen Wrappern verwechselt werden.
+Repository-Hilfsskripten vorbehalten (z. B. CI-Validierungen) und enthält nur
+Shims wie `tools/sleuthkit.py`, die auf die Runtime-Pendants in
+`forensic.tools` weiterleiten.
 
 ## Tool-Wrapper (Guarded)
 

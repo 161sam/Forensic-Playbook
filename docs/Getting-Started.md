@@ -92,6 +92,30 @@ Most Guarded modules accept `--dry-run`. In this mode the CLI prints the steps
 that would be executed and exits without producing artefacts. Use this whenever
 you validate configuration or run exercises on development machines.
 
+## Dual workflows (CLI/SDK vs Codex + MCP)
+
+- **CLI / SDK workflow:** Drive every action via `forensic-cli` or the Python SDK. See `docs/api/SDK.md` for examples that cover case creation, module execution, report generation, and local MCP tool invocations. Always begin with dry-run runs to verify configuration and provenance logging.
+- **Codex + MCP workflow:** Operate the same capabilities through Codex in Forensic Mode. Start by planning the Codex environment and only then enable live execution.
+
+```bash
+# Plan Codex environment setup (no changes applied)
+forensic-cli codex install --dry-run
+
+# Start the guarded MCP server (foreground mode for debugging)
+forensic-cli codex start --foreground --dry-run
+
+# Health-check the endpoint (logs under <workspace>/codex_logs/)
+forensic-cli codex status
+
+# List exposed MCP tools (deterministic JSON)
+forensic-cli mcp expose
+
+# Run diagnostics locally via MCP adapter
+forensic-cli mcp run --tool diagnostics.ping --local --json
+```
+
+The system prompt at `forensic/mcp/prompts/forensic_mode.txt` enforces dry-run-first plans, provenance logging, and explicit analyst confirmation before Codex executes guarded actions.
+
 ---
 
 ## 🎯 Quick Start Workflows
