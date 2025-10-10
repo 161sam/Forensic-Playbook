@@ -2,57 +2,53 @@
 
 ## Overview
 
-The repository now provides a deterministic, minimally viable forensic
-framework. Core features (case management, evidence handling, chain of custody)
-remain unchanged, but configuration, utilities and several module stubs were
-added to unblock future work.
+Das Repository stellt nun eine vollständig gehärtete, deterministische
+Forensik-Plattform bereit. Core Features (Case Management, Evidence Handling,
+Chain of Custody) bleiben stabil, während Konfiguration, Utilities und alle
+Module auf Guarded-Status mit Dry-Run-Pfaden, Provenienz und MCP/Codex-Brücke
+gebracht wurden.
 
 ## Component summary
 
 | Component | State | Notes |
 | --- | --- | --- |
-| Core framework | ✅ Operational | Framework initialises, stores cases, registers modules safely |
-| Configuration loader | ✅ New | `forensic/core/config.py` consolidates defaults, YAML and env overrides |
-| Utilities | ✅ New | `forensic/utils/` offers shared helpers (paths, io, hashing, commands) |
-| Acquisition | 🟡 Partial | Disk imaging, memory, network and live-response modules expose consistent guard messages |
-| Analysis | 🟡 Partial | Filesystem/memory/network/timeline modules upgraded with guard helper + exporter integration |
-| Triage | 🟡 Partial | Quick triage legacy, new system-info & persistence capture metadata |
-| Reporting | 🟡 Partial | HTML/PDF paths remain legacy; exporter now wired into generator + CLI |
-| CLI | ✅ Expanded | Adds diagnostics, codex/mcp subcommands, and guarded module registration |
-| Codex / MCP | ✅ New | `forensic-cli codex *` + `mcp *` commands bridge Codex via a guarded MCP adapter |
-| SDK | ✅ New | `forensic/__init__.py` exports convenience helpers; see `docs/api/SDK.md` |
-| Tests | ✅ Updated | `pytest -q --cov` covers exporter, import smoke tests, reporting round-trips |
-| Tooling | ✅ Updated | `pyproject.toml` + GitHub Actions, optional extras, pre-commit hooks |
+| Core framework | ✅ Stabil | Framework initialisiert Fälle, verwaltet Evidence und Chain-of-Custody deterministisch |
+| Configuration loader | ✅ Stabil | `forensic/core/config.py` setzt CLI > YAML > Defaults konsequent um |
+| Utilities | ✅ Stabil | `forensic/utils/` bündelt Pfad-, IO- und Hashing-Helfer für deterministische Läufe |
+| Acquisition | ✅ Guarded | Disk-, Memory-, Network- und Live-Response-Module mit Dry-Run-Preview & Provenienz-Logging |
+| Analysis | ✅ Guarded | Filesystem/Memory/Network/Timeline/Malware liefern deterministische JSON/CSV und skippen fehlende Extras |
+| Triage | ✅ Einsatzbereit | Quick Triage, System Info & Persistence decken Guards + Konfigurations-Defaults ab |
+| Reporting | ✅ Komplett | HTML immer, PDF optional via Guard-Fallback; CoC & Hashes werden protokolliert |
+| CLI | ✅ Stabil | Diagnostics, modules, report, codex/mcp Subcommands inkl. JSON-Ausgabe & Guard-Status |
+| Codex / MCP | ✅ Stabil | `forensic-cli codex …` & `mcp …` spiegeln Forensic Mode Prompts und liefern deterministische Kataloge |
+| SDK | ✅ Stabil | `forensic/__init__.py` exportiert CLI/Framework-Wrapper für Automatisierung |
+| Tests | ✅ Grün | Pytest + Coverage ≥ 70 %, E2E-Minimalflow, Layout- & Matrix-Checks in CI |
+| Tooling | ✅ Grün | `tools/generate_module_matrix.py`, Layout-Validator & Artefakt-Uploads laufen deterministisch |
 
 ## Recent changes
 
-* Packaging moved to `pyproject.toml` with optional extras and entry point
+* Packaging konsolidiert via `pyproject.toml` mit Extras und Entry Point
   `forensic-cli`.
-* Introduced GitHub Actions workflow for linting and tests with coverage
-  artefacts; added `pre-commit` configuration.
-* Added diagnostics CLI command plus new `codex` and `mcp` subcommands with
-  dry-run support and friendly JSON output.
-* Introduced guarded MCP adapter (`forensic/mcp/`) and Codex operations module
-  (`forensic/ops/codex.py`).
-* Exposed SDK helpers via `forensic/__init__.py` and documented them in
-  `docs/api/SDK.md`.
-* Reporting generator now delegates JSON/Markdown output to
-  `forensic.modules.reporting.exporter` with new tests.
-* Implemented module matrix generator (`tools/generate_module_matrix.py`) and
-  enforced it via CI.
-* Standardised guard messaging across acquisition/analysis modules via
-  `ForensicModule._missing_tool_result` helper.
+* CI-Pipeline liefert Linting, Tests, Coverage ≥ 70 % sowie HTML/PDF-Artefakte
+  und Modulmatrix.
+* CLI bietet Diagnostics, Module, Reports plus Codex/MCP Subcommands mit
+  Dry-Run-Preview und JSON-Ausgabe.
+* Guarded MCP-Adapter (`forensic/mcp/`) und Codex-Runner (`forensic/ops/codex.py`)
+  spiegeln den Forensic-Mode-Prompt wider.
+* Reporting-Generator unterstützt HTML, Markdown, JSON und optional PDF mit
+  Guard-Fallback.
+* Modulmatrix-Generator und Layout-Validator sichern Dokumentation & Status-
+  Tabellen ab.
+* Chain-of-Custody- und Provenienz-Logging deckt sämtliche Module ab und vermeidet
+  Duplikate.
 
 ## Open work
 
-* Integrate real acquisition back-ends for memory and network capture when
-  tooling is available in the target environment.
-* Expand malware analysis beyond hash/YARA stubs once dependable tooling is
-  packaged.
-* Connect configuration defaults to module parameter parsing for richer
-  behaviour.
-* Replace remaining legacy workflows (HTML report rendering, disk imaging) with
-  modern equivalents.
-* Expand end-to-end tests covering diagnostics, codex/mcp flows, and report CLI
-  commands.
+* Neue Tool-Backends evaluieren und nach Freigabe in Guard-Listen ergänzen.
+* Optional extras (Volatility, Plaso, YARA) regelmäßig auf Updates testen und
+  Guard-Meldungen anpassen.
+* Weitere MCP-Tools und Automations-Playbooks erstellen (Plan → Confirm →
+  Execute bleibt Pflicht).
+* Internationale Lokalisierung der Report-Templates vorbereiten.
+* Beobachtungspunkte für künftige Router-/Network-Hardening-Maßnahmen sammeln.
 

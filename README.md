@@ -41,13 +41,15 @@ Weitere Details (inklusive Paketlisten für Kali/Ubuntu) finden Sie im [User Gui
 | Bereich | Status |
 | --- | --- |
 | Core Framework (Cases, Evidence, Chain of Custody) | ✅ Stabil |
-| Konfiguration & Defaults | ✅ YAML + CLI-Präzedenz |
-| Acquisition (disk, memory, network, live response) | 🟡 Guarded, prüfen lokale Toolchain |
-| Analysis (filesystem, memory, network, registry, timeline, malware) | 🟡 Optional Extras (`pcap`, `memory`, `yara`) empfohlen |
+| Konfiguration & Defaults | ✅ CLI > YAML > Defaults |
+| Acquisition (disk, memory, network, live response) | ✅ Guarded, Dry-Run-first & Provenienz vollständig |
+| Analysis (filesystem, memory, network, registry, timeline, malware) | ✅ Guarded, optionale Extras werden freundlich übersprungen |
 | Triage (system info, quick triage, persistence) | ✅ Einsatzbereit |
-| Reporting | 🟡 HTML stabil, PDF optional (Guarded) |
-| MCP/Codex | 🟡 Beta, Dry-Run verpflichtend |
-| Tests/CI | ✅ `pytest -q`, `ruff`, `black --check` |
+| Reporting | ✅ HTML immer, PDF optional via Guard-Fallback |
+| MCP/Codex | ✅ Stabil (CLI + SDK, Forensic Mode) |
+| Tests/CI | ✅ E2E + Layout/Matrix + Coverage ≥ 70 % |
+
+> **Hinweis:** Der PDF-Export bleibt optional. Fehlt der Renderer, erzeugt der Guard eine Hinweisbox im HTML und markiert den Lauf dennoch als „complete“.
 
 ## Modul-Matrix
 

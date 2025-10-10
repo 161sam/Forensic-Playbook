@@ -97,7 +97,7 @@ class ExampleModule(BaseGuardedModule):
 ## Testing & CI
 
 - **Pytest** – `pytest -q` prüft Unit- und Integrationstests. Neue Module benötigen Smoke- und Guard-Tests.
-- **Coverage-Gate** – Mindestens 65 % (`pytest --cov=forensic --cov-report=term`).
+- **Coverage-Gate** – Mindestens 70 % (`pytest --cov=forensic --cov-report=term`).
 - **CI-Workflow** – GitHub Actions (`.github/workflows/ci.yml`): lint (`ruff`, `black --check`), tests, optional docs-check.
 - **E2E ohne Root/Netz** – Use `tests/e2e/` mit synthetischen Fixtures. Keine Netzwerkeingriffe, stattdessen JSON-Fallbacks.
 - **Optional** – `tox -e lint,tests` zur lokalen Reproduktion.
