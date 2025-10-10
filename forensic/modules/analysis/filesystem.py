@@ -23,6 +23,7 @@ from typing import Dict, List, Optional
 from ...core.evidence import Evidence
 from ...core.module import AnalysisModule, ModuleResult
 from ...core.time_utils import utc_isoformat
+from ...tools import sleuthkit as sleuthkit_wrapper
 
 
 class FilesystemAnalysisModule(AnalysisModule):
@@ -47,6 +48,14 @@ class FilesystemAnalysisModule(AnalysisModule):
     @property
     def requires_root(self) -> bool:
         return False
+
+    def tool_versions(self) -> Dict[str, str]:
+        """Report Sleuthkit availability using the guarded wrapper."""
+
+        available = sleuthkit_wrapper.available()
+        version_info = sleuthkit_wrapper.version() if available else None
+        status = version_info or ("available" if available else "missing")
+        return {"sleuthkit": status}
 
     def validate_params(self, params: Dict) -> bool:
         """Validate parameters"""
@@ -427,9 +436,11 @@ class FilesystemAnalysisModule(AnalysisModule):
                 try:
                     # Pipe blkcat to strings
                     with open(strings_file, "w") as f:
+                        # TODO: use forensic.tools.* wrapper
                         blkcat_proc = subprocess.Popen(
                             blkcat_cmd, stdout=subprocess.PIPE
                         )
+                        # TODO: use forensic.tools.* wrapper
                         strings_proc = subprocess.Popen(
                             ["strings", "-a"],
                             stdin=blkcat_proc.stdout,
@@ -447,6 +458,7 @@ class FilesystemAnalysisModule(AnalysisModule):
 
             try:
                 with open(strings_file, "w") as f:
+                    # TODO: use forensic.tools.* wrapper
                     subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, timeout=600)
 
                 return strings_file
@@ -479,6 +491,7 @@ class FilesystemAnalysisModule(AnalysisModule):
             cmd.extend([str(image), str(inode)])
 
             try:
+                # TODO: use forensic.tools.* wrapper
                 result = subprocess.run(cmd, capture_output=True, timeout=60)
 
                 if result.returncode == 0:

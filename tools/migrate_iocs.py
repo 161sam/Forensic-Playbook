@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Repo-Hilfen, nicht mit forensic.tools verwechseln
 """Migrate IoCs.txt to IoCs.json with auto-detection."""
 
 import json

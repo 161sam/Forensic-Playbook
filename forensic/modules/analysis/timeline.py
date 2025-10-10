@@ -23,6 +23,8 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 from ...core.evidence import Evidence
 from ...core.module import AnalysisModule, ModuleResult
 from ...core.time_utils import ZoneInfo, utc_isoformat, utc_slug
+from ...tools import plaso as plaso_wrapper
+from ...tools import sleuthkit as sleuthkit_wrapper
 
 
 class TimelineModule(AnalysisModule):
@@ -48,6 +50,20 @@ class TimelineModule(AnalysisModule):
     @property
     def requires_root(self) -> bool:
         return False
+
+    def tool_versions(self) -> Dict[str, str]:
+        """Report Plaso and Sleuthkit status using guarded wrappers."""
+
+        reported: Dict[str, str] = {}
+        for label, wrapper in (
+            ("plaso", plaso_wrapper),
+            ("sleuthkit", sleuthkit_wrapper),
+        ):
+            available = wrapper.available()
+            version_info = wrapper.version() if available else None
+            status = version_info or ("available" if available else "missing")
+            reported[label] = status
+        return reported
 
     def _config_defaults(self) -> Dict[str, Any]:
         return self._module_config("timeline")
@@ -348,6 +364,7 @@ class TimelineModule(AnalysisModule):
         self.logger.info(f"Running: {' '.join(cmd)}")
 
         try:
+            # TODO: use forensic.tools.* wrapper
             result = subprocess.run(
                 cmd, capture_output=True, text=True, timeout=3600  # 1 hour timeout
             )
@@ -393,6 +410,7 @@ class TimelineModule(AnalysisModule):
         self.logger.info(f"Running: {' '.join(psort_cmd)}")
 
         try:
+            # TODO: use forensic.tools.* wrapper
             result = subprocess.run(
                 psort_cmd, capture_output=True, text=True, timeout=1800
             )
@@ -436,6 +454,7 @@ class TimelineModule(AnalysisModule):
 
         try:
             with open(body_file, "w") as f:
+                # TODO: use forensic.tools.* wrapper
                 result = subprocess.run(
                     cmd, stdout=f, stderr=subprocess.PIPE, text=True, timeout=1800
                 )
@@ -474,6 +493,7 @@ class TimelineModule(AnalysisModule):
 
         try:
             with open(timeline_file, "w") as f:
+                # TODO: use forensic.tools.* wrapper
                 result = subprocess.run(
                     mactime_cmd,
                     stdout=f,

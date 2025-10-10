@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Repo-Hilfen, nicht mit forensic.tools verwechseln
 """Generate the module capability matrix for the README."""
 
 from __future__ import annotations

@@ -95,6 +95,88 @@ Generate a report preview without writing files:
 forensic-cli report generate --case CASE123 --fmt md --dry-run
 ```
 
+## Project structure (v2.0)
+
+```text
+Forensic-Playbook/
+├── ARCHITECTURE.md
+├── README.md
+├── config/
+│   └── framework.yaml
+├── forensic/
+│   ├── cli.py
+│   ├── core/
+│   │   ├── chain_of_custody.py
+│   │   ├── config.py
+│   │   ├── evidence.py
+│   │   ├── framework.py
+│   │   ├── logger.py
+│   │   └── module.py
+│   ├── modules/
+│   │   ├── acquisition/
+│   │   │   ├── disk_imaging.py
+│   │   │   ├── live_response.py
+│   │   │   ├── memory_dump.py
+│   │   │   └── network_capture.py
+│   │   ├── analysis/
+│   │   │   ├── filesystem.py
+│   │   │   ├── malware.py
+│   │   │   ├── memory.py
+│   │   │   ├── network.py
+│   │   │   ├── registry.py
+│   │   │   └── timeline.py
+│   │   ├── reporting/
+│   │   │   ├── exporter.py
+│   │   │   └── generator.py
+│   │   └── triage/
+│   │       ├── persistence.py
+│   │       ├── quick_triage.py
+│   │       └── system_info.py
+│   ├── tools/
+│   │   ├── autopsy.py
+│   │   ├── bulk_extractor.py
+│   │   ├── plaso.py
+│   │   ├── sleuthkit.py
+│   │   ├── volatility.py
+│   │   └── yara.py
+│   └── utils/
+│       ├── cmd.py
+│       ├── hashing.py
+│       ├── io.py
+│       ├── paths.py
+│       └── timefmt.py
+├── pipelines/
+│   ├── disk_forensics.yaml
+│   ├── incident_response.yaml
+│   └── malware_analysis.yaml
+├── tests/
+│   ├── data/
+│   ├── utils/
+│   ├── conftest.py
+│   └── … (pytest suites)
+└── tools/
+    ├── generate_module_matrix.py  # Repo-Hilfen, nicht mit forensic.tools verwechseln
+    ├── migrate_iocs.py            # Repo-Hilfen, nicht mit forensic.tools verwechseln
+    ├── run_minimal_flow.py        # Repo-Hilfen, nicht mit forensic.tools verwechseln
+    └── sleuthkit.py               # Repo-Hilfen, nicht mit forensic.tools verwechseln
+```
+
+`forensic/tools` enthält die **guarded Runtime-Wrapper** für externe
+Werkzeuge. Das Top-Level-Verzeichnis `tools/` bleibt den
+Repository-Hilfsskripten vorbehalten (z. B. CI-Validierungen) und darf nicht mit
+den neuen Wrappern verwechselt werden.
+
+## Tool-Wrapper (Guarded)
+
+| Wrapper | Primäre Binaries/Module | Beispiel-Check | Hinweise |
+|---------|--------------------------|----------------|----------|
+| sleuthkit | `tsk_version`, `mmls`, `fls` | `mmls -V` | Read-only Helper für Dateisystem-Metadaten |
+| plaso | `log2timeline.py`, `psort.py` | `log2timeline.py --version` | Keine Timeline-Runs im CI |
+| volatility | `volatility3`, `vol`, `vol.py`, Modul `volatility3` | `volatility3 --version` | Optionales Memory-Forensics-Toolkit |
+| yara | `yara` | `yara --version` | Optionaler Signatur-Scan |
+| bulk_extractor | `bulk_extractor` | `bulk_extractor -V` | Optional für Artefakt-Extraktion |
+| autopsy | `autopsy`, `autopsy64` | manuelle GUI/Headless-Starts | Hinweise statt Automatisierung |
+
 ## Acquisition modules & real backends
 
 Real acquisition backends remain available and are wrapped in guard rails so
