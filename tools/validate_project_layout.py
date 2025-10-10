@@ -83,10 +83,13 @@ def _check_pipelines() -> List[str]:
     return []
 
 
+LEGACY_HEADER = "# Repo helper only – runtime wrappers live in forensic/tools/"
+
+
 def _check_repo_tool_shims() -> List[str]:
     runtime_dir = REPO_ROOT / "forensic" / "tools"
-    runtime_wrappers = {
-        path.name
+    runtime_stems = {
+        path.stem
         for path in runtime_dir.glob("*.py")
         if path.name != "__init__.py"
     }
@@ -95,15 +98,21 @@ def _check_repo_tool_shims() -> List[str]:
     for path in repo_tools_dir.glob("*.py"):
         if path.name == "__init__.py":
             continue
-        if path.name in runtime_wrappers:
+        stem = path.stem
+        if stem in runtime_stems:
+            issues.append(
+                f"{path.relative_to(REPO_ROOT)} duplicates runtime wrapper '{stem}'. Move code to forensic/tools/{path.name}."
+            )
+            continue
+        if stem.endswith("_legacy"):
             try:
-                content = path.read_text(encoding="utf-8")
+                first_line = path.read_text(encoding="utf-8").splitlines()[0]
             except OSError:
                 issues.append(f"{path.relative_to(REPO_ROOT)} (unable to read)")
                 continue
-            if "from forensic.tools" not in content:
+            if first_line.strip() != LEGACY_HEADER:
                 issues.append(
-                    f"{path.relative_to(REPO_ROOT)} should import forensic.tools.{path.stem} instead of duplicating code"
+                    f"{path.relative_to(REPO_ROOT)} should start with LEGACY_HEADER to clarify runtime wrappers moved"
                 )
     return issues
 
