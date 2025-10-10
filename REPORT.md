@@ -3,12 +3,13 @@
 ## Zusammenfassung
 
 Die Phase-3-Härtung hebt alle zuvor als „MVP" geführten Module auf den Guarded-
-Standard. Guarded Module liefern jetzt konsistente Dry-Run-Pfade, prüfen externe
-Tools mit freundlichen Hinweisen und protokollieren deterministische Exporte in
-der Provenienz- und Chain-of-Custody-Logik. Zusätzlich stehen Codex- und MCP-
-Workflows bereit (`forensic-cli codex …`, `forensic-cli mcp …`) inklusive SDK-
-Exports für Automatisierung. Die Dokumentation (README, Getting-Started,
-Walkthrough) und die automatisch generierte Modulmatrix sind synchronisiert.
+Standard. Alle Status-Tafeln stehen jetzt auf ✅: Guarded Module liefern
+konsistente Dry-Run-Pfade, prüfen externe Tools mit freundlichen Hinweisen und
+protokollieren deterministische Exporte in der Provenienz- und Chain-of-
+Custody-Logik. Zusätzlich stehen Codex- und MCP-Workflows bereit (`forensic-cli
+codex …`, `forensic-cli mcp …`) inklusive SDK-Exports für Automatisierung. Die
+Dokumentation (README, Getting-Started, Walkthrough) und die automatisch
+generierte Modulmatrix sind synchronisiert.
 
 ## Modulstatus (Vorher → Nachher)
 
@@ -27,7 +28,7 @@ Walkthrough) und die automatisch generierte Modulmatrix sind synchronisiert.
 - [x] End-to-End-Flow grün mit Runtime-PCAP-Synth oder `--pcap-json -` Fallback.
 - [x] PDF-Export optional: HTML immer verfügbar, PDF wird nur bei vorhandenem
       Renderer erzeugt.
-- [x] Coverage-Gate ≥ 65 % aktiv in CI.
+- [x] Coverage-Gate ≥ 70 % aktiv in CI.
 - [x] Deterministische Exporte (sortierte Keys, ISO-8601-Zeitstempel mit TZ).
 - [x] Chain of Custody & Provenienz protokollieren jeden Lauf ohne Duplikate.
 
