@@ -91,7 +91,7 @@ class RouterResult:
         status: str = "skipped",
         hints: Optional[Sequence[str]] = None,
         metadata: Optional[Mapping[str, Any]] = None,
-    ) -> "RouterResult":
+    ) -> RouterResult:
         """Populate the result as a guard message."""
 
         self.status = status
@@ -211,7 +211,7 @@ def normalize_bool(value: Any) -> bool:
 
     if isinstance(value, bool):
         return value
-    if isinstance(value, (int, float)):
+    if isinstance(value, int | float):
         return bool(value)
     if isinstance(value, str):
         lowered = value.strip().lower()

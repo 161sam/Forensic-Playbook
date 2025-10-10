@@ -9,7 +9,6 @@ import pytest
 from click.testing import CliRunner
 
 from forensic.cli import cli as forensic_cli
-from forensic.modules.router import capture as router_capture
 from forensic.modules.router import pipeline as router_pipeline
 from forensic.modules.router.common import RouterResult
 

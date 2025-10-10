@@ -16,7 +16,6 @@ from ..modules.router import manifest as router_manifest
 from ..modules.router import pipeline as router_pipeline
 from ..modules.router import summarize as router_summarize
 from ..modules.router.common import RouterResult
-
 from .schemas import MCPToolArgument, MCPToolDescriptor
 
 PROMPT_RESOURCE = "forensic/mcp/prompts/forensic_mode.txt"
@@ -28,7 +27,7 @@ def _to_serialisable(value: Any) -> Any:
         return str(value)
     if isinstance(value, dict):
         return {key: _to_serialisable(val) for key, val in value.items()}
-    if isinstance(value, (list, tuple, set)):
+    if isinstance(value, list | tuple | set):
         return [_to_serialisable(item) for item in value]
     return value
 

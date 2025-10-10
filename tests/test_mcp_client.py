@@ -9,8 +9,8 @@ from click.testing import CliRunner
 
 from forensic import build_mcp_tool_payload
 from forensic.cli import cli
-from forensic.mcp.client import MCPClient, MCPConfig, MCPResponse
 from forensic.core.framework import ForensicFramework
+from forensic.mcp.client import MCPClient, MCPConfig, MCPResponse
 
 
 class StubResponse:
@@ -19,10 +19,14 @@ class StubResponse:
         self.status_code = status
         self._data = data
         self.text = text
-        self.headers = {"Content-Type": "application/json" if isinstance(data, (dict, list)) else "text/plain"}
+        self.headers = {
+            "Content-Type": "application/json"
+            if isinstance(data, dict | list)
+            else "text/plain"
+        }
 
     def json(self) -> Any:
-        if isinstance(self._data, (dict, list)):
+        if isinstance(self._data, dict | list):
             return self._data
         raise json.JSONDecodeError("", "", 0)
 
