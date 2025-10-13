@@ -1236,7 +1236,7 @@ class ReportGenerator(ReportingModule):
             )
 
         description_html = (
-            f"<p class=\"case-description\">{escape(str(description))}</p>"
+            f'<p class="case-description">{escape(str(description))}</p>'
             if description
             else ""
         )

@@ -62,7 +62,9 @@ def load_router_defaults(name: str) -> Dict[str, Any]:
             if candidate.exists():
                 try:
                     data = load_yaml(candidate)
-                except Exception:  # pragma: no cover - configuration parsing is validated elsewhere
+                except (
+                    Exception
+                ):  # pragma: no cover - configuration parsing is validated elsewhere
                     continue
                 if isinstance(data, Mapping):
                     return dict(data)
@@ -216,7 +218,10 @@ def _deterministic(value: Any) -> Any:
     if isinstance(value, dict):
         return {key: _deterministic(value[key]) for key in sorted(value)}
     if isinstance(value, list | tuple | set):
-        return [_deterministic(item) for item in sorted(value, key=lambda item: json.dumps(item, sort_keys=True))]
+        return [
+            _deterministic(item)
+            for item in sorted(value, key=lambda item: json.dumps(item, sort_keys=True))
+        ]
     return value
 
 

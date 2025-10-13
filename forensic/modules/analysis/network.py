@@ -1061,8 +1061,7 @@ class NetworkAnalysisModule(AnalysisModule):
             {
                 str(req.get("uri"))
                 for req in sorted_requests
-                if req.get("uri")
-                and req.get("indicators", {}).get("encoded_uri")
+                if req.get("uri") and req.get("indicators", {}).get("encoded_uri")
             }
         )
         return {

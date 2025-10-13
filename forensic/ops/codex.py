@@ -109,7 +109,9 @@ class OperationLogger:
     def __enter__(self) -> OperationLogger:
         return self
 
-    def __exit__(self, exc_type, exc, tb) -> None:  # pragma: no cover - context manager protocol
+    def __exit__(
+        self, exc_type, exc, tb
+    ) -> None:  # pragma: no cover - context manager protocol
         if self._stream:
             self._stream.close()
 
@@ -172,7 +174,9 @@ def resolve_paths(
     )
 
 
-def _default_runner(args: List[str], kwargs: Dict[str, Any]) -> subprocess.CompletedProcess:
+def _default_runner(
+    args: List[str], kwargs: Dict[str, Any]
+) -> subprocess.CompletedProcess:
     kwargs.setdefault("check", False)
     kwargs.setdefault("capture_output", True)
     text = kwargs.get("text")
@@ -181,7 +185,9 @@ def _default_runner(args: List[str], kwargs: Dict[str, Any]) -> subprocess.Compl
     return subprocess.run(args, **kwargs)
 
 
-def _ensure_directory(path: Path, logger: OperationLogger, *, dry_run: bool, mode: int | None = None) -> None:
+def _ensure_directory(
+    path: Path, logger: OperationLogger, *, dry_run: bool, mode: int | None = None
+) -> None:
     if dry_run:
         logger.action(f"Would ensure directory exists: {path}")
         return
@@ -221,7 +227,9 @@ def _maybe_clone_repo(
         return
 
     if not _git_available():
-        logger.warning("git executable not available -> please clone MCP-Kali-Server manually")
+        logger.warning(
+            "git executable not available -> please clone MCP-Kali-Server manually"
+        )
         return
 
     if dry_run:
@@ -249,9 +257,22 @@ def _create_venv(paths: CodexPaths, *, dry_run: bool, logger: OperationLogger) -
     logger.info("Created virtual environment")
 
 
-def _pip_install(paths: CodexPaths, *, dry_run: bool, logger: OperationLogger, runner: _CommandRunner) -> None:
-    python_bin = paths.venv_python if paths.venv_python.exists() else Path(sys.executable)
-    upgrade_cmd = [str(python_bin), "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"]
+def _pip_install(
+    paths: CodexPaths, *, dry_run: bool, logger: OperationLogger, runner: _CommandRunner
+) -> None:
+    python_bin = (
+        paths.venv_python if paths.venv_python.exists() else Path(sys.executable)
+    )
+    upgrade_cmd = [
+        str(python_bin),
+        "-m",
+        "pip",
+        "install",
+        "--upgrade",
+        "pip",
+        "setuptools",
+        "wheel",
+    ]
     if dry_run:
         logger.action(f"Would run: {' '.join(upgrade_cmd)}")
     else:
@@ -276,7 +297,9 @@ def _pip_install(paths: CodexPaths, *, dry_run: bool, logger: OperationLogger, r
         logger.info(f"Installed {description}")
 
 
-def _ensure_node_packages(paths: CodexPaths, *, dry_run: bool, logger: OperationLogger) -> None:
+def _ensure_node_packages(
+    paths: CodexPaths, *, dry_run: bool, logger: OperationLogger
+) -> None:
     npm_path = shutil.which("npm")
     if npm_path is None:
         logger.warning(
@@ -313,8 +336,9 @@ def _write_config(
     dry_run: bool,
     logger: OperationLogger,
 ) -> None:
-    config_body = textwrap.dedent(
-        f"""
+    config_body = (
+        textwrap.dedent(
+            f"""
         [core]
         # default_model = "gpt-5-codex"
 
@@ -323,7 +347,9 @@ def _write_config(
         args = ["{paths.repo_dir.as_posix()}/mcp_server.py", "http://{host}:{port}"]
         env = {{ MCP_ALLOW_EXEC = "true" }}
         """
-    ).strip() + "\n"
+        ).strip()
+        + "\n"
+    )
 
     if dry_run:
         logger.action(f"Would write Codex config to {paths.config_file}")
@@ -332,7 +358,9 @@ def _write_config(
     paths.config_dir.mkdir(parents=True, exist_ok=True)
     paths.config_file.write_text(config_body, encoding="utf-8")
     checksum = hashlib.sha256(config_body.encode("utf-8")).hexdigest()
-    paths.config_checksum.write_text(json.dumps({"sha256": checksum, "file": str(paths.config_file)}))
+    paths.config_checksum.write_text(
+        json.dumps({"sha256": checksum, "file": str(paths.config_file)})
+    )
     logger.info(f"Codex config written to {paths.config_file}")
 
 
@@ -367,7 +395,9 @@ def install_codex_environment(
                 "Mount automation is not supported in this guarded port -> please mount manually if needed"
             )
         else:
-            logger.info("Mount automation disabled (use --enable-mount to see guidance)")
+            logger.info(
+                "Mount automation disabled (use --enable-mount to see guidance)"
+            )
 
         _maybe_clone_repo(
             paths,
@@ -387,7 +417,9 @@ def install_codex_environment(
             _pip_install(paths, dry_run=dry_run, logger=logger, runner=runner)
 
         _ensure_node_packages(paths, dry_run=dry_run, logger=logger)
-        _write_config(paths, host=DEFAULT_HOST, port=DEFAULT_PORT, dry_run=dry_run, logger=logger)
+        _write_config(
+            paths, host=DEFAULT_HOST, port=DEFAULT_PORT, dry_run=dry_run, logger=logger
+        )
 
         if enable_host_patch:
             warnings.append(
@@ -437,7 +469,9 @@ def _read_pid(pid_file: Path) -> Optional[int]:
         return None
 
 
-def _write_pid(pid_file: Path, pid: int, *, dry_run: bool, logger: OperationLogger) -> None:
+def _write_pid(
+    pid_file: Path, pid: int, *, dry_run: bool, logger: OperationLogger
+) -> None:
     if dry_run:
         logger.action(f"Would write PID {pid} to {pid_file}")
         return
@@ -445,7 +479,9 @@ def _write_pid(pid_file: Path, pid: int, *, dry_run: bool, logger: OperationLogg
     pid_file.write_text(str(pid), encoding="utf-8")
 
 
-def _stop_existing_process(paths: CodexPaths, *, dry_run: bool, logger: OperationLogger) -> Optional[int]:
+def _stop_existing_process(
+    paths: CodexPaths, *, dry_run: bool, logger: OperationLogger
+) -> Optional[int]:
     pid = _read_pid(paths.pid_file)
     if not pid:
         return None
@@ -472,14 +508,23 @@ def _start_background(
     runner_env: Optional[Dict[str, str]] = None,
 ) -> Optional[int]:
     if dry_run:
-        python_bin = paths.venv_python if paths.venv_python.exists() else Path(sys.executable)
-        logger.action(
-            f"Would start MCP server in background using {python_bin}"
+        python_bin = (
+            paths.venv_python if paths.venv_python.exists() else Path(sys.executable)
         )
+        logger.action(f"Would start MCP server in background using {python_bin}")
         return 99999
 
-    python_bin = paths.venv_python if paths.venv_python.exists() else Path(sys.executable)
-    command = [str(python_bin), str(paths.mcp_script), "--host", host, "--port", str(port)]
+    python_bin = (
+        paths.venv_python if paths.venv_python.exists() else Path(sys.executable)
+    )
+    command = [
+        str(python_bin),
+        str(paths.mcp_script),
+        "--host",
+        host,
+        "--port",
+        str(port),
+    ]
     env = os.environ.copy()
     if runner_env:
         env.update(runner_env)
@@ -513,8 +558,17 @@ def _start_foreground(
     logger: OperationLogger,
     runner_env: Optional[Dict[str, str]] = None,
 ) -> Optional[int]:
-    python_bin = paths.venv_python if paths.venv_python.exists() else Path(sys.executable)
-    command = [str(python_bin), str(paths.mcp_script), "--host", host, "--port", str(port)]
+    python_bin = (
+        paths.venv_python if paths.venv_python.exists() else Path(sys.executable)
+    )
+    command = [
+        str(python_bin),
+        str(paths.mcp_script),
+        "--host",
+        host,
+        "--port",
+        str(port),
+    ]
     if dry_run:
         logger.action(f"Would run MCP server in foreground: {' '.join(command)}")
         return 0
@@ -545,7 +599,9 @@ def start_codex_server(
 
     with OperationLogger(paths.control_log, dry_run=dry_run) as logger:
         logger.info(
-            "Starting Codex MCP server (dry-run)" if dry_run else "Starting Codex MCP server"
+            "Starting Codex MCP server (dry-run)"
+            if dry_run
+            else "Starting Codex MCP server"
         )
         if not paths.repo_dir.exists():
             warning = (
@@ -572,7 +628,9 @@ def start_codex_server(
                 logger.warning("Host patch skipped (non-posix platform)")
             elif os.geteuid() != 0:  # type: ignore[attr-defined]
                 warnings.append("Run with sudo to modify /etc/hosts or patch manually")
-                logger.warning("Host patch requested but not running as root -> skipping")
+                logger.warning(
+                    "Host patch requested but not running as root -> skipping"
+                )
             else:
                 hosts_file = Path("/etc/hosts")
                 if dry_run:
@@ -580,7 +638,9 @@ def start_codex_server(
                 else:
                     content = hosts_file.read_text(encoding="utf-8")
                     if "localhost" not in content:
-                        hosts_file.write_text(content + "\n127.0.0.1 localhost\n", encoding="utf-8")
+                        hosts_file.write_text(
+                            content + "\n127.0.0.1 localhost\n", encoding="utf-8"
+                        )
                         logger.info("Added localhost entry to /etc/hosts")
                     else:
                         logger.info("/etc/hosts already contains localhost entry")
@@ -701,7 +761,9 @@ def stop_codex_server(
 
         time.sleep(wait_seconds)
         if _pid_alive(pid):
-            warnings.append("Process still running after SIGTERM. Send SIGKILL manually if needed.")
+            warnings.append(
+                "Process still running after SIGTERM. Send SIGKILL manually if needed."
+            )
             logger.warning("Process still running after wait")
         else:
             paths.pid_file.unlink(missing_ok=True)
@@ -738,7 +800,9 @@ def get_codex_status(
 
     pid = _read_pid(paths.pid_file)
     running = bool(pid and _pid_alive(pid))
-    details.append(f"PID file: {paths.pid_file if paths.pid_file.exists() else 'missing'}")
+    details.append(
+        f"PID file: {paths.pid_file if paths.pid_file.exists() else 'missing'}"
+    )
     if pid:
         details.append(f"Recorded PID: {pid}")
         details.append(f"Process running: {running}")
@@ -758,7 +822,9 @@ def get_codex_status(
         try:
             import urllib.request
 
-            with urllib.request.urlopen(f"http://{host}:{port}/", timeout=timeout) as response:
+            with urllib.request.urlopen(
+                f"http://{host}:{port}/", timeout=timeout
+            ) as response:
                 http_status = response.status
         except Exception as exc:  # pragma: no cover - depends on network state
             warnings.append(f"HTTP probe failed: {exc}")
@@ -838,7 +904,9 @@ def read_codex_logs(
 
     if not log_path.exists():
         warning = f"Log file does not exist yet: {log_path}"
-        details.append("Log file missing -> run 'forensic-cli codex start' to populate it.")
+        details.append(
+            "Log file missing -> run 'forensic-cli codex start' to populate it."
+        )
         data["log_excerpt"] = []
         data["lines_returned"] = 0
         return CodexOperationResult(

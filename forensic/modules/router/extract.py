@@ -74,7 +74,15 @@ class RouterExtractModule(RouterModule):
         config = load_router_defaults("extract")
         builtin = {
             "input": None,
-            "include_patterns": ["*.log", "*.txt", "*.json", "*.conf", "*.tar", "*.tar.gz", "*.tgz"],
+            "include_patterns": [
+                "*.log",
+                "*.txt",
+                "*.json",
+                "*.conf",
+                "*.tar",
+                "*.tar.gz",
+                "*.tgz",
+            ],
             "max_bytes": 10 * 1024 * 1024,
             "dry_run": True,
             "timestamp": None,
@@ -89,7 +97,11 @@ class RouterExtractModule(RouterModule):
         input_dir = Path(input_path)
         include_patterns = resolved.get("include_patterns")
         if isinstance(include_patterns, str):
-            include_patterns = [pattern.strip() for pattern in include_patterns.split(",") if pattern.strip()]
+            include_patterns = [
+                pattern.strip()
+                for pattern in include_patterns.split(",")
+                if pattern.strip()
+            ]
 
         sanitized: Dict[str, Any] = {
             "input": input_dir,
@@ -142,13 +154,19 @@ class RouterExtractModule(RouterModule):
             return _summarize_text(handle, limit=min(limit, 2000))
 
     def _handle_tar(self, path: Path, max_bytes: int) -> Dict[str, Any]:
-        metadata: Dict[str, Any] = {"path": str(path), "size": path.stat().st_size, "members": []}
+        metadata: Dict[str, Any] = {
+            "path": str(path),
+            "size": path.stat().st_size,
+            "members": [],
+        }
         try:
             with tarfile.open(path, "r:*") as archive:
                 for member in sorted(archive.getmembers(), key=lambda item: item.name):
                     if not member.isfile() or not _safe_member(member.name):
                         continue
-                    metadata["members"].append({"name": member.name, "size": member.size})
+                    metadata["members"].append(
+                        {"name": member.name, "size": member.size}
+                    )
         except tarfile.TarError as exc:
             metadata["error"] = f"tar error: {exc}"
         return metadata
@@ -220,7 +238,9 @@ class RouterExtractModule(RouterModule):
         source_files = self._gather_sources(input_dir, patterns)
         result.data["source_count"] = len(source_files)
 
-        planned_outputs = [output_dir / f"{timestamp}_{category}.json" for category in CATEGORY_ORDER]
+        planned_outputs = [
+            output_dir / f"{timestamp}_{category}.json" for category in CATEGORY_ORDER
+        ]
         if dry_run:
             result.status = "skipped"
             result.message = "Dry-run: router extract preview"
@@ -251,14 +271,23 @@ class RouterExtractModule(RouterModule):
             category_sources.setdefault(category, []).append(str(file_path))
             suffix = file_path.suffix.lower()
             if suffix == ".json":
-                category_entries.setdefault(category, []).append(self._parse_json(file_path, max_bytes))
+                category_entries.setdefault(category, []).append(
+                    self._parse_json(file_path, max_bytes)
+                )
             elif suffix in {".csv", ".tsv"}:
-                category_entries.setdefault(category, []).extend(self._parse_csv(file_path, max_bytes))
+                category_entries.setdefault(category, []).extend(
+                    self._parse_csv(file_path, max_bytes)
+                )
             elif suffix in {".tar", ".gz", ".tgz", ".tar.gz"} or category == "backups":
-                category_entries.setdefault(category, []).append(self._handle_tar(file_path, max_bytes))
+                category_entries.setdefault(category, []).append(
+                    self._handle_tar(file_path, max_bytes)
+                )
             else:
                 category_entries.setdefault(category, []).append(
-                    {"path": str(file_path), "preview": self._parse_text(file_path, max_bytes)}
+                    {
+                        "path": str(file_path),
+                        "preview": self._parse_text(file_path, max_bytes),
+                    }
                 )
 
         artifacts: List[Path] = []

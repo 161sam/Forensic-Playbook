@@ -25,5 +25,7 @@ def test_doc_links_exist(source: Path, targets: set[Path]) -> None:
 
     content = source.read_text(encoding="utf-8")
     for target in sorted(targets):
-        assert target.as_posix() in content, f"Expected {target} to be referenced in {source}"
+        assert (
+            target.as_posix() in content
+        ), f"Expected {target} to be referenced in {source}"
         assert target.exists(), f"Linked documentation {target} is missing"

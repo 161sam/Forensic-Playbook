@@ -52,6 +52,8 @@ def test_router_capture_start_schema_sorted(framework: ForensicFramework) -> Non
     assert {"enable_live_capture", "dry_run"}.issubset(argument_names)
 
     guard_argument = next(
-        argument for argument in start_entry["arguments"] if argument["name"] == "enable_live_capture"
+        argument
+        for argument in start_entry["arguments"]
+        if argument["name"] == "enable_live_capture"
     )
     assert "must be true" in guard_argument["description"].lower()

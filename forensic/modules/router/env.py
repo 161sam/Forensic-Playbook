@@ -42,7 +42,9 @@ class RouterEnvModule(RouterModule):
         if isinstance(directories, str | Path):
             directories = [directories]
         if not isinstance(directories, list) or not directories:
-            self._validation_errors.append("directories must be a non-empty list of paths")
+            self._validation_errors.append(
+                "directories must be a non-empty list of paths"
+            )
             return None
 
         sanitized: Dict[str, Any] = {

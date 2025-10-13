@@ -3,6 +3,7 @@
 These helpers intentionally avoid any non-standard dependencies and are
 careful to create deterministic artefacts under ``.labs/<lab_id>``.
 """
+
 from __future__ import annotations
 
 import csv
@@ -157,7 +158,7 @@ def run_cli(cmd: Sequence[str], tolerate: bool = True) -> CliResult:
     handle explicitly.
     """
 
-    if not isinstance(cmd, (list, tuple)):
+    if not isinstance(cmd, list | tuple):
         raise TypeError("cmd must be a sequence of strings")
 
     try:
@@ -175,7 +176,9 @@ def run_cli(cmd: Sequence[str], tolerate: bool = True) -> CliResult:
         raise RuntimeError(f"Command not found: {cmd!r}") from exc
     except subprocess.TimeoutExpired as exc:
         stderr = getattr(exc, "stderr", "") or "Command timed out"
-        result = CliResult(returncode=-1, stdout=getattr(exc, "stdout", ""), stderr=stderr)
+        result = CliResult(
+            returncode=-1, stdout=getattr(exc, "stdout", ""), stderr=stderr
+        )
         if tolerate:
             return result
         raise RuntimeError(f"Command timed out: {cmd!r}") from exc

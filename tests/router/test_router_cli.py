@@ -47,7 +47,9 @@ def test_capture_start_requires_enable_flag(runner: CliRunner) -> None:
         assert "Live capture disabled" in result.output
 
 
-def test_capture_start_missing_tool_guard(monkeypatch: pytest.MonkeyPatch, runner: CliRunner) -> None:
+def test_capture_start_missing_tool_guard(
+    monkeypatch: pytest.MonkeyPatch, runner: CliRunner
+) -> None:
     with runner.isolated_filesystem():
         monkeypatch.setattr(
             "forensic.modules.router.capture.shutil.which", lambda tool: None
@@ -72,7 +74,9 @@ def test_extract_ui_generates_artifact(runner: CliRunner) -> None:
         input_dir = Path("input")
         input_dir.mkdir()
         (input_dir / "index.html").write_text("<html>ui</html>", encoding="utf-8")
-        (input_dir / "settings.json").write_text("{\n  \"ssid\": \"demo\"\n}\n", encoding="utf-8")
+        (input_dir / "settings.json").write_text(
+            '{\n  "ssid": "demo"\n}\n', encoding="utf-8"
+        )
 
         output_dir = Path("out")
         result = runner.invoke(
@@ -96,7 +100,11 @@ def test_extract_ui_generates_artifact(runner: CliRunner) -> None:
         assert sorted(entry["path"] for entry in data["artifacts"])
         coc_log = artifact_file.parent / "chain_of_custody.log"
         assert coc_log.exists()
-        log_lines = {line.strip() for line in coc_log.read_text(encoding="utf-8").splitlines() if line.strip()}
+        log_lines = {
+            line.strip()
+            for line in coc_log.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        }
         assert log_lines, "chain_of_custody log should contain entries"
 
 
@@ -132,7 +140,9 @@ def test_manifest_write_is_deterministic(runner: CliRunner) -> None:
         assert before == after
 
 
-def test_pipeline_run_invokes_handlers(monkeypatch: pytest.MonkeyPatch, runner: CliRunner) -> None:
+def test_pipeline_run_invokes_handlers(
+    monkeypatch: pytest.MonkeyPatch, runner: CliRunner
+) -> None:
     calls: list[str] = []
 
     def _stub(name: str):
@@ -153,7 +163,9 @@ def test_pipeline_run_invokes_handlers(monkeypatch: pytest.MonkeyPatch, runner: 
         assert "Router pipeline completed" in result.output
         assert calls == ["extract.ui", "summarize"]
 
-        dry_run = runner.invoke(forensic_cli, ["router", "pipeline", "run", "--dry-run"])
+        dry_run = runner.invoke(
+            forensic_cli, ["router", "pipeline", "run", "--dry-run"]
+        )
         assert dry_run.exit_code == 0
         assert "Dry-run" in dry_run.output
 
@@ -182,7 +194,9 @@ def test_summarize_generates_markdown(runner: CliRunner) -> None:
         assert "Total files" in text
 
 
-def test_pipeline_legacy_dry_run(monkeypatch: pytest.MonkeyPatch, runner: CliRunner) -> None:
+def test_pipeline_legacy_dry_run(
+    monkeypatch: pytest.MonkeyPatch, runner: CliRunner
+) -> None:
     with runner.isolated_filesystem():
         # Simulate missing legacy script to ensure guard message is emitted.
         monkeypatch.setattr(

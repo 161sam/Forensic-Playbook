@@ -109,7 +109,14 @@ def run_pslist(args: Dict[str, object] | None = None) -> Tuple[int, str, str]:
         return (0, "", f"Memory image does not exist: {memory_path}")
 
     if executable == "volatility3":
-        command = [executable, "-f", str(memory_path), "windows.pslist", "--limit", str(limit)]
+        command = [
+            executable,
+            "-f",
+            str(memory_path),
+            "windows.pslist",
+            "--limit",
+            str(limit),
+        ]
     else:
         command = [executable, "-f", str(memory_path), "pslist", "--output", "table"]
         command.extend(["--output-file", "-"])

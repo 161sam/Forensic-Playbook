@@ -67,7 +67,9 @@ class RouterSummarizeModule(RouterModule):
     def tool_versions(self) -> Dict[str, str]:
         return {}
 
-    def _load_category(self, source: Path, category: str) -> Tuple[Optional[Dict[str, Any]], Optional[Path]]:
+    def _load_category(
+        self, source: Path, category: str
+    ) -> Tuple[Optional[Dict[str, Any]], Optional[Path]]:
         pattern = f"*_{category}.json"
         for candidate in sorted(source.glob(pattern)):
             try:
@@ -150,7 +152,12 @@ class RouterSummarizeModule(RouterModule):
             )
             return result
 
-        lines: List[str] = ["# Router Forensic Summary", "", f"Generated at: {timestamp}", ""]
+        lines: List[str] = [
+            "# Router Forensic Summary",
+            "",
+            f"Generated at: {timestamp}",
+            "",
+        ]
         summary_dir = output_path.parent
         ensure_directory(summary_dir, dry_run=False)
 

@@ -254,7 +254,9 @@ def test_minimal_end_to_end_flow(tmp_path: Path) -> None:
         cmd_utils.run([], timeout=10)
 
 
-def test_chain_of_custody_and_evidence_helpers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_chain_of_custody_and_evidence_helpers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Exercise chain-of-custody utilities and evidence helpers for coverage."""
 
     db_path = tmp_path / "coc.sqlite"
@@ -314,7 +316,9 @@ def test_chain_of_custody_and_evidence_helpers(tmp_path: Path, monkeypatch: pyte
     log_file = tmp_path / "coc.log"
     append_coc(log_file, path="/tmp/file.bin", sha256="abc")
     append_coc(log_file, path="/tmp/file.bin", sha256="abc")
-    log_entries = [line for line in log_file.read_text(encoding="utf-8").splitlines() if line]
+    log_entries = [
+        line for line in log_file.read_text(encoding="utf-8").splitlines() if line
+    ]
     assert len(log_entries) == 1
 
     sample_file = tmp_path / "sample.txt"
@@ -355,7 +359,11 @@ def test_chain_of_custody_and_evidence_helpers(tmp_path: Path, monkeypatch: pyte
     assert list(normalised) == ["a", "b"]
     assert normalised["a"] == [1, 2, 3]
 
-    monkeypatch.setattr(report_exporter, "_ensure_jinja2", lambda: (_ for _ in ()).throw(RuntimeError("missing")))
+    monkeypatch.setattr(
+        report_exporter,
+        "_ensure_jinja2",
+        lambda: (_ for _ in ()).throw(RuntimeError("missing")),
+    )
     fallback_html = report_exporter.export_report(
         {"case": {"name": "Demo"}}, "html", tmp_path / "report.html"
     ).read_text(encoding="utf-8")

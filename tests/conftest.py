@@ -29,7 +29,12 @@ def _patch_router_append_jsonl(monkeypatch: pytest.MonkeyPatch) -> None:
             return {key: _deterministic(value[key]) for key in sorted(value)}
         if isinstance(value, list | tuple | set):
             transformed = [_deterministic(item) for item in value]
-            return [item for _, item in sorted((json.dumps(item, sort_keys=True), item) for item in transformed)]
+            return [
+                item
+                for _, item in sorted(
+                    (json.dumps(item, sort_keys=True), item) for item in transformed
+                )
+            ]
         return original_deterministic(value)
 
     def _append_jsonl(entry_path: Path, entry: dict) -> None:
@@ -45,5 +50,6 @@ def _patch_router_append_jsonl(monkeypatch: pytest.MonkeyPatch) -> None:
 
         with entry_path.open("a", encoding="utf-8") as handle:
             handle.write(canonical + "\n")
+
     monkeypatch.setattr(router_common, "_deterministic", _deterministic, raising=False)
     monkeypatch.setattr(router_common, "_append_jsonl", _append_jsonl, raising=False)

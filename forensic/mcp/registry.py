@@ -26,7 +26,9 @@ def _serialise_tool(tool) -> Dict[str, Any]:  # type: ignore[no-untyped-def]
     descriptor["arguments"] = sorted(arguments, key=lambda item: item["name"])
     metadata = descriptor.get("metadata")
     if isinstance(metadata, dict):
-        descriptor["metadata"] = OrderedDict(sorted(metadata.items(), key=lambda item: item[0]))
+        descriptor["metadata"] = OrderedDict(
+            sorted(metadata.items(), key=lambda item: item[0])
+        )
     return descriptor
 
 
@@ -73,7 +75,12 @@ def build_catalog(framework: ForensicFramework) -> Dict[str, Any]:
                 OrderedDict(
                     [
                         ("total_tools", len(all_names)),
-                        ("categories", OrderedDict((key, len(value)) for key, value in groups.items())),
+                        (
+                            "categories",
+                            OrderedDict(
+                                (key, len(value)) for key, value in groups.items()
+                            ),
+                        ),
                         ("tool_names", all_names),
                     ]
                 ),

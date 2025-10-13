@@ -47,7 +47,11 @@ class MCPConfig:
         resolved_token = token or env_token or config_section.get("auth_token")
         resolved_timeout: float = DEFAULT_TIMEOUT
 
-        candidate_timeout = timeout if timeout is not None else env_timeout or config_section.get("timeout")
+        candidate_timeout = (
+            timeout
+            if timeout is not None
+            else env_timeout or config_section.get("timeout")
+        )
         if candidate_timeout is not None:
             try:
                 resolved_timeout = float(candidate_timeout)

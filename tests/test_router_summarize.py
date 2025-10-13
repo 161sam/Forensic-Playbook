@@ -10,7 +10,9 @@ from forensic.modules.router.summarize import RouterSummarizeModule
 TIMESTAMP = "20240101T000000Z"
 
 
-def _write_category(source: Path, category: str, entries: list[dict[str, object]]) -> None:
+def _write_category(
+    source: Path, category: str, entries: list[dict[str, object]]
+) -> None:
     payload = {
         "module": "router.extract",
         "category": category,

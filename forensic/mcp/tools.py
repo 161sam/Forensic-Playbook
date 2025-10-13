@@ -162,7 +162,10 @@ def _router_status_to_result(status: str) -> str:
 def _router_result_to_tool_result(
     action: str, result: RouterResult
 ) -> ToolExecutionResult:
-    data: Dict[str, Any] = {"timestamp": result.timestamp, "details": list(result.details)}
+    data: Dict[str, Any] = {
+        "timestamp": result.timestamp,
+        "details": list(result.details),
+    }
     if result.data:
         data["payload"] = dict(result.data)
     if result.artifacts:
@@ -548,7 +551,9 @@ def get_tool_catalog(framework: ForensicFramework) -> List[MCPTool]:
             description="Provide guarded guidance for stopping router captures",
             handler=_router_capture_stop_handler,
             arguments=[
-                ToolArgument("dry_run", "Show stop guidance without terminating processes"),
+                ToolArgument(
+                    "dry_run", "Show stop guidance without terminating processes"
+                ),
                 ToolArgument("legacy", "Invoke legacy tcpdump_passive_stop.sh"),
             ],
         ),
@@ -557,8 +562,14 @@ def get_tool_catalog(framework: ForensicFramework) -> List[MCPTool]:
             description="Extract router artefacts of a specific kind",
             handler=_router_extract_handler,
             arguments=[
-                ToolArgument("kind", "Extraction kind (ui, ddns, devices, ...)", required=True),
-                ToolArgument("input", "Source directory containing raw router data", required=True),
+                ToolArgument(
+                    "kind", "Extraction kind (ui, ddns, devices, ...)", required=True
+                ),
+                ToolArgument(
+                    "input",
+                    "Source directory containing raw router data",
+                    required=True,
+                ),
                 ToolArgument("out", "Destination directory for extracted artefacts"),
                 ToolArgument("dry_run", "Preview extraction without writing output"),
                 ToolArgument("legacy", "Invoke matching legacy extraction script"),
@@ -590,7 +601,9 @@ def get_tool_catalog(framework: ForensicFramework) -> List[MCPTool]:
             description="Summarise router analysis findings",
             handler=_router_summarize_handler,
             arguments=[
-                ToolArgument("in", "Directory containing analysis artefacts", required=True),
+                ToolArgument(
+                    "in", "Directory containing analysis artefacts", required=True
+                ),
                 ToolArgument("out", "Summary file to generate", required=True),
                 ToolArgument("dry_run", "Preview summary generation"),
                 ToolArgument("legacy", "Invoke legacy summarize_report.sh"),
