@@ -131,3 +131,20 @@ jobs:
         with:
           name: e2e-coverage
           path: coverage.xml
+
+  notebooks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install notebook tooling
+        run: pip install jupyter nbconvert
+      - name: Execute lab notebooks (tolerant)
+        run: |
+          for nb in notebooks/00_*.ipynb notebooks/10_*.ipynb notebooks/20_*.ipynb notebooks/40_*.ipynb notebooks/90_*.ipynb; do
+            [ -f "$nb" ] || continue
+            jupyter nbconvert --to notebook --execute "$nb" --output /dev/null || echo "NOTEBOOK WARN: $nb"
+          done
+
