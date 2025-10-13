@@ -54,7 +54,9 @@ class RouterCaptureModule(RouterModule):
             "dry_run": normalize_bool(resolved.get("dry_run", True)),
             "interface": resolved.get("interface", "any"),
             "bpf": resolved.get("bpf", ""),
-            "enable_live_capture": normalize_bool(resolved.get("enable_live_capture", False)),
+            "enable_live_capture": normalize_bool(
+                resolved.get("enable_live_capture", False)
+            ),
             "ring": normalize_bool(resolved.get("ring", False)),
             "pcap_dir": Path(resolved.get("pcap_dir", "router/capture")),
         }
@@ -66,14 +68,18 @@ class RouterCaptureModule(RouterModule):
         if action in {"start", "setup"}:
             try:
                 duration_value = resolved.get("duration")
-                sanitized["duration"] = int(duration_value) if duration_value is not None else None
+                sanitized["duration"] = (
+                    int(duration_value) if duration_value is not None else None
+                )
             except (TypeError, ValueError):
                 self._validation_errors.append("duration must be an integer")
                 return None
 
             try:
                 count_value = resolved.get("count")
-                sanitized["count"] = int(count_value) if count_value is not None else None
+                sanitized["count"] = (
+                    int(count_value) if count_value is not None else None
+                )
             except (TypeError, ValueError):
                 self._validation_errors.append("count must be an integer")
                 return None
@@ -82,7 +88,9 @@ class RouterCaptureModule(RouterModule):
             count = sanitized.get("count")
             if action == "start":
                 if duration is None and count is None:
-                    self._validation_errors.append("provide either duration or count for capture start")
+                    self._validation_errors.append(
+                        "provide either duration or count for capture start"
+                    )
                     return None
                 if duration is not None and duration <= 0:
                     self._validation_errors.append("duration must be greater than zero")
@@ -96,7 +104,9 @@ class RouterCaptureModule(RouterModule):
     def tool_versions(self) -> Dict[str, str]:
         return detect_tools("dumpcap", "tcpdump")
 
-    def _prepare_directories(self, case_dir: Path, sanitized: Mapping[str, Any]) -> list[str]:
+    def _prepare_directories(
+        self, case_dir: Path, sanitized: Mapping[str, Any]
+    ) -> list[str]:
         directories = []
         target = sanitized.get("pcap_dir")
         if isinstance(target, Path) and not target.is_absolute():
@@ -113,13 +123,17 @@ class RouterCaptureModule(RouterModule):
         sanitized: Mapping[str, Any],
         result: RouterResult,
     ) -> RouterResult:
-        directories = [Path(path) for path in self._prepare_directories(case_dir, sanitized)]
+        directories = [
+            Path(path) for path in self._prepare_directories(case_dir, sanitized)
+        ]
         dry_run = sanitized.get("dry_run", True)
 
         if dry_run:
             result.status = "skipped"
             result.message = "Dry-run: capture setup preview"
-            result.details.extend(format_plan(f"Would create {directory}" for directory in directories))
+            result.details.extend(
+                format_plan(f"Would create {directory}" for directory in directories)
+            )
             result.data["directories"] = [str(directory) for directory in directories]
             return result
 
@@ -147,7 +161,9 @@ class RouterCaptureModule(RouterModule):
         pcap_dir = Path(sanitized.get("pcap_dir", run_dir))
         if not pcap_dir.is_absolute():
             pcap_dir = case_dir / pcap_dir
-        capture_dir = ensure_directory(pcap_dir if not dry_run else pcap_dir, dry_run=dry_run)
+        capture_dir = ensure_directory(
+            pcap_dir if not dry_run else pcap_dir, dry_run=dry_run
+        )
         output_dir = capture_dir if capture_dir.is_dir() else capture_dir.parent
 
         pcap_file = output_dir / "capture.pcap"
@@ -166,7 +182,13 @@ class RouterCaptureModule(RouterModule):
         interface = sanitized.get("interface", "any")
         bpf = sanitized.get("bpf")
 
-        command: list[str] = [preferred_tool, "-i", str(interface), "-w", str(pcap_file)]
+        command: list[str] = [
+            preferred_tool,
+            "-i",
+            str(interface),
+            "-w",
+            str(pcap_file),
+        ]
         if duration is not None:
             command.extend(["-G", str(duration)])
         if count is not None:

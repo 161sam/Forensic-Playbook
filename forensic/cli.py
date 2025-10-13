@@ -271,7 +271,9 @@ def _emit_mcp_tool_result(
 ) -> None:
     pretty_details = [f"Tool: {tool}"]
     if result.data:
-        pretty_details.append("Result data keys: " + ", ".join(sorted(result.data.keys())))
+        pretty_details.append(
+            "Result data keys: " + ", ".join(sorted(result.data.keys()))
+        )
     if result.warnings:
         pretty_details.append("Warnings:")
         pretty_details.extend(f"  - {warning}" for warning in result.warnings)
@@ -1331,9 +1333,7 @@ def router(ctx: click.Context) -> None:
     ctx.ensure_object(dict)
 
 
-def _load_router_case(
-    ctx: click.Context, command: str, case_id: str
-):
+def _load_router_case(ctx: click.Context, command: str, case_id: str):
     framework: ForensicFramework = ctx.obj["framework"]
     try:
         return framework.load_case(case_id)
@@ -1507,7 +1507,9 @@ def router_capture_setup(
     default=None,
     help="Optional case identifier for capture execution",
 )
-@click.option("--if", "interface", type=str, default=None, help="Network interface to monitor")
+@click.option(
+    "--if", "interface", type=str, default=None, help="Network interface to monitor"
+)
 @click.option("--duration", type=int, default=None, help="Capture duration in seconds")
 @click.option("--bpf", type=str, default=None, help="Optional BPF filter expression")
 @click.option(
@@ -1842,6 +1844,7 @@ def router_summarize_cmd(
 
     result = router_summary.summarize(params)
     _router_emit(ctx, "router summarize", result)
+
 
 def _ensure_legacy_enabled(ctx: click.Context) -> None:
     if not ctx.obj.get("legacy_enabled"):

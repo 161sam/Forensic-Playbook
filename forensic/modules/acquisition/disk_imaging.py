@@ -13,7 +13,6 @@ from ...core.evidence import Evidence
 from ...core.module import AcquisitionModule, ModuleResult
 from ...core.time_utils import utc_isoformat, utc_slug
 
-
 SUPPORTED_TOOLS = {"dd", "ddrescue", "ewfacquire"}
 SUPPORTED_HASHES = {"sha256", "sha1", "md5"}
 
@@ -252,7 +251,9 @@ class DiskImagingModule(AcquisitionModule):
                     result_id=result_id,
                     timestamp=timestamp,
                 )
-                guard.errors.append("Dry-run detected missing tooling. No imaging executed.")
+                guard.errors.append(
+                    "Dry-run detected missing tooling. No imaging executed."
+                )
                 return guard
 
             return ModuleResult(
@@ -479,7 +480,9 @@ class DiskImagingModule(AcquisitionModule):
         try:
             candidate.relative_to(case_root)
         except ValueError:
-            raise ValueError("Output path must reside inside the case directory.")
+            raise ValueError(
+                "Output path must reside inside the case directory."
+            ) from None
 
         meta_path = candidate.with_suffix(candidate.suffix + ".meta.json")
         return candidate, meta_path

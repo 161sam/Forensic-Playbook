@@ -89,9 +89,7 @@ LEGACY_HEADER = "# Repo helper only – runtime wrappers live in forensic/tools/
 def _check_repo_tool_shims() -> List[str]:
     runtime_dir = REPO_ROOT / "forensic" / "tools"
     runtime_stems = {
-        path.stem
-        for path in runtime_dir.glob("*.py")
-        if path.name != "__init__.py"
+        path.stem for path in runtime_dir.glob("*.py") if path.name != "__init__.py"
     }
     repo_tools_dir = REPO_ROOT / "tools"
     issues: List[str] = []
@@ -117,9 +115,7 @@ def _check_repo_tool_shims() -> List[str]:
     return issues
 
 
-
-
-LINK_PATTERN = re.compile(r'\[([^\]]+)\]\(([^\)]+)\)')
+LINK_PATTERN = re.compile(r"\[([^\]]+)\]\(([^\)]+)\)")
 
 
 def _check_doc_links() -> List[str]:
@@ -139,7 +135,7 @@ def _check_doc_links() -> List[str]:
                 continue
             if target.startswith(("tel:", "javascript:", "data:")):
                 continue
-            base = target.split('#', 1)[0]
+            base = target.split("#", 1)[0]
             if not base:
                 continue
             candidate = (md_path.parent / base).resolve()

@@ -81,7 +81,9 @@ def utcnow_iso() -> str:
     return datetime.now(timezone.utc).strftime(ISO_FORMAT)
 
 
-def to_iso(dt: Optional[datetime], timezone_name: Optional[str] = None) -> Optional[str]:
+def to_iso(
+    dt: Optional[datetime], timezone_name: Optional[str] = None
+) -> Optional[str]:
     """Convert ``dt`` to an ISO 8601 string honouring configured timezone."""
 
     if dt is None:

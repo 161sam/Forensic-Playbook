@@ -55,7 +55,9 @@ class RouterPipelineModule(RouterModule):
 
         custom_steps = params.get("steps")
         if custom_steps is not None:
-            if not isinstance(custom_steps, list) or not all(isinstance(item, str) for item in custom_steps):
+            if not isinstance(custom_steps, list) or not all(
+                isinstance(item, str) for item in custom_steps
+            ):
                 self._validation_errors.append("steps must be a list of handler names")
                 return None
             sanitized["steps"] = list(custom_steps)
@@ -134,7 +136,9 @@ class RouterPipelineModule(RouterModule):
             handler = HANDLERS.get(step)
             if not handler:
                 message = f"Unknown pipeline handler {step}"
-                step_results.append({"handler": step, "status": "failed", "message": message})
+                step_results.append(
+                    {"handler": step, "status": "failed", "message": message}
+                )
                 result.details.append(message)
                 exit_code = 1
                 if fail_fast:

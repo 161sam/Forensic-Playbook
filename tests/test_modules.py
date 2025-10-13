@@ -130,7 +130,9 @@ class TestDiskImagingModule:
         guard = result.metadata.get("guard")
         assert guard is not None
         assert "missing" in guard["message"].lower()
-        assert result.errors == ["Dry-run detected missing tooling. No imaging executed."]
+        assert result.errors == [
+            "Dry-run detected missing tooling. No imaging executed."
+        ]
 
     def test_successful_imaging_flow(self, temp_case_dir, monkeypatch):
         """Successful imaging produces deterministic artefacts and hashes."""
@@ -185,6 +187,7 @@ class TestDiskImagingModule:
         assert str(result.output_path) in paths
         assert any(entry["algorithm"] == "sha256" for entry in hashes)
         assert result.errors == []
+
 
 # ============================================================================
 # Filesystem Analysis Tests

@@ -67,7 +67,9 @@ def capabilities() -> List[str]:
     return list(_CAPABILITIES)
 
 
-def run_log2timeline_version(args: Dict[str, object] | None = None) -> Tuple[int, str, str]:
+def run_log2timeline_version(
+    args: Dict[str, object] | None = None,
+) -> Tuple[int, str, str]:
     """Execute ``log2timeline.py --version`` safely."""
 
     args = args or {}

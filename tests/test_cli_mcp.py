@@ -24,7 +24,14 @@ def test_mcp_expose_outputs_deterministic_catalog(tmp_path: Path) -> None:
     payload = _parse_cli_json(result.output)
 
     assert payload["metadata"]["total_tools"] >= 10
-    expected_categories = {"diagnostics", "cases", "modules", "reports", "router", "other"}
+    expected_categories = {
+        "diagnostics",
+        "cases",
+        "modules",
+        "reports",
+        "router",
+        "other",
+    }
     assert set(payload["tools"].keys()) == expected_categories
 
     for entries in payload["tools"].values():

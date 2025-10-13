@@ -23,14 +23,23 @@ def _build_input_directory(base: Path) -> Path:
     input_dir = base / "router_input"
     input_dir.mkdir()
 
-    (input_dir / "devices.json").write_text(json.dumps([
-        {"hostname": "router", "mac": "00:11:22:33:44:55"},
-        {"hostname": "switch", "mac": "10:20:30:40:50:60"},
-    ]), encoding="utf-8")
+    (input_dir / "devices.json").write_text(
+        json.dumps(
+            [
+                {"hostname": "router", "mac": "00:11:22:33:44:55"},
+                {"hostname": "switch", "mac": "10:20:30:40:50:60"},
+            ]
+        ),
+        encoding="utf-8",
+    )
 
-    (input_dir / "router_ddns.json").write_text(json.dumps({"ddns": "enabled"}), encoding="utf-8")
+    (input_dir / "router_ddns.json").write_text(
+        json.dumps({"ddns": "enabled"}), encoding="utf-8"
+    )
 
-    (input_dir / "events.log").write_text("INFO Boot complete\nWARN Port flapping", encoding="utf-8")
+    (input_dir / "events.log").write_text(
+        "INFO Boot complete\nWARN Port flapping", encoding="utf-8"
+    )
 
     csv_path = input_dir / "port_forwards.csv"
     with csv_path.open("w", encoding="utf-8", newline="") as handle:
@@ -38,7 +47,9 @@ def _build_input_directory(base: Path) -> Path:
         writer.writeheader()
         writer.writerow({"name": "ssh", "port": "22"})
 
-    (input_dir / "tr069_status.json").write_text(json.dumps({"acs": "active"}), encoding="utf-8")
+    (input_dir / "tr069_status.json").write_text(
+        json.dumps({"acs": "active"}), encoding="utf-8"
+    )
 
     (input_dir / "ui.txt").write_text("UI config snapshot", encoding="utf-8")
 
@@ -84,12 +95,16 @@ def test_router_extract_real_run_creates_structured_json(tmp_path):
     result = module.run(None, case_dir, params)
 
     output_dir = case_dir / "router" / TIMESTAMP
-    expected_files = [output_dir / f"{TIMESTAMP}_{category}.json" for category in CATEGORY_ORDER]
+    expected_files = [
+        output_dir / f"{TIMESTAMP}_{category}.json" for category in CATEGORY_ORDER
+    ]
 
     assert result.status == "success"
     assert all(path.exists() for path in expected_files)
 
-    devices_payload = json.loads((output_dir / f"{TIMESTAMP}_devices.json").read_text(encoding="utf-8"))
+    devices_payload = json.loads(
+        (output_dir / f"{TIMESTAMP}_devices.json").read_text(encoding="utf-8")
+    )
     assert list(devices_payload.keys()) == [
         "category",
         "entries",
@@ -103,9 +118,13 @@ def test_router_extract_real_run_creates_structured_json(tmp_path):
     assert devices_entries[0][0]["hostname"] == "router"
     assert devices_payload["source_paths"] == [str(input_dir / "devices.json")]
 
-    eventlog_payload = json.loads((output_dir / f"{TIMESTAMP}_eventlog.json").read_text(encoding="utf-8"))
+    eventlog_payload = json.loads(
+        (output_dir / f"{TIMESTAMP}_eventlog.json").read_text(encoding="utf-8")
+    )
     preview = eventlog_payload["entries"][0]["preview"]
     assert preview.startswith("INFO Boot complete")
 
-    backups_payload = json.loads((output_dir / f"{TIMESTAMP}_backups.json").read_text(encoding="utf-8"))
+    backups_payload = json.loads(
+        (output_dir / f"{TIMESTAMP}_backups.json").read_text(encoding="utf-8")
+    )
     assert backups_payload["entries"][0]["members"][0]["name"] == "config.txt"

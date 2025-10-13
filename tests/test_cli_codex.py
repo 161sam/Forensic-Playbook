@@ -123,7 +123,13 @@ def test_codex_status_reports_metadata(tmp_path: Path) -> None:
     log_dir.mkdir(parents=True, exist_ok=True)
     meta_file = log_dir / "meta.jsonl"
     meta_file.write_text(
-        json.dumps({"command": "install", "plan_hash": "abc", "timestamp": "2024-01-01T00:00:00"})
+        json.dumps(
+            {
+                "command": "install",
+                "plan_hash": "abc",
+                "timestamp": "2024-01-01T00:00:00",
+            }
+        )
         + "\n",
         encoding="utf-8",
     )

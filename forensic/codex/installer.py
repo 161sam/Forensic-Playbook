@@ -25,6 +25,7 @@ from . import (
 try:  # pragma: no cover - environment dependent
     from forensic.utils.cmd import run_cmd  # type: ignore[attr-defined]
 except (ImportError, AttributeError):  # pragma: no cover - fallback path
+
     def run_cmd(  # type: ignore[misc]
         command: Sequence[str],
         *,
@@ -53,9 +54,7 @@ def _load_environment(env: Mapping[str, str] | None) -> dict[str, str]:
     return base
 
 
-def _resolve_workspace(
-    workspace: Path | None, environment: Mapping[str, str]
-) -> Path:
+def _resolve_workspace(workspace: Path | None, environment: Mapping[str, str]) -> Path:
     candidates: list[Path] = []
     if workspace:
         candidates.append(workspace.expanduser())
@@ -224,7 +223,9 @@ def install(
 
     if not accept_risk:
         message = "Execution blocked: acknowledge risk with --accept-risk."
-        warnings.append("Installer requires explicit risk acknowledgement (--accept-risk).")
+        warnings.append(
+            "Installer requires explicit risk acknowledgement (--accept-risk)."
+        )
         return CodexActionResult(
             status="warning",
             message=message,

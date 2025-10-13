@@ -10,7 +10,9 @@ from forensic.tools import autopsy, bulk_extractor, plaso, sleuthkit, volatility
 
 def test_sleuthkit_version_and_availability(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sleuthkit, "_first_available", lambda _: "tsk_version")
-    monkeypatch.setattr(sleuthkit, "_execute", lambda *args, **kwargs: (0, "TSK 4.12", ""))
+    monkeypatch.setattr(
+        sleuthkit, "_execute", lambda *args, **kwargs: (0, "TSK 4.12", "")
+    )
 
     assert sleuthkit.available() is True
     assert sleuthkit.version() == "TSK 4.12"
@@ -23,7 +25,9 @@ def test_sleuthkit_version_and_availability(monkeypatch: pytest.MonkeyPatch) -> 
     assert sleuthkit.available() is False
 
 
-def test_sleuthkit_dry_run_helpers(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_sleuthkit_dry_run_helpers(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.setattr(sleuthkit, "_first_available", lambda candidates: candidates[0])
 
     code, stdout, stderr = sleuthkit.run_mmls_version({"dry_run": True})
@@ -59,7 +63,9 @@ def test_volatility_version_prefers_cli(monkeypatch: pytest.MonkeyPatch) -> None
     assert volatility.version() == "3.1"
 
 
-def test_volatility_run_pslist_dry_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_volatility_run_pslist_dry_run(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.setattr(volatility, "_first_available", lambda _: "volatility3")
     monkeypatch.setattr(volatility, "_module_available", lambda: False)
 
@@ -80,7 +86,9 @@ def test_volatility_run_pslist_dry_run(monkeypatch: pytest.MonkeyPatch, tmp_path
 
 
 def test_autopsy_launch_hint(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(autopsy, "which", lambda name: "/usr/bin/autopsy" if name == "autopsy" else None)
+    monkeypatch.setattr(
+        autopsy, "which", lambda name: "/usr/bin/autopsy" if name == "autopsy" else None
+    )
     assert autopsy.available() is True
     code, stdout, stderr = autopsy.run_launch_hint({"dry_run": True})
     assert code == 0
@@ -97,7 +105,9 @@ def test_plaso_wrappers(monkeypatch: pytest.MonkeyPatch) -> None:
     original_execute = plaso._execute
 
     monkeypatch.setattr(plaso, "_first_available", lambda candidates: candidates[0])
-    monkeypatch.setattr(plaso, "_execute", lambda *args, **kwargs: (0, "Plaso 20240101", ""))
+    monkeypatch.setattr(
+        plaso, "_execute", lambda *args, **kwargs: (0, "Plaso 20240101", "")
+    )
     assert plaso.version() == "Plaso 20240101"
 
     monkeypatch.setattr(plaso, "_execute", original_execute)
@@ -117,7 +127,9 @@ def test_bulk_extractor_wrapper(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(bulk_extractor, "available", lambda: True)
     monkeypatch.setattr(
-        bulk_extractor, "_execute", lambda *args, **kwargs: (0, "bulk_extractor 2.0", "")
+        bulk_extractor,
+        "_execute",
+        lambda *args, **kwargs: (0, "bulk_extractor 2.0", ""),
     )
     assert bulk_extractor.version() == "bulk_extractor 2.0"
 
@@ -144,7 +156,7 @@ def test_yara_wrapper_dry_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
 
     rule = tmp_path / "rule.yar"
     target = tmp_path / "target.bin"
-    rule.write_text('rule demo { condition: true }', encoding="utf-8")
+    rule.write_text("rule demo { condition: true }", encoding="utf-8")
     target.write_bytes(b"demo")
 
     code, stdout, stderr = yara.run_scan(

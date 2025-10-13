@@ -25,13 +25,17 @@ class AdapterInvocation:
     dry_run: bool
 
 
-def _normalise_arguments(arguments: Mapping[str, Any] | None, *, dry_run: bool) -> Dict[str, Any]:
+def _normalise_arguments(
+    arguments: Mapping[str, Any] | None, *, dry_run: bool
+) -> Dict[str, Any]:
     normalised: Dict[str, Any] = {k: v for k, v in (arguments or {}).items()}
     normalised.setdefault("dry_run", dry_run)
     return normalised
 
 
-def _clone_result(result: ToolExecutionResult, *, data: Dict[str, Any] | None = None) -> ToolExecutionResult:
+def _clone_result(
+    result: ToolExecutionResult, *, data: Dict[str, Any] | None = None
+) -> ToolExecutionResult:
     payload = data if data is not None else dict(result.data)
     return ToolExecutionResult(
         status=result.status,

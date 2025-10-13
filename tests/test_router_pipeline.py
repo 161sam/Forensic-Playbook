@@ -12,9 +12,13 @@ TIMESTAMP = "20240101T000000Z"
 def _build_input_directory(base: Path) -> Path:
     input_dir = base / "router_pipeline_input"
     input_dir.mkdir()
-    (input_dir / "devices.json").write_text(json.dumps([{"hostname": "gateway"}]), encoding="utf-8")
+    (input_dir / "devices.json").write_text(
+        json.dumps([{"hostname": "gateway"}]), encoding="utf-8"
+    )
     (input_dir / "events.log").write_text("INFO start", encoding="utf-8")
-    (input_dir / "router_ddns.json").write_text(json.dumps({"enabled": True}), encoding="utf-8")
+    (input_dir / "router_ddns.json").write_text(
+        json.dumps({"enabled": True}), encoding="utf-8"
+    )
     csv_path = input_dir / "port_forwards.csv"
     with csv_path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=["name", "port"])

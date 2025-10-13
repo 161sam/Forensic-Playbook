@@ -33,7 +33,9 @@ class MCPResponse:
 class MCPClient:
     """HTTP client for the Forensic MCP endpoints."""
 
-    def __init__(self, config: MCPConfig, *, session: Optional[requests.Session] = None) -> None:
+    def __init__(
+        self, config: MCPConfig, *, session: Optional[requests.Session] = None
+    ) -> None:
         self.config = config
         self.session = session or requests.Session()
 

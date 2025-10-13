@@ -22,6 +22,7 @@ MARKER_BEGIN = "<!-- MODULE_MATRIX:BEGIN -->"
 MARKER_END = "<!-- MODULE_MATRIX:END -->"
 TOOL_INVENTORY_PATH = REPO_ROOT / "config" / "tool_inventory.json"
 
+
 def _ensure_requests_stub() -> None:
     """Provide a lightweight ``requests`` stub when the dependency is missing.
 

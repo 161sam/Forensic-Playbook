@@ -42,7 +42,9 @@ def guarded_case(tmp_path: Path) -> Path:
     return case_dir
 
 
-def test_live_response_missing_tool_guard(guarded_case: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_live_response_missing_tool_guard(
+    guarded_case: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     module = LiveResponseModule(case_dir=guarded_case, config={})
     monkeypatch.setattr(module, "_verify_tool", lambda tool: False)
 
@@ -176,9 +178,7 @@ def test_persistence_dry_run_uses_configured_paths(guarded_case: Path) -> None:
 
 
 def test_system_info_config_fields_and_dry_run(guarded_case: Path) -> None:
-    config = {
-        "modules": {"system_info": {"fields": ["hostname", "timezone"]}}
-    }
+    config = {"modules": {"system_info": {"fields": ["hostname", "timezone"]}}}
     module = SystemInfoModule(case_dir=guarded_case, config=config)
     params: Dict[str, object] = {}
 
@@ -240,4 +240,3 @@ def test_cli_diagnostics_lists_guarded_wrappers(tmp_path: Path) -> None:
     assert "Tool wrappers (guarded):" in output
     for name in sorted(runtime_tools.__all__):
         assert f"- {name}:" in output
-
