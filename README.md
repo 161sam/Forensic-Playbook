@@ -31,6 +31,7 @@ Weitere Details (inklusive Paketlisten für Kali/Ubuntu) finden Sie im [User Gui
 | [Module-Katalog](docs/MODULES/analysis.md) | Parameter/Outputs für Analysis, Acquisition, Triage, Reporting, Router. |
 | [Examples](docs/examples/minimal-e2e.md) | Leichtgewichtige Workflows ohne Binär-Fixtures (E2E, IoC, Reporting). |
 | [Tutorials](docs/tutorials/01_quick-triage-linux.md) | Schritt-für-Schritt-Anleitungen (Triage, Netzwerk→Timeline, Registry, Router). |
+| [Jupyter Labs](notebooks/README.md) | Guarded Notebook-Suite mit Labs, Übungen und Lösungen. |
 | [API – CLI](docs/api/CLI.md) | Befehlsreferenz (`modules run`, `router`, `report`, `codex`, `mcp`) inkl. Exitcodes. |
 | [API – SDK](docs/api/SDK.md) | Python-Schnittstelle zur Framework-Integration. |
 | [Codex/MCP Workflow](docs/mcp/codex-workflow.md) | Plan → Confirm → Execute Leitfaden für Codex- und MCP-Steuerung. |
