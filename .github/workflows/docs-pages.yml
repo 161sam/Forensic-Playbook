@@ -3,6 +3,7 @@ name: Docs (Docusaurus) -> GitHub Pages
 on:
   push:
     branches: ["main"]
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -26,7 +27,7 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: docs-site/package.json # use existing manifest to avoid missing lockfile cache errors
+          cache-dependency-path: docs-site/package-lock.json
 
       - name: Install deps
         working-directory: docs-site
@@ -42,6 +43,7 @@ jobs:
           path: docs-site/build
 
   deploy:
+    if: github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
     environment:
