@@ -20,7 +20,7 @@ pip install -e .
 forensic-cli diagnostics --summary --dry-run
 ```
 
-Weitere Details (inklusive Paketlisten für Kali/Ubuntu) finden Sie im [User Guide](docs/User-Guide.md).
+Weitere Details (inklusive Paketlisten für Kali/Ubuntu) finden Sie im [User Guide](docs/User-Guide.md) oder im [Wiki](https://161sam.github.io/Forensic-Playbook).
 
 ## Dokumentations-Hub
 
