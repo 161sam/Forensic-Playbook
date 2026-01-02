@@ -58,8 +58,8 @@ Die CSV-Datei `triage/persistence/persistence.csv` enthält Pfade, Hashes und Ze
 - `cases/triage_demo/meta/provenance.jsonl` (mit allen Schritten)
 
 ## Weiterführende Links
-- [System Info](../modules/system_info.md)
-- [Quick Triage](../modules/quick_triage.md)
+- [System Info](/modules/system-info)
+- [Quick Triage](/modules/quick-triage)
 
 ## Chain-of-Custody Hinweise
 - Alle Befehle protokollieren Parameter und Hashes in `meta/provenance.jsonl`. Bewahren Sie Dry-Run-Protokolle gemeinsam mit den Artefakten auf.

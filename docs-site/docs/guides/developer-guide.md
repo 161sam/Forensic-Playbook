@@ -10,11 +10,11 @@ Dieser Guide richtet sich an Maintainerinnen und Beitragende. Er bündelt Archit
 
 ## Architektur & Verantwortlichkeiten
 
-- **Kernarchitektur:** Die komplette Komponentenübersicht ist in [ARCHITECTURE.md](ARCHITECTURE.md) dokumentiert; ergänzend beschreibt [Projektstruktur-v2.0.md](../Projektstruktur-v2.0.md) die Verzeichnisstruktur.
+- **Kernarchitektur:** Die komplette Komponentenübersicht ist in [Architecture Overview](/project/architecture) dokumentiert; ergänzend beschreibt [Projektstruktur v2.0](/project/project-structure-v2) die Verzeichnisstruktur.
 - **Core (`forensic/core/`):** Framework, Case-Objekte, Provenienz-Writer (`meta/provenance.jsonl`), Chain-of-Custody (`meta/chain_of_custody.jsonl`).
 - **Module (`forensic/modules/`):** Kategoriepakete (Acquisition, Analysis, Triage, Reporting, Router) mit Guarded-Basisklassen. Die Referenzseiten stehen unter [docs/modules/](../modules/analysis.md).
-- **Tools (`forensic/tools/`):** Deterministische Wrapper für externe Binaries (Sleuthkit, Volatility). Logging- und Guard-Vorgaben siehe [forensic/tools/AGENTS.md](../forensic/tools/AGENTS.md).
-- **CLI/MCP:** Click-Kommandos in `forensic/cli/`, MCP-Adapter in `forensic/mcp/`. Prompt-Richtlinien: [mcp/forensic-mode.md](mcp/forensic-mode.md).
+- **Tools (`forensic/tools/`):** Deterministische Wrapper für externe Binaries (Sleuthkit, Volatility). Logging- und Guard-Vorgaben siehe [Forensic Tools Guardrails](/project/forensic-tools-agents).
+- **CLI/MCP:** Click-Kommandos in `forensic/cli/`, MCP-Adapter in `forensic/mcp/`. Prompt-Richtlinien: [Forensic Mode Prompt](/mcp/forensic-mode).
 
 ## Modul-Skelett & Guards
 
@@ -64,14 +64,14 @@ class ExampleModule(BaseGuardedModule):
 
 - **Unit-Tests:** Pytest unter `tests/` (z. B. `tests/modules/analysis/test_network.py`). Verwenden Sie Fixtures für Synth-Daten; keine Binär-Fixtures einchecken.
 - **Mocks:** `pytest-mock`/`unittest.mock` für subprocess und Zeitquellen. Dry-Run-Pfade werden mit `tmp_path` simuliert.
-- **Integration/E2E:** Leichtgewichtige Pipelines (siehe [docs/examples/minimal-e2e.md](examples/minimal-e2e.md)) stellen sicher, dass CLI, Module und Reports zusammenspielen.
+- **Integration/E2E:** Leichtgewichtige Pipelines (siehe [Minimal E2E Example](/examples/minimal-e2e)) stellen sicher, dass CLI, Module und Reports zusammenspielen.
 - **Coverage-Gate:** Mindestwert 70 % (`pytest --cov=forensic --cov-report=term`). Schlägt das Gate fehl, Tests erweitern oder Toleranzen begründen.
 - **CI:** GitHub Actions Workflow `ci.yml` führt Linting, Tests und (optional) Docs-Build durch. Vor Merge lokal `tox -e lint,tests` oder `make check` ausführen.
 
 ## Release-Flow
 
 1. **Versionierung:** Semantic Versioning (`major.minor.patch`). Version in `pyproject.toml` und `forensic/__init__.py` synchronisieren.
-2. **Changelog:** [CHANGELOG.md](../CHANGELOG.md) nach *Keep a Changelog* pflegen, inkl. Guard-/Provenienz-Highlights.
+2. **Changelog:** [Changelog](/project/changelog) nach *Keep a Changelog* pflegen, inkl. Guard-/Provenienz-Highlights.
 3. **Tests & Diagnostics:** `pytest -q`, `forensic-cli diagnostics --summary --dry-run`, ggf. `forensic-cli mcp expose --json` archivieren.
 4. **Tags & Artefakte:** Signierten Git-Tag (`git tag -s vX.Y.Z`) erstellen, Release-Artefakte (Docs, MCP-Katalog, Beispiel-Logs) im Release-Ordner `dist/` oder GitHub Assets ablegen.
 5. **Kommunikation:** `PROJECT_STATUS.md`, `REPORT.md` und `SESSION_SUMMARY.md` aktualisieren. Chain-of-Custody-Ereignisse im Ticket-System verlinken.
@@ -79,9 +79,9 @@ class ExampleModule(BaseGuardedModule):
 ## Weiterführende Ressourcen
 
 - [CLI-Referenz](../api/cli.md) – Parameternamen, Exitcodes, JSON-Ausgaben.
-- [MCP-Dokumentation](mcp/codex-workflow.md) – Plan → Confirm → Execute für Codex.
+- [MCP-Dokumentation](/mcp/codex-workflow) – Plan → Confirm → Execute für Codex.
 - [Module-Katalog](../modules/analysis.md) – Parameter, Inputs/Outputs und Guards pro Kategorie.
-- [AGENTS.md](../AGENTS.md) – Forensic-Mode-Grundregeln, inklusive Prompt-Beispielen.
+- [AGENTS.md](/project/agents) – Forensic-Mode-Grundregeln, inklusive Prompt-Beispielen.
 
 Bleiben Sie innerhalb der Guardrails: Dry-Run dokumentieren, Pfade deterministisch halten und Provenienz vollständig erfassen.
 <!-- AUTODOC:END -->

@@ -56,5 +56,5 @@ Acquisition-Module sammeln Beweise unter strengen Guardrails. Sie arbeiten aussc
 - **Guardrails:** Prüft erforderliche Systembefehle (`ps`, `netstat`, `systemctl`). Dry-Run zeigt geplante Sammelkommandos. Kein Root-Zwang, weist aber auf optionale Privilegien hin.
 - **Outputs:** JSON-Berichte (`system.json`, `network.json`), Textlisten (services/processes) in `acq/live_response/`. Provenienz-Log dokumentiert jeden Befehl mit Timestamp.
 
-Weitere Details zur Parametrisierung: [config/modules/](../../config/modules/) und die MCP-Adapterbeschreibung in [mcp/codex-workflow.md](../mcp/codex-workflow.md). Siehe außerdem [Analysis Modules](analysis.md), [Triage Modules](triage.md), [Reporting Modules](reporting.md) und [Router Modules](router.md) für nachgelagerte Verarbeitung.
+Weitere Details zur Parametrisierung: [config/modules/](https://github.com/161sam/Forensic-Playbook/tree/main/config/modules) und die MCP-Adapterbeschreibung in [mcp/codex-workflow.md](../mcp/codex-workflow.md). Siehe außerdem [Analysis Modules](analysis.md), [Triage Modules](triage.md), [Reporting Modules](reporting.md) und [Router Modules](router.md) für nachgelagerte Verarbeitung.
 <!-- AUTODOC:END -->

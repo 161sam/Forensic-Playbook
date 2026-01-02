@@ -48,5 +48,5 @@ Triage-Module liefern schnelle, reproduzierbare Snapshots ohne Schreibzugriffe. 
   ```
   Hashlisten werden optional unter `hashes.json` abgelegt.
 
-Weitere Beispiele finden Sie im [Quick-Triage-Tutorial](../tutorials/01_quick-triage-linux.md) sowie im [Minimalen E2E-Workflow](../examples/minimal-e2e.md). Für weiterführende Verarbeitung siehe [Analysis Modules](analysis.md), [Acquisition Modules](acquisition.md), [Reporting Modules](reporting.md) und [Router Modules](router.md).
+Weitere Beispiele finden Sie im [Quick-Triage-Tutorial](../tutorials/01-quick-triage-linux.md) sowie im [Minimalen E2E-Workflow](../examples/minimal-e2e.md). Für weiterführende Verarbeitung siehe [Analysis Modules](analysis.md), [Acquisition Modules](acquisition.md), [Reporting Modules](reporting.md) und [Router Modules](router.md).
 <!-- AUTODOC:END -->

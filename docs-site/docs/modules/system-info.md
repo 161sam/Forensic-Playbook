@@ -42,7 +42,7 @@ forensic-cli modules run system_info --case demo_case --param sections=hardware,
 - Guard-Hinweis wenn bestimmte Utilities fehlen (Status `success` mit Warnung).
 
 ## Verwandte Dokumentation
-- [Triage](../MODULES/triage.md)
+- [Triage](/modules/triage)
 - [Minimal E2E](../examples/minimal-e2e.md)
 
 <!-- AUTODOC:END -->

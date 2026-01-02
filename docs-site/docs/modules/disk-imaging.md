@@ -18,7 +18,7 @@ description: "Creates verified forensic images using dd, ddrescue or ewfacquire 
 | Parameter | Pflicht | Standard | Beschreibung |
 | --- | --- | --- | --- |
 | `source` | Yes | — | Pfad zum Block-Device, z. B. /dev/sdb. |
-| `output` | Yes | cases/<case>/acq/disk_image_<ts>.img | Zielpfad für Image oder E01-Datei. |
+| `output` | Yes | `cases/&lt;case&gt;/acq/disk_image_&lt;ts&gt;.img` | Zielpfad für Image oder E01-Datei. |
 | `tool` | No | ddrescue | Imaging-Backend: dd / ddrescue / ewfacquire. |
 | `hash_algorithm` | No | sha256 | Hash für Verifikation (sha256, sha1, md5). |
 | `block_size` | No | 4M | Blockgröße für dd-Basiertes Imaging. |
@@ -38,9 +38,9 @@ sudo forensic-cli modules run disk_imaging --case demo_case --param source=/dev/
 ```
 
 ## Ausgaben & Provenienz
-- Forensisches Image (RAW oder E01) unter cases/<case>/acq/.
+- Forensisches Image (RAW oder E01) unter `cases/&lt;case&gt;/acq/`.
 - Hash- und Metadatendatei (JSON) pro Lauf.
-- Logfile unter logs/modules/disk_imaging-<timestamp>.log.
+- Logfile unter `logs/modules/disk_imaging-&lt;timestamp&gt;.log`.
 
 **Chain of Custody:** Ketteneinträge in meta/chain_of_custody.jsonl, Parameter in meta/provenance.jsonl.
 
@@ -50,7 +50,7 @@ sudo forensic-cli modules run disk_imaging --case demo_case --param source=/dev/
 - Missing tool result wenn dd/ddrescue/ewfacquire fehlen (Status `skipped`).
 
 ## Verwandte Dokumentation
-- [Acquisition](../MODULES/acquisition.md)
+- [Acquisition](/modules/acquisition)
 - [Developer Guide](../guides/developer-guide.md)
 
 <!-- AUTODOC:END -->

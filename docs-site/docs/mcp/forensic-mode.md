@@ -22,7 +22,7 @@ Forensic Mode stellt sicher, dass jede Aktion nachvollziehbar, read-only by defa
 | --- | --- |
 | Plan zuerst, dann bestätigen | Kein Live-Run ohne dokumentierte Freigabe |
 | Logs unter `<workspace>/codex_logs/` referenzieren | Unprotokollierte Dateien oder Pfade nutzen |
-| Prompttexte mit [`forensic/mcp/prompts/forensic_mode.txt`](../../forensic/mcp/prompts/forensic_mode.txt) abgleichen | Eigene Prompts ohne Guard-Abschnitte einsetzen |
+| Prompttexte mit [`forensic/mcp/prompts/forensic_mode.txt`](https://github.com/161sam/Forensic-Playbook/blob/main/forensic/mcp/prompts/forensic_mode.txt) abgleichen | Eigene Prompts ohne Guard-Abschnitte einsetzen |
 | Fehlende Tools als Guard-Warnung (`status=skipped`) melden | Exceptions werfen, die den Prompt-Fluss beenden |
 
 ## Bezug zu AGENTS-Anweisungen
