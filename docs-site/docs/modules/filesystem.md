@@ -49,7 +49,7 @@ forensic-cli modules run filesystem_analysis --case demo_case --param image=case
 - `Image file does not exist` bei falschem Pfad.
 
 ## Verwandte Dokumentation
-- [Analysis](../MODULES/analysis.md)
+- [Analysis](../modules/analysis.md)
 - [Timeline](timeline.md)
 
 <!-- AUTODOC:END -->

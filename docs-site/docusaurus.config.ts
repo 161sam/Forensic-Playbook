@@ -9,7 +9,11 @@ const config: Config = {
   baseUrl: '/Forensic-Playbook/',
   trailingSlash: false,
   onBrokenLinks: 'throw',
-  onBrokenMarkdownLinks: 'warn',
+  markdown: {
+    hooks: {
+      onBrokenMarkdownLinks: 'warn',
+    },
+  },
   organizationName: '161sam',
   projectName: 'Forensic-Playbook',
   presets: [

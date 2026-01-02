@@ -49,7 +49,7 @@ forensic-cli modules run memory_analysis --case demo_case --param dump=cases/dem
 - `Memory dump not found` bei falschem Pfad.
 
 ## Verwandte Dokumentation
-- [Analysis](../MODULES/analysis.md)
+- [Analysis](../modules/analysis.md)
 - [Memory Dump](memory_dump.md)
 
 <!-- AUTODOC:END -->

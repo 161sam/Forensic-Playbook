@@ -70,5 +70,5 @@ Analysis-Module arbeiten auf zuvor erworbener Evidenz oder synthetischen JSON-Fa
 - **Guardrails:** Prüft Dateiexistenz, optional `yara`. Fehlende YARA-Regeln → Hinweis im Ergebnis.
 - **Outputs:** JSON `analysis/malware/report.json` mit `hashes`, `yara_matches`, `suspicious_indicators`. Hash-Dateien (`hashes.json`) pro Artefakt.
 
-Cross-Referenzen: [User Guide](../User-Guide.md) für Workflows, [tutorials/02_network-timeline-walkthrough.md](../tutorials/02_network-timeline-walkthrough.md) für Netzwerk→Timeline und [api/CLI.md](../api/CLI.md) für Befehlsbeispiele. Weitere Kategorien: [Acquisition Modules](acquisition.md), [Triage Modules](triage.md), [Reporting Modules](reporting.md) und [Router Modules](router.md).
+Cross-Referenzen: [User Guide](../guides/user-guide.md) für Workflows, [tutorials/02-network-timeline-walkthrough.md](../tutorials/02-network-timeline-walkthrough.md) für Netzwerk→Timeline und [api/cli.md](../api/cli.md) für Befehlsbeispiele. Weitere Kategorien: [Acquisition Modules](acquisition.md), [Triage Modules](triage.md), [Reporting Modules](reporting.md) und [Router Modules](router.md).
 <!-- AUTODOC:END -->

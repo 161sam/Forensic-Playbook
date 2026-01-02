@@ -87,5 +87,5 @@ forensic-cli --workspace ~/cases report generate \
 - `cases/minimal_case/meta/provenance.jsonl` – dokumentiert Parameterquellen (`cli`, `default`).
 - `cases/minimal_case/logs/modules/*` – Dry-Run-Protokolle mit Guard-Hinweisen.
 
-Weitere Beispiele finden Sie im [User Guide](../User-Guide.md) und in den [Tutorials](../tutorials/02_network-timeline-walkthrough.md).
+Weitere Beispiele finden Sie im [User Guide](../guides/user-guide.md) und in den [Tutorials](../tutorials/02-network-timeline-walkthrough.md).
 <!-- AUTODOC:END -->

@@ -52,7 +52,7 @@ forensic-cli modules run timeline --case demo_case --param source=cases/demo_cas
 - Missing tool result wenn plaso/mactime fehlen.
 
 ## Verwandte Dokumentation
-- [Analysis](../MODULES/analysis.md)
-- [02 Network Timeline Walkthrough](../tutorials/02_network-timeline-walkthrough.md)
+- [Analysis](../modules/analysis.md)
+- [02 Network Timeline Walkthrough](../tutorials/02-network-timeline-walkthrough.md)
 
 <!-- AUTODOC:END -->

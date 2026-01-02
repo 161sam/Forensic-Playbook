@@ -52,6 +52,6 @@ description: "High-level system architecture and guard-flow summary for Forensic
 - **Neue Tools:** Wrapper in `forensic/tools/` implementieren, CLI/MCP aktualisieren.
 - **Pipelines:** YAML-Workflows (z. B. `router/pipeline.yaml`) orchestrieren Module sequenziell mit Dry-Run-Gates.
 
-Weitere Details & Entwicklerhinweise: [Developer Guide](Developer-Guide.md) und [Module-Katalog](MODULES/analysis.md).
+Weitere Details & Entwicklerhinweise: [Developer Guide](../guides/developer-guide.md) und [Module-Katalog](../modules/analysis.md).
 
 <!-- AUTODOC:END -->

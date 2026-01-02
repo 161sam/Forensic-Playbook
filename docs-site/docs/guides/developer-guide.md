@@ -12,7 +12,7 @@ Dieser Guide richtet sich an Maintainerinnen und Beitragende. Er bündelt Archit
 
 - **Kernarchitektur:** Die komplette Komponentenübersicht ist in [ARCHITECTURE.md](ARCHITECTURE.md) dokumentiert; ergänzend beschreibt [Projektstruktur-v2.0.md](../Projektstruktur-v2.0.md) die Verzeichnisstruktur.
 - **Core (`forensic/core/`):** Framework, Case-Objekte, Provenienz-Writer (`meta/provenance.jsonl`), Chain-of-Custody (`meta/chain_of_custody.jsonl`).
-- **Module (`forensic/modules/`):** Kategoriepakete (Acquisition, Analysis, Triage, Reporting, Router) mit Guarded-Basisklassen. Die Referenzseiten stehen unter [docs/MODULES/](MODULES/analysis.md).
+- **Module (`forensic/modules/`):** Kategoriepakete (Acquisition, Analysis, Triage, Reporting, Router) mit Guarded-Basisklassen. Die Referenzseiten stehen unter [docs/modules/](../modules/analysis.md).
 - **Tools (`forensic/tools/`):** Deterministische Wrapper für externe Binaries (Sleuthkit, Volatility). Logging- und Guard-Vorgaben siehe [forensic/tools/AGENTS.md](../forensic/tools/AGENTS.md).
 - **CLI/MCP:** Click-Kommandos in `forensic/cli/`, MCP-Adapter in `forensic/mcp/`. Prompt-Richtlinien: [mcp/forensic-mode.md](mcp/forensic-mode.md).
 
@@ -50,7 +50,7 @@ class ExampleModule(BaseGuardedModule):
 
 - **Guards:** Verwenden Sie `require_tools`, `require_root`, `ensure_flag_enabled` und `validate_paths_within_workspace`. Fehlende Voraussetzungen -> `status="skipped"`.
 - **Provenienz:** `self.provenance.record_run(...)` wird automatisch durch `success()/plan()` ausgelöst und protokolliert Parameterquellen, Hashes und Artefaktpfade.
-- **JSON-Schemas:** Kurze Parameter- und Output-Schemata pro Modul finden Sie in [MODULES/*](MODULES/analysis.md); neue Felder müssen dort dokumentiert werden.
+- **JSON-Schemas:** Kurze Parameter- und Output-Schemata pro Modul finden Sie in [modules/*](../modules/analysis.md); neue Felder müssen dort dokumentiert werden.
 
 ## Coding-Standards
 
@@ -78,9 +78,9 @@ class ExampleModule(BaseGuardedModule):
 
 ## Weiterführende Ressourcen
 
-- [CLI-Referenz](api/CLI.md) – Parameternamen, Exitcodes, JSON-Ausgaben.
+- [CLI-Referenz](../api/cli.md) – Parameternamen, Exitcodes, JSON-Ausgaben.
 - [MCP-Dokumentation](mcp/codex-workflow.md) – Plan → Confirm → Execute für Codex.
-- [Module-Katalog](MODULES/analysis.md) – Parameter, Inputs/Outputs und Guards pro Kategorie.
+- [Module-Katalog](../modules/analysis.md) – Parameter, Inputs/Outputs und Guards pro Kategorie.
 - [AGENTS.md](../AGENTS.md) – Forensic-Mode-Grundregeln, inklusive Prompt-Beispielen.
 
 Bleiben Sie innerhalb der Guardrails: Dry-Run dokumentieren, Pfade deterministisch halten und Provenienz vollständig erfassen.

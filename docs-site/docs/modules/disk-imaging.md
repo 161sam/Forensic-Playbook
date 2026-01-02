@@ -51,6 +51,6 @@ sudo forensic-cli modules run disk_imaging --case demo_case --param source=/dev/
 
 ## Verwandte Dokumentation
 - [Acquisition](../MODULES/acquisition.md)
-- [Developer Guide](../Developer-Guide.md)
+- [Developer Guide](../guides/developer-guide.md)
 
 <!-- AUTODOC:END -->

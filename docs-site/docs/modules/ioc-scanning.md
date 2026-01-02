@@ -45,7 +45,7 @@ forensic-cli modules run ioc_scanning --case demo_case --param input=analysis/ti
 - Noch keine Fehlermeldungen — Modul markiert als TODO.
 
 ## Verwandte Dokumentation
-- [Analysis](../MODULES/analysis.md)
+- [Analysis](../modules/analysis.md)
 - [Ioc Hunting](../examples/ioc-hunting.md)
 
 <!-- AUTODOC:END -->
