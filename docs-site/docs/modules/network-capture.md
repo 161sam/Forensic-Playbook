@@ -39,7 +39,7 @@ sudo forensic-cli modules run network_capture --case demo_case --param interface
 ```
 
 ## Ausgaben & Provenienz
-- PCAP-Datei unter cases/<case>/acq/pcap/.
+- PCAP-Datei unter `cases/<case>/acq/pcap/`.
 - `.json`-Manifest mit Parametern & Hashes.
 - Chain-of-Custody-Logeinträge inklusive Parameterquellen.
 
