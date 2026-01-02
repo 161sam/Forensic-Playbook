@@ -43,7 +43,7 @@ forensic-cli modules run quick_triage --case demo_case --param profile=extended
 - Guard-Hinweis, falls Tools fehlen (Status `partial`).
 
 ## Verwandte Dokumentation
-- [Triage](../MODULES/triage.md)
-- [01 Quick Triage Linux](../tutorials/01_quick-triage-linux.md)
+- [Triage](/modules/triage)
+- [01 Quick Triage Linux](../tutorials/01-quick-triage-linux.md)
 
 <!-- AUTODOC:END -->

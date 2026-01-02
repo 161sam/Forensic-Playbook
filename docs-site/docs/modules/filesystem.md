@@ -40,7 +40,7 @@ forensic-cli modules run filesystem_analysis --case demo_case --param image=case
 ## Ausgaben & Provenienz
 - Analysebericht `filesystem.json`.
 - Listen der gefundenen Partitionen und Artefakte unter analysis/filesystem/.
-- Protokoll in logs/modules/filesystem_analysis-<ts>.log.
+- Protokoll in `logs/modules/filesystem_analysis-<ts>.log`.
 
 **Chain of Custody:** Alle generierten Artefakte werden gehasht und im Provenienz-Log aufgeführt.
 

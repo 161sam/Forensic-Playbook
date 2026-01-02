@@ -43,7 +43,7 @@ forensic-cli modules run persistence --case demo_case --param paths.systemd_unit
 - Guard `No persistence targets configured` bei leerer Pfadliste.
 
 ## Verwandte Dokumentation
-- [Triage](../MODULES/triage.md)
-- [01 Quick Triage Linux](../tutorials/01_quick-triage-linux.md)
+- [Triage](/modules/triage)
+- [01 Quick Triage Linux](../tutorials/01-quick-triage-linux.md)
 
 <!-- AUTODOC:END -->

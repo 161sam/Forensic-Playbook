@@ -199,7 +199,7 @@ forensic-cli router pipeline run \
     --dry-run
 ```
 
-Die Router-Module spiegeln Legacy-Skripte, protokollieren Schritte nach `logs/router/` und schreiben JSON-Manifeste. Details stehen in [MODULES/router.md](MODULES/router.md).
+Die Router-Module spiegeln Legacy-Skripte, protokollieren Schritte nach `logs/router/` und schreiben JSON-Manifeste. Details stehen in [Router Modules](/modules/router).
 
 ## MCP & Codex Kurzstart
 

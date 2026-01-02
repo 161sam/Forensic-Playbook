@@ -11,7 +11,7 @@ Der Codex/MCP-Workflow ergänzt den bestehenden CLI/SDK-Weg um eine automatisier
 | Workflow | Zweck | Primäre Befehle |
 | --- | --- | --- |
 | **CLI / SDK** | Manuelle Steuerung, Skripting, lokale Automatisierung | `forensic-cli modules run ... --dry-run`, Python-SDK in `docs/api/SDK.md` |
-| **Codex + MCP** | Natural-Language-Automation mit Forensic Mode | `forensic-cli codex …`, `forensic-cli mcp …`, Prompts aus [`forensic/mcp/prompts/forensic_mode.txt`](../../forensic/mcp/prompts/forensic_mode.txt) |
+| **Codex + MCP** | Natural-Language-Automation mit Forensic Mode | `forensic-cli codex …`, `forensic-cli mcp …`, Prompts aus [`forensic/mcp/prompts/forensic_mode.txt`](https://github.com/161sam/Forensic-Playbook/blob/main/forensic/mcp/prompts/forensic_mode.txt) |
 
 ### Plan → Confirm → Execute
 
@@ -77,7 +77,7 @@ forensic-cli --workspace /mnt/usb_rw/cases/demo mcp run diagnostics.ping --local
 
 ### Beispielablauf (Timeline-Analyse)
 1. Analyst sendet Prompt: „Erstelle einen Dry-Run-Plan für `modules.timeline` und verweise auf `analysis/timeline/`.“
-2. Codex antwortet mit `forensic-cli modules run timeline --dry-run ...` samt Logpfaden und Verweis auf [`forensic_mode.txt`](../../forensic/mcp/prompts/forensic_mode.txt).
+2. Codex antwortet mit `forensic-cli modules run timeline --dry-run ...` samt Logpfaden und Verweis auf [`forensic_mode.txt`](https://github.com/161sam/Forensic-Playbook/blob/main/forensic/mcp/prompts/forensic_mode.txt).
 3. Nach Freigabe wiederholt Codex den Befehl ohne `--dry-run`, dokumentiert Artefakte in `meta/provenance.jsonl` und aktualisiert den MCP-Katalog bei Bedarf.
 
 ## Fehlersuche & Aufräumen

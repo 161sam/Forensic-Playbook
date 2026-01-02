@@ -34,7 +34,7 @@ forensic-cli modules run live_response --case demo_case --param commands='uname 
 ```
 
 ## Ausgaben & Provenienz
-- Textartefakte (*.out/*.err) pro Kommando unter cases/<case>/acq/live_response/.
+- Textartefakte (*.out/*.err) pro Kommando unter `cases/<case>/acq/live_response/`.
 - `live_response.meta.json` mit Hashwerten pro Ausgabe.
 
 **Chain of Custody:** Jede Kommandoausführung wird in meta/provenance.jsonl plus Chain-of-Custody eingetragen.
@@ -44,7 +44,7 @@ forensic-cli modules run live_response --case demo_case --param commands='uname 
 - Guard-Meldung `Required tooling missing` bei fehlenden Utilities (Status `partial`).
 
 ## Verwandte Dokumentation
-- [Acquisition](../MODULES/acquisition.md)
+- [Acquisition](/modules/acquisition)
 - [User Guide](../guides/user-guide.md)
 
 <!-- AUTODOC:END -->

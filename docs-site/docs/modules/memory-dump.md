@@ -35,9 +35,9 @@ sudo forensic-cli modules run memory_dump --case demo_case --param enable_live_c
 ```
 
 ## Ausgaben & Provenienz
-- RAW-Speicherabbild unter cases/<case>/acq/memdump/.
+- RAW-Speicherabbild unter `cases/<case>/acq/memdump/`.
 - `.meta.json` mit Hostinformationen und Hashes.
-- Logs unter logs/modules/memory_dump-<ts>.log.
+- Logs unter `logs/modules/memory_dump-<ts>.log`.
 
 **Chain of Custody:** Hash und Pfade in Chain-of-Custody; Dry-Run vermerkt im Provenienzstrom.
 
@@ -47,7 +47,7 @@ sudo forensic-cli modules run memory_dump --case demo_case --param enable_live_c
 - `avml` fehlt → guidance Install Microsoft's AVML.
 
 ## Verwandte Dokumentation
-- [Acquisition](../MODULES/acquisition.md)
+- [Acquisition](/modules/acquisition)
 - [Memory](memory.md)
 
 <!-- AUTODOC:END -->

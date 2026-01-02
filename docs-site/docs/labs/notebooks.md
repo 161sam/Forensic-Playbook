@@ -17,21 +17,21 @@ and the MCP catalogue without contacting external services.
 
 | Lab | Title | Highlights |
 | --- | ----- | ---------- |
-| 00 | [Introduction and Guarded Setup](00_Introduction_and_Setup.ipynb) | Framework bootstrap, configuration precedence, diagnostic dry-runs |
-| 10 | [Case Management and CoC](10_Case_Management_and_CoC.ipynb) | Create cases, record chain-of-custody entries, inspect evidence tables |
-| 20 | [Network to Timeline](20_Network_to_Timeline.ipynb) | Synthetic PCAP JSON → network analysis → unified timeline with visualisation |
-| 40 | [Router Suite Workflow](40_Router_Suite_Workflow.ipynb) | Synthetic router export, env→extract→manifest→summary pipeline, CLI preview |
-| 60 | [Memory and Registry](60_Memory_and_Registry.ipynb) | Volatility/RegRipper guards, synthetic memory & registry metadata, module path demo |
-| 80 | [Malware and IoCs](80_Malware_and_IOCs.ipynb) | Deterministic IoC catalogue, defang/refang helper, JSON/CSV match exports |
-| 90 | [Reporting and Codex MCP](90_Reporting_and_Codex_MCP.ipynb) | HTML report generation, PDF guard, Codex plans, MCP catalogue + confirm-gates |
+| 00 | [Introduction and Guarded Setup](https://github.com/161sam/Forensic-Playbook/blob/main/notebooks/00_Introduction_and_Setup.ipynb) | Framework bootstrap, configuration precedence, diagnostic dry-runs |
+| 10 | [Case Management and CoC](https://github.com/161sam/Forensic-Playbook/blob/main/notebooks/10_Case_Management_and_CoC.ipynb) | Create cases, record chain-of-custody entries, inspect evidence tables |
+| 20 | [Network to Timeline](https://github.com/161sam/Forensic-Playbook/blob/main/notebooks/20_Network_to_Timeline.ipynb) | Synthetic PCAP JSON → network analysis → unified timeline with visualisation |
+| 40 | [Router Suite Workflow](https://github.com/161sam/Forensic-Playbook/blob/main/notebooks/40_Router_Suite_Workflow.ipynb) | Synthetic router export, env→extract→manifest→summary pipeline, CLI preview |
+| 60 | [Memory and Registry](https://github.com/161sam/Forensic-Playbook/blob/main/notebooks/60_Memory_and_Registry.ipynb) | Volatility/RegRipper guards, synthetic memory & registry metadata, module path demo |
+| 80 | [Malware and IoCs](https://github.com/161sam/Forensic-Playbook/blob/main/notebooks/80_Malware_and_IOCs.ipynb) | Deterministic IoC catalogue, defang/refang helper, JSON/CSV match exports |
+| 90 | [Reporting and Codex MCP](https://github.com/161sam/Forensic-Playbook/blob/main/notebooks/90_Reporting_and_Codex_MCP.ipynb) | HTML report generation, PDF guard, Codex plans, MCP catalogue + confirm-gates |
 
 ### Exercises & Solutions
 
 | Lab | Exercise | Solution |
 | --- | -------- | -------- |
-| 20 | [Exercise](exercises/20_Network_to_Timeline_exercise.ipynb) | [Solution](solutions/20_Network_to_Timeline_solution.ipynb) |
-| 40 | [Exercise](exercises/40_Router_Suite_Workflow_exercise.ipynb) | [Solution](solutions/40_Router_Suite_Workflow_solution.ipynb) |
-| 90 | [Exercise](exercises/90_Reporting_and_Codex_MCP_exercise.ipynb) | [Solution](solutions/90_Reporting_and_Codex_MCP_solution.ipynb) |
+| 20 | [Exercise](https://github.com/161sam/Forensic-Playbook/blob/main/notebooks/exercises/20_Network_to_Timeline_exercise.ipynb) | [Solution](https://github.com/161sam/Forensic-Playbook/blob/main/notebooks/solutions/20_Network_to_Timeline_solution.ipynb) |
+| 40 | [Exercise](https://github.com/161sam/Forensic-Playbook/blob/main/notebooks/exercises/40_Router_Suite_Workflow_exercise.ipynb) | [Solution](https://github.com/161sam/Forensic-Playbook/blob/main/notebooks/solutions/40_Router_Suite_Workflow_solution.ipynb) |
+| 90 | [Exercise](https://github.com/161sam/Forensic-Playbook/blob/main/notebooks/exercises/90_Reporting_and_Codex_MCP_exercise.ipynb) | [Solution](https://github.com/161sam/Forensic-Playbook/blob/main/notebooks/solutions/90_Reporting_and_Codex_MCP_solution.ipynb) |
 
 ## Artefact Locations
 

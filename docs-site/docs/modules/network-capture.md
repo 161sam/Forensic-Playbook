@@ -51,7 +51,7 @@ sudo forensic-cli modules run network_capture --case demo_case --param interface
 - Ungültige Dauer -> Guard Fehler `duration`.
 
 ## Verwandte Dokumentation
-- [Acquisition](../MODULES/acquisition.md)
+- [Acquisition](/modules/acquisition)
 - [Network](network.md)
 
 <!-- AUTODOC:END -->
