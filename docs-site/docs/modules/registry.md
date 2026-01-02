@@ -44,7 +44,7 @@ forensic-cli modules run registry_analysis --case demo_case --param target=/mnt/
 - `No registry hives found` falls Pfad leer.
 
 ## Verwandte Dokumentation
-- [Analysis](../MODULES/analysis.md)
+- [Analysis](../modules/analysis.md)
 - [03 Registry Analysis Windows](../tutorials/03_registry-analysis-windows.md)
 
 <!-- AUTODOC:END -->

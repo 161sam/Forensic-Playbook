@@ -121,5 +121,5 @@ Dadurch werden Timeline- und Netzwerkbefunde im Report geplant. Prüfen Sie `rep
 - Netzwerk- und Timeline-Module speichern Hashes (`metadata.pcap_json_sha256`, `metadata.timeline_sha256`), sofern anwendbar.
 - Bewahren Sie JSON- und CSV-Ausgaben gemeinsam mit den Logs auf, um den Ablauf später nachvollziehen zu können.
 
-Weitere Hintergründe: [Module-Katalog – Analysis](../MODULES/analysis.md) und [CLI-Referenz](../api/CLI.md).
+Weitere Hintergründe: [Module-Katalog – Analysis](../modules/analysis.md) und [CLI-Referenz](../api/cli.md).
 <!-- AUTODOC:END -->

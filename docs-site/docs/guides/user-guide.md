@@ -139,7 +139,7 @@ forensic-cli --workspace ~/cases modules run timeline \
     --param format=csv
 ```
 
-Artefakte werden unter `analysis/network/` und `analysis/timeline/` abgelegt. Weitere Details liefert das [Network-Timeline-Tutorial](tutorials/02_network-timeline-walkthrough.md).
+Artefakte werden unter `analysis/network/` und `analysis/timeline/` abgelegt. Weitere Details liefert das [Network-Timeline-Tutorial](../tutorials/02-network-timeline-walkthrough.md).
 
 ### 3. Berichtserstellung
 
@@ -163,7 +163,7 @@ forensic-cli --workspace ~/cases report generate \
     --dry-run
 ```
 
-Hashwerte und Exportpfade landen automatisch im Chain-of-Custody-Protokoll. Für Layoutoptionen siehe [MODULES/reporting.md](MODULES/reporting.md).
+Hashwerte und Exportpfade landen automatisch im Chain-of-Custody-Protokoll. Für Layoutoptionen siehe [modules/reporting.md](../modules/reporting.md).
 
 ### 4. Router-Suite Quickstart
 
@@ -244,5 +244,5 @@ forensic-cli --workspace ~/cases mcp run diagnostics.ping \
 
 ---
 
-Weiterführende Ressourcen: [Developer Guide](Developer-Guide.md), [CLI-Referenz](api/CLI.md), [Modul-Katalog](MODULES/analysis.md), [Minimaler E2E-Workflow](examples/minimal-e2e.md) und das [Network-Timeline-Tutorial](tutorials/02_network-timeline-walkthrough.md).
+Weiterführende Ressourcen: [Developer Guide](developer-guide.md), [CLI-Referenz](../api/cli.md), [Modul-Katalog](../modules/analysis.md), [Minimaler E2E-Workflow](../examples/minimal-e2e.md) und das [Network-Timeline-Tutorial](../tutorials/02-network-timeline-walkthrough.md).
 <!-- AUTODOC:END -->

@@ -61,5 +61,5 @@ Die Router-Suite ersetzt Legacy-Skripte durch Guarded-Python-Module. Alle Komman
 - **Guardrails:** Analysiert Plan, verweigert Live-Stages ohne `ack_live=true`. Jeder Stage-Run wird protokolliert (`pipeline.json` mit `steps[]`).
 - **Outputs:** Pipeline-Ordner `router/pipeline/<timestamp>/` mit Stage-Logs, `pipeline.json` (Status, Artefakte, Parameterquellen).
 
-Weitere Beispiele: [Router Quickstart im User Guide](../User-Guide.md#4-router-suite-quickstart) und das [Router End-to-End Tutorial](../tutorials/04_router_forensics_end2end.md). Für vorgelagerte Schritte siehe [Acquisition Modules](acquisition.md) und [Analysis Modules](analysis.md); Reporting erfolgt über [Reporting Modules](reporting.md).
+Weitere Beispiele: [Router Quickstart im User Guide](../guides/user-guide.md#4-router-suite-quickstart) und das [Router End-to-End Tutorial](../tutorials/04-router-forensics-end2end.md). Für vorgelagerte Schritte siehe [Acquisition Modules](acquisition.md) und [Analysis Modules](analysis.md); Reporting erfolgt über [Reporting Modules](reporting.md).
 <!-- AUTODOC:END -->

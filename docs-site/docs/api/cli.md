@@ -178,8 +178,8 @@ forensic-cli --workspace ~/cases mcp run diagnostics.ping \
 
 ## Weitere Ressourcen
 
-- [User Guide](../User-Guide.md) – Standard-Workflows, Troubleshooting.
-- [Module-Katalog](../MODULES/analysis.md) – Parameterlisten und JSON-Schemata pro Kategorie.
+- [User Guide](../guides/user-guide.md) – Standard-Workflows, Troubleshooting.
+- [Module-Katalog](../modules/analysis.md) – Parameterlisten und JSON-Schemata pro Kategorie.
 - [Forensic Mode Guardrails](../mcp/forensic-mode.md) – Plan → Confirm → Execute für MCP/Codex.
 
 Alle Beispiele verzichten bewusst auf Binär-Fixtures und verwenden deterministische Pfade. Ergänzen Sie Dry-Run-Protokolle in der Fallakte, bevor Sie Live-Läufe starten.

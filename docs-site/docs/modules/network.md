@@ -49,7 +49,7 @@ forensic-cli modules run network --case demo_case --param source=cases/demo_case
 - Hinweis, wenn pcap-Extras fehlen (Status `success` mit Warnung).
 
 ## Verwandte Dokumentation
-- [Analysis](../MODULES/analysis.md)
-- [02 Network Timeline Walkthrough](../tutorials/02_network-timeline-walkthrough.md)
+- [Analysis](../modules/analysis.md)
+- [02 Network Timeline Walkthrough](../tutorials/02-network-timeline-walkthrough.md)
 
 <!-- AUTODOC:END -->

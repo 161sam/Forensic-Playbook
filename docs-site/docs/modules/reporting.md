@@ -37,5 +37,5 @@ Die Reporting-Schicht fasst Analyseergebnisse zusammen und erstellt weitergabef�
 - **Guardrails:** Prüft Scope-Werte gegen Whitelist, stellt sicher, dass Zielordner innerhalb des Workspaces liegt.
 - **Outputs:** JSON/Markdown-Datei mit Schema `{ "case": "demo_case", "artifacts": [...], "indicators": [...] }`. Hash-Datei optional (`--param include_hashes=true`). Logs unter `logs/modules/report_exporter-*.log`.
 
-Weitere Hinweise zu Workflows und PDF-Optionen: [User Guide](../User-Guide.md#3-berichtserstellung) und [examples/reporting-html-pdf.md](../examples/reporting-html-pdf.md). Ergänzend: [Acquisition Modules](acquisition.md), [Analysis Modules](analysis.md), [Triage Modules](triage.md) und [Router Modules](router.md).
+Weitere Hinweise zu Workflows und PDF-Optionen: [User Guide](../guides/user-guide.md#3-berichtserstellung) und [examples/reporting-html-pdf.md](../examples/reporting-html-pdf.md). Ergänzend: [Acquisition Modules](acquisition.md), [Analysis Modules](analysis.md), [Triage Modules](triage.md) und [Router Modules](router.md).
 <!-- AUTODOC:END -->

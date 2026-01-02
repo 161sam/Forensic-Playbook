@@ -45,6 +45,6 @@ forensic-cli modules run live_response --case demo_case --param commands='uname 
 
 ## Verwandte Dokumentation
 - [Acquisition](../MODULES/acquisition.md)
-- [User Guide](../User-Guide.md)
+- [User Guide](../guides/user-guide.md)
 
 <!-- AUTODOC:END -->
